@@ -6,10 +6,11 @@
 //! - Source map 生成
 //! - 类型擦除与优化
 
+use std::sync::Arc;
+
 use swc_common::{
     errors::{Handler, EmitterWriter},
     FileName, Mark, SourceMap,
-    sync::Arc,
 };
 use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax};
 use swc_ecma_transforms_typescript::strip;
@@ -18,6 +19,7 @@ use swc_ecma_codegen::{
     Emitter,
 };
 use swc_ecma_ast::{Module, Program};
+use swc_ecma_visit::Fold;
 use tracing::{debug, info};
 
 /// TypeScript 编译配置
@@ -64,13 +66,13 @@ impl TsCompiler {
     pub fn new(config: TsCompilerConfig) -> Self {
         let source_map = Arc::new(SourceMap::default());
         
-        // 创建错误处理器
+        // 创建错误处理器（swc 62 API 变更）
         let handler = {
             let emitter = Box::new(EmitterWriter::new(
                 Box::new(std::io::stderr()),
                 None,
-                false,
-                false,
+                false,  // short_message
+                false,  // teach
             ));
             Arc::new(Handler::with_emitter(true, false, emitter))
         };
@@ -92,10 +94,11 @@ impl TsCompiler {
             "Compiling TypeScript with swc"
         );
 
-        // 1. 创建源文件
+        // 1. 创建源文件（swc 62 需要 Arc<FileName> 和 BytesStr）
         let source_file = self.source_map.new_source_file(
             Arc::new(FileName::Real(filename.into())),
-            source.into(),
+            swc_common::BytePos::from_usize(0),
+            source.to_string(),
         );
 
         // 2. 解析 TypeScript
@@ -107,7 +110,7 @@ impl TsCompiler {
         // 4. 生成 JavaScript 代码
         let (code, source_map) = self.generate_code(transformed)?;
 
-        let compile_time = start_time.elapsed().as_secs_f64 * 1000.0;
+        let compile_time = start_time.elapsed().as_secs_f64() * 1000.0;
 
         debug!(
             filename = filename,
@@ -133,27 +136,31 @@ impl TsCompiler {
 
         let mut parser = Parser::new(
             syntax,
-            StringInput::from(&*source_file),
+            StringInput::from(source_file.as_ref()),
             None,
         );
 
         let module = parser.parse_module().map_err(|e| {
+            let msg = e.kind().msg().to_string();
             e.into_diagnostic(&self.handler).emit();
-            format!("TypeScript parse error: {}", e.kind().msg())
+            format!("TypeScript parse error: {}", msg)
         })?;
 
         Ok(module)
     }
 
-    /// 应用 TypeScript 转换
+    /// 应用 TypeScript 转换（swc 62 API 变更）
     fn transform_typescript(&self, module: Module) -> Result<Module, String> {
-        use swc_ecma_visit::Fold;
+        use swc_ecma_visit::FoldWith;
+        use swc_common::pass::FoldPass;
         
         let unresolved_mark = Mark::new();
         let top_level_mark = Mark::new();
         
-        let mut strip_pass = strip(unresolved_mark, top_level_mark);
-        let transformed = module.fold_with(&mut strip_pass);
+        // strip 现在返回一个 Pass 对象，需要包装成 Fold
+        let transform = strip(unresolved_mark, top_level_mark);
+        let mut fold = FoldPass::new(transform);
+        let transformed = module.fold_with(&mut fold);
 
         Ok(transformed)
     }

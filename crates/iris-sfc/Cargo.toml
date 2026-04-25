@@ -24,6 +24,7 @@ swc_ecma_parser = "39"
 swc_ecma_transforms_typescript = "46"
 swc_ecma_codegen = "26"
 swc_ecma_ast = "23"
+swc_ecma_visit = "23"
 
 # HTML 解析（用于模板编译器）
 html5ever = "0.27"
