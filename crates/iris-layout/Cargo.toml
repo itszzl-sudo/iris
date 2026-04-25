@@ -1,0 +1,15 @@
+[package]
+name = "iris-layout"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris browser-grade layout & CSS engine: box model, Flex, selector matching, style inheritance"
+
+[dependencies]
+iris-core.workspace = true
+iris-gpu.workspace = true
+html5ever.workspace = true
+cssparser.workspace = true

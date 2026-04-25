@@ -1,0 +1,13 @@
+[package]
+name = "iris-js"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris JS sandbox runtime: QuickJS bindings, ESM module system, Vue3 runtime preloaded"
+
+[dependencies]
+iris-core.workspace = true
+iris-dom.workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "iris-dom"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris cross-platform DOM/BOM abstraction and unified event system"
+
+[dependencies]
+iris-core.workspace = true
+iris-layout.workspace = true

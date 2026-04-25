@@ -1,0 +1,25 @@
+[package]
+name = "iris-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris application entry: desktop EXE / Wasm bindings / CLI tooling"
+default-run = "iris-app"
+
+[[bin]]
+name = "iris-app"
+path = "src/main.rs"
+
+[dependencies]
+iris-core.workspace = true
+iris-gpu.workspace = true
+iris-layout.workspace = true
+iris-dom.workspace = true
+iris-js.workspace = true
+iris-sfc.workspace = true
+winit.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

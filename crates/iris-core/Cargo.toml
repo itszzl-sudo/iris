@@ -1,0 +1,13 @@
+[package]
+name = "iris-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris engine core: cross-platform windowing, async runtime, memory pool, IO and networking"
+
+[dependencies]
+tokio.workspace = true
+winit.workspace = true

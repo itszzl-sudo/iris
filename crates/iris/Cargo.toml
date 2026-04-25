@@ -1,0 +1,19 @@
+[package]
+name = "iris-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris Engine —— Rust+WebGPU next-gen buildless frontend runtime (meta crate)"
+keywords = ["gui", "webgpu", "vue", "runtime", "renderer"]
+categories = ["gui", "rendering", "wasm", "development-tools"]
+
+[dependencies]
+iris-core.workspace = true
+iris-gpu.workspace = true
+iris-layout.workspace = true
+iris-dom.workspace = true
+iris-js.workspace = true
+iris-sfc.workspace = true
