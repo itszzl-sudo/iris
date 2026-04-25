@@ -41,8 +41,13 @@ static SCRIPT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
 /// 3. 复用内部缓存和 SourceMap
 /// 4. 禁用 Source Map 以节省内存和提升编译速度
 static TS_COMPILER: LazyLock<ts_compiler::TsCompiler> = LazyLock::new(|| {
+    // 从环境变量读取 Source Map 配置
+    let enable_source_map = std::env::var("IRIS_SOURCE_MAP")
+        .map(|v| v == "true" || v == "1" || v == "yes")
+        .unwrap_or(false);  // 默认禁用
+    
     ts_compiler::TsCompiler::new(ts_compiler::TsCompilerConfig {
-        source_map: false,  // 禁用 Source Map（节省 30-50% 内存，提升 10-15% 编译速度）
+        source_map: enable_source_map,
         ..Default::default()
     })
 });
@@ -55,9 +60,19 @@ static TS_COMPILER: LazyLock<ts_compiler::TsCompiler> = LazyLock::new(|| {
 /// 3. 默认容量 100 项，自动 LRU 淘汰
 /// 4. 基于源码哈希，确保内容一致性
 static SFC_CACHE: LazyLock<SfcCache> = LazyLock::new(|| {
+    // 从环境变量读取缓存配置
+    let capacity = std::env::var("IRIS_CACHE_CAPACITY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);  // 默认 100 项
+    
+    let enabled = std::env::var("IRIS_CACHE_ENABLED")
+        .map(|v| v != "false" && v != "0" && v != "no")
+        .unwrap_or(true);  // 默认启用
+    
     SfcCache::new(SfcCacheConfig {
-        capacity: 100,     // 缓存 100 个组件
-        enabled: true,     // 启用缓存
+        capacity,
+        enabled,
     })
 });
 
@@ -205,22 +220,61 @@ pub fn compile<P: AsRef<Path>>(path: P) -> Result<SfcModule, SfcError> {
         file: file_name.clone(),
     })?;
 
-    // 计算源码哈希
-    let source_hash = calculate_hash(&source);
-
     // 提取组件名
     let name = extract_component_name(path);
 
-    // 解析 SFC
-    let descriptor = parse_sfc(&source, &file_name)?;
+    // 使用缓存编译（自动处理缓存命中/未命中）
+    let start_time = std::time::Instant::now();
+    let module = SFC_CACHE.get_or_compile(&name, &source, || {
+        // 实际编译逻辑（仅在缓存未命中时执行）
+        compile_sfc_internal(&name, &source, &file_name)
+    }).map_err(|e| SfcError::ScriptError {
+        message: e,
+        file: file_name.clone(),
+        line: 1,
+        column: 1,
+    })?;
+    
+    let compile_time = start_time.elapsed();
+    
+    // 记录编译时间日志
+    debug!(
+        name = %name,
+        compile_time_ms = compile_time.as_secs_f64() * 1000.0,
+        from_cache = module.source_hash != calculate_hash(&source),  // 如果哈希匹配说明是缓存
+        "SFC compilation completed"
+    );
 
-    // 编译各部分（传递文件名用于错误定位）
-    let render_fn = compile_template(&file_name, descriptor.template.as_deref().unwrap_or(""))?;
+    Ok(module)
+}
+
+/// 内部编译函数（实际执行编译逻辑）
+///
+/// 该函数仅在缓存未命中时被调用。
+///
+/// # 参数
+///
+/// * `name` - 组件名称
+/// * `source` - SFC 源码
+/// * `file_name` - 文件名（用于错误定位）
+///
+/// # 返回
+///
+/// 返回编译后的 SFC 模块
+fn compile_sfc_internal(name: &str, source: &str, file_name: &str) -> Result<SfcModule, String> {
+    let source_hash = calculate_hash(source);
+    let descriptor = parse_sfc(source, file_name).map_err(|e| format!("Parse error: {}", e))?;
+
+    let render_fn = compile_template(file_name, descriptor.template.as_deref().unwrap_or(""))
+        .map_err(|e| format!("Template compile error: {}", e))?;
+    
     let script = if let Some(script_source) = &descriptor.script {
-        compile_script(&file_name, script_source)?
+        compile_script(file_name, script_source)
+            .map_err(|e| format!("Script compile error: {}", e))?
     } else {
         String::new()
     };
+    
     let styles = compile_styles(&descriptor.styles);
 
     debug!(
@@ -228,11 +282,11 @@ pub fn compile<P: AsRef<Path>>(path: P) -> Result<SfcModule, SfcError> {
         has_template = descriptor.template.is_some(),
         has_script = descriptor.script.is_some(),
         style_count = styles.len(),
-        "SFC compiled successfully"
+        "SFC internal compilation completed"
     );
 
     Ok(SfcModule {
-        name,
+        name: name.to_string(),
         render_fn,
         script,
         styles,
