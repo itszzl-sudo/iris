@@ -25,10 +25,8 @@ registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"
 # ============================================
 
 [net]
-# 并行下载数量（默认 4，增加到 8）
+# 网络重试次数
 retry = 3
-# 启用 sparse 协议（更快的索引更新）
-sparse-registry = true
 
 # ============================================
 # 3. 编译优化 - 加速编译
