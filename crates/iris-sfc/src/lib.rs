@@ -510,10 +510,14 @@ function add(a: number, b: number): number {
   return a + b
 }"#;
 
-        let js = transpile_ts_basic(ts);
-        assert!(!js.contains(": number"));
-        assert!(!js.contains(": string"));
-        assert!(js.contains("function add(a, b) {"));
+        // 使用新的 TsCompiler
+        use crate::ts_compiler::{TsCompiler, TsCompilerConfig};
+        let compiler = TsCompiler::new(TsCompilerConfig::default());
+        let result = compiler.compile(ts, "test.ts").unwrap();
+        
+        assert!(!result.code.contains(": number"));
+        assert!(!result.code.contains(": string"));
+        assert!(result.code.contains("function add(a, b)"));
     }
 
     #[test]
