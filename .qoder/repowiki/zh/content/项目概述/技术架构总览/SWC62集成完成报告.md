@@ -12,6 +12,7 @@
 - [crates/iris-gpu/tests/file_watcher_integration.rs](file://crates/iris-gpu/tests/file_watcher_integration.rs)
 - [crates/iris-app/src/main.rs](file://crates/iris-app/src/main.rs)
 - [crates/iris-core/src/lib.rs](file://crates/iris-core/src/lib.rs)
+- [TestComponent.vue](file://TestComponent.vue)
 </cite>
 
 ## 更新摘要
@@ -20,6 +21,7 @@
 - 新增了EsVersion枚举和完整的编译配置系统
 - 增强了错误处理机制和性能优化策略
 - 完善了热重载系统的架构设计
+- **新增**：完善了模板编译器指令支持列表，新增v-text、v-html、v-show三个Vue指令支持
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -43,6 +45,7 @@ Iris项目成功完成了SWC62 TypeScript编译器的完整集成，这是一个
 - **✅ 高性能编译**：平均编译时间仅为0.13ms，使用Compiler API获得最佳性能
 - **✅ 完善的错误处理**：提供详细的编译错误信息和位置定位
 - **✅ 全面的测试覆盖**：所有测试用例通过，包括性能基准测试和错误处理测试
+- **✅ 完整的Vue指令支持**：模板编译器现已支持所有主要的Vue指令，包括新增的v-text、v-html、v-show指令
 
 ## 项目结构
 
@@ -273,9 +276,13 @@ TsCompiler组件实现了完整的SWC62编译器API，提供了强大的TypeScri
 
 #### 支持的指令
 
+**更新**：模板编译器现已支持所有主要的Vue指令，包括新增的v-text、v-html、v-show指令：
+
 | 指令 | 功能 | 示例 |
 |------|------|------|
 | v-if | 条件渲染 | `<div v-if="visible">内容</div>` |
+| v-else-if | 条件渲染 | `<div v-else-if="condition">内容</div>` |
+| v-else | 条件渲染 | `<div v-else>内容</div>` |
 | v-for | 列表渲染 | `<li v-for="item in items">{{ item }}</li>` |
 | v-bind | 属性绑定 | `<input :value="message">` |
 | v-on | 事件监听 | `<button @click="handleClick">点击</button>` |
@@ -285,10 +292,20 @@ TsCompiler组件实现了完整的SWC62编译器API，提供了强大的TypeScri
 | v-pre | 跳过编译 | `<div v-pre>{{ 应该原样输出 }}</div>` |
 | v-cloak | 隐藏指令 | `<div v-cloak>编译后显示</div>` |
 | v-memo | 记忆化 | `<div v-memo="[count]">内容</div>` |
+| v-text | 文本内容设置 | `<span v-text="message">内容</span>` |
+| v-html | HTML内容设置 | `<div v-html="rawHtml">HTML内容</div>` |
+| v-show | 显示/隐藏控制 | `<div v-show="isVisible">内容</div>` |
+
+**新增指令详细说明**：
+
+- **v-text**：设置元素的textContent属性，适合纯文本内容的动态更新
+- **v-html**：设置元素的innerHTML属性，允许插入HTML标记和富文本内容
+- **v-show**：通过切换元素的display样式属性来控制显示/隐藏，与v-if相比不会销毁DOM节点
 
 **章节来源**
-- [crates/iris-sfc/src/template_compiler.rs:30-63](file://crates/iris-sfc/src/template_compiler.rs#L30-L63)
-- [crates/iris-sfc/src/template_compiler.rs:165-236](file://crates/iris-sfc/src/template_compiler.rs#L165-L236)
+- [crates/iris-sfc/src/template_compiler.rs:30-69](file://crates/iris-sfc/src/template_compiler.rs#L30-L69)
+- [crates/iris-sfc/src/template_compiler.rs:170-257](file://crates/iris-sfc/src/template_compiler.rs#L170-L257)
+- [crates/iris-sfc/src/template_compiler.rs:484-516](file://crates/iris-sfc/src/template_compiler.rs#L484-L516)
 
 ### 应用程序入口点
 
@@ -410,7 +427,7 @@ Iris在编译器层面采用了多项性能优化措施：
 | 正则表达式编译 | 100-500倍提升 | LazyLock优化效果 |
 | 文件监控轮询 | 100ms间隔 | 降低CPU占用 |
 | 缓存命中率 | 高 | 减少重复编译 |
-| 编译器复用 | 无重复创建 | 使用Arc包装器 |
+| 编译器复用 | 无重复创建 | 使用Arc包装器
 
 **章节来源**
 - [crates/iris-sfc/src/lib.rs:19-35](file://crates/iris-sfc/src/lib.rs#L19-L35)
@@ -450,6 +467,16 @@ Iris在编译器层面采用了多项性能优化措施：
 - 限制缓存大小防止内存泄漏
 - 使用编译器实例复用
 
+#### Vue指令支持问题
+
+**问题**：新增的v-text、v-html、v-show指令无法正确编译
+
+**解决方案**：
+- 确认模板编译器已正确解析指令
+- 检查生成的渲染函数是否包含相应的JavaScript代码
+- 验证指令的表达式语法正确性
+- 确保HTML5解析器能够正确处理这些指令
+
 **章节来源**
 - [SWC62-INTEGRATION-COMPLETE.md:84-96](file://SWC62-INTEGRATION-COMPLETE.md#L84-L96)
 - [crates/iris-app/src/main.rs:17-18](file://crates/iris-app/src/main.rs#L17-L18)
@@ -465,6 +492,7 @@ SWC62集成项目取得了圆满成功，实现了以下关键目标：
 - **稳定性保障**：所有测试用例通过，包含性能基准测试
 - **可扩展性设计**：为后续功能增强预留了充足空间
 - **错误处理完善**：提供详细的编译错误信息和位置定位
+- **完整指令支持**：模板编译器现已支持所有主要Vue指令，包括新增的v-text、v-html、v-show指令
 
 ### 技术优势
 
@@ -473,6 +501,7 @@ SWC62集成项目取得了圆满成功，实现了以下关键目标：
 - **依赖清晰**：使用官方元包，版本完全兼容
 - **易于升级**：保留完整的API接口，便于后续升级
 - **内存优化**：编译器实例复用，避免重复创建
+- **指令丰富**：支持Vue生态系统的完整指令集
 
 ### 后续发展方向
 
@@ -481,5 +510,6 @@ SWC62集成项目取得了圆满成功，实现了以下关键目标：
 3. **性能优化**：实现编译结果缓存和增量编译
 4. **功能增强**：支持JSX/TSX、装饰器等高级特性
 5. **Source Map优化**：改进调试体验和错误定位
+6. **指令扩展**：继续完善更多Vue指令的支持
 
-这次集成为Iris项目奠定了坚实的TypeScript编译基础，为未来的功能扩展和性能优化提供了良好的起点。
+这次集成为Iris项目奠定了坚实的TypeScript编译基础，为未来的功能扩展和性能优化提供了良好的起点。新增的Vue指令支持进一步增强了Iris对现代前端开发工具链的兼容性和实用性。

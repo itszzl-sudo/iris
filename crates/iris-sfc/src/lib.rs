@@ -11,6 +11,7 @@
 mod cache;
 mod template_compiler;
 mod ts_compiler;
+mod css_modules;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -104,6 +105,11 @@ pub struct StyleBlock {
     pub scoped: bool,
     /// 样式语言（css/scss/less）。
     pub lang: String,
+    /// 是否启用 CSS Modules。
+    pub module: bool,
+    /// 类名映射（仅 module=true 时有值）。
+    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub class_mapping: std::collections::HashMap<String, String>,
 }
 
 /// SFC 解析结果（中间表示）。
@@ -123,6 +129,7 @@ struct StyleRaw {
     content: String,
     scoped: bool,
     lang: String,
+    module: bool,
 }
 
 /// 编译错误类型（包含位置信息）。
@@ -364,11 +371,13 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
         let content = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
         let scoped = attrs.contains("scoped");
+        let module = attrs.contains("module");
         let lang = extract_lang(attrs);
 
         debug!(
             style_size = content.len(),
             scoped,
+            module,
             lang = %lang,
             "Style extracted"
         );
@@ -376,6 +385,7 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
         styles.push(StyleRaw {
             content: content.to_string(),
             scoped,
+            module,
             lang,
         });
     }
@@ -506,10 +516,36 @@ fn compile_script(file_name: &str, script: &str) -> Result<String, SfcError> {
 fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
     styles
         .iter()
-        .map(|style| StyleBlock {
-            css: style.content.clone(),
-            scoped: style.scoped,
-            lang: style.lang.clone(),
+        .map(|style| {
+            if style.module {
+                // CSS Modules: 作用域化类名
+                let hash = css_modules::generate_short_hash(&style.content);
+                let scoped_css = css_modules::transform_css(&style.content, &hash);
+                let class_mapping = css_modules::generate_mapping(&style.content, &hash);
+                
+                debug!(
+                    hash = %hash,
+                    class_count = class_mapping.len(),
+                    "CSS Modules compiled"
+                );
+                
+                StyleBlock {
+                    css: scoped_css,
+                    scoped: true, // CSS Modules 自动 scoped
+                    lang: style.lang.clone(),
+                    module: true,
+                    class_mapping,
+                }
+            } else {
+                // 普通样式：保持原样
+                StyleBlock {
+                    css: style.content.clone(),
+                    scoped: style.scoped,
+                    lang: style.lang.clone(),
+                    module: false,
+                    class_mapping: std::collections::HashMap::new(),
+                }
+            }
         })
         .collect()
 }
@@ -643,6 +679,76 @@ const message = "Hello"
             extract_component_name(Path::new("MyComponent.vue")),
             "MyComponent"
         );
+    }
+
+    #[test]
+    fn test_css_modules_style() {
+        let source = r#"<template>
+  <div class="container">
+    <button class="button">Click</button>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'TestComponent'
+}
+</script>
+
+<style module>
+.container {
+  padding: 20px;
+}
+
+.button {
+  color: red;
+}
+</style>"#;
+
+        let module = compile_from_string("TestComponent", source).unwrap();
+        assert_eq!(module.name, "TestComponent");
+        assert_eq!(module.styles.len(), 1);
+        
+        let style = &module.styles[0];
+        assert!(style.module, "Style should be a CSS Module");
+        assert!(style.scoped, "CSS Module should be automatically scoped");
+        assert!(!style.class_mapping.is_empty(), "Should have class mapping");
+        
+        // 验证类名被作用域化
+        assert!(style.css.contains("__"), "CSS should contain scoped class names");
+        assert!(style.class_mapping.contains_key("container"), "Should map 'container' class");
+        assert!(style.class_mapping.contains_key("button"), "Should map 'button' class");
+    }
+
+    #[test]
+    fn test_mixed_styles() {
+        let source = r#"<template>
+  <div>Test</div>
+</template>
+
+<style scoped>
+.normal {
+  color: blue;
+}
+</style>
+
+<style module>
+.module-class {
+  color: red;
+}
+</style>"#;
+
+        let module = compile_from_string("TestComponent", source).unwrap();
+        assert_eq!(module.styles.len(), 2);
+        
+        // 第一个样式：普通 scoped
+        assert!(!module.styles[0].module);
+        assert!(module.styles[0].scoped);
+        
+        // 第二个样式：CSS Module
+        assert!(module.styles[1].module);
+        assert!(module.styles[1].scoped);
+        assert!(!module.styles[1].class_mapping.is_empty());
     }
 }
 
