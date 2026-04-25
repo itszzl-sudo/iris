@@ -124,6 +124,18 @@ pub enum TypeCheckResult {
     Skipped,
 }
 
+/// 临时文件守卫（RAII 模式）
+/// 确保在 drop 时自动清理临时文件，即使发生 panic
+struct TempFileGuard(PathBuf);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Err(e) = fs::remove_file(&self.0) {
+            warn!("Failed to cleanup temp file: {}", e);
+        }
+    }
+}
+
 /// TypeScript 编译器
 pub struct TsCompiler {
     config: TsCompilerConfig,
@@ -317,15 +329,11 @@ impl TsCompiler {
             }
         };
         
+        // 使用守卫确保临时文件始终被清理（RAII 模式）
+        let _guard = TempFileGuard(temp_path.clone());
+        
         // 运行 tsc
-        let result = Self::run_tsc(&temp_path, config);
-        
-        // 清理临时文件
-        if let Err(e) = fs::remove_file(&temp_path) {
-            warn!("Failed to cleanup temp file: {}", e);
-        }
-        
-        result
+        Self::run_tsc(&temp_path, config)
     }
     
     /// 检查 tsc 是否可用

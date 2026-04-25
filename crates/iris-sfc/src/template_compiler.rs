@@ -494,6 +494,7 @@ fn generate_directives(
     }
 
     // Handle v-html: set innerHTML
+    // WARNING: XSS risk if expression contains user input. Consider using DOMPurify at runtime.
     if let Some(directive) = directives.iter().find(|d| matches!(d, Directive::VHtml { .. })) {
         if let Directive::VHtml { expression } = directive {
             let element = generate_element_with_attrs(tag, &final_attrs);

@@ -142,13 +142,9 @@ pub fn transform_script_setup(script: &str) -> Result<String, String> {
         component.push_str(&format!("  emits: {},\n", emits_def));
     }
     
-    // 添加 setup 函数
-    let setup_fn = wrap_as_setup(&macros.transformed_script, &macros.exposed_vars);
-    // 移除 export default，因为已经在组件定义中
-    let setup_body = setup_fn
-        .replace("export default {", "")
-        .replace("}", "");
-    component.push_str(&setup_body);
+    // 添加 setup 函数（直接生成，不需要 remove export default）
+    let setup_fn = generate_setup_function(&macros.transformed_script, &macros.exposed_vars);
+    component.push_str(&setup_fn);
     component.push_str("}\n");
     
     Ok(component)
@@ -347,7 +343,22 @@ fn extract_top_level_declarations(script: &str) -> Vec<String> {
     vars
 }
 
-/// 包装为 setup 函数
+/// 生成 setup 函数（不包含 export default）
+fn generate_setup_function(script: &str, exposed_vars: &[String]) -> String {
+    let return_stmt = if exposed_vars.is_empty() {
+        String::new()
+    } else {
+        format!("\n    return {{\n        {}\n    }};", exposed_vars.join(",\n        "))
+    };
+    
+    format!(
+        "  setup(props, {{ emit }}) {{{}\n{}\n  }}\n",
+        script,
+        return_stmt
+    )
+}
+
+/// 包装为 setup 函数（用于无宏的场景）
 fn wrap_as_setup(script: &str, exposed_vars: &[String]) -> String {
     let return_stmt = if exposed_vars.is_empty() {
         String::new()
