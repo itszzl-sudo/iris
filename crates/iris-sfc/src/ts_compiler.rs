@@ -12,8 +12,7 @@ use swc_common::{
     sync::Lrc,
     FileName,
 };
-use swc_ecma_parser::{Parser, StringInput, Syntax, TsSyntax};
-use swc_ecma_transforms::transforms::demangle::demangle;
+use swc_ecma_parser::{Parser, StringInput, Syntax, TsConfig};
 use swc_ecma_transforms_typescript::strip;
 use swc_ecma_codegen::{
     text_writer::JsWriter,
@@ -133,7 +132,7 @@ impl TsCompiler {
 
     /// 解析 TypeScript 源代码
     fn parse_typescript(&self, source_file: &Lrc<swc_common::SourceFile>) -> Result<Module, String> {
-        let syntax = Syntax::Typescript(TsSyntax {
+        let syntax = Syntax::Typescript(TsConfig {
             tsx: self.config.jsx,
             decorators: self.config.keep_decorators,
             ..Default::default()
@@ -156,12 +155,13 @@ impl TsCompiler {
     /// 应用 TypeScript 转换
     fn transform_typescript(&self, module: Module) -> Result<Module, String> {
         // 应用 strip 转换（移除类型注解）
-        let transformed = strip(module);
-        
-        // 去混淆（优化变量名）
-        let demangled = demangle(transformed);
+        let config = TsConfig {
+            no_transform_annotations: false,
+        };
+        let transformed = strip_with_config(module, &config)
+            .map_err(|e| format!("TypeScript transform failed: {:?}", e))?;
 
-        Ok(demangled)
+        Ok(transformed)
     }
 
     /// 生成 JavaScript 代码

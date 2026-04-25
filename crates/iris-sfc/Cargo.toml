@@ -12,18 +12,17 @@ description = "Iris SFC/TS instant transpilation layer: swc TS-to-JS, Vue SFC co
 iris-core.workspace = true
 iris-js.workspace = true
 tracing = "0.1"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "=1.0.210", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 regex = "1.10"
 
-# swc TypeScript 编译器
-swc = "0.270"
-swc_common = "0.37"
-swc_ecma_parser = "0.149"
-swc_ecma_transforms = "0.234"
-swc_ecma_transforms_typescript = "0.193"
-swc_ecma_codegen = "0.151"
+# swc TypeScript 编译器 - 暂时禁用，存在版本兼容性问题
+# TODO: 修复 swc 版本冲突后重新启用
+# swc_ecma_parser = "0.141"
+# swc_ecma_transforms_typescript = "0.185"
+# swc_ecma_codegen = "0.146"
+# swc_common = "0.33"
 
 # HTML 解析（用于模板编译器）
 html5ever = "0.27"
