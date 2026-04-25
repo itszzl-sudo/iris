@@ -60,6 +60,12 @@ pub enum Directive {
     VCloak,
     /// Memo optimization: v-memo="[dep1, dep2]" (Vue 3.2+)
     VMemo { dependencies: String },
+    /// Text content: v-text="expression"
+    VText { expression: String },
+    /// HTML content: v-html="expression"
+    VHtml { expression: String },
+    /// Show/hide: v-show="condition"
+    VShow { condition: String },
 }
 
 /// Parse HTML template string into VNode AST
@@ -209,6 +215,21 @@ fn parse_directive(name: &str, value: &str) -> Option<Directive> {
         // Memo optimization directive
         "v-memo" => Some(Directive::VMemo {
             dependencies: value.to_string(),
+        }),
+        
+        // Text content directive
+        "v-text" => Some(Directive::VText {
+            expression: value.to_string(),
+        }),
+        
+        // HTML content directive
+        "v-html" => Some(Directive::VHtml {
+            expression: value.to_string(),
+        }),
+        
+        // Show/hide directive
+        "v-show" => Some(Directive::VShow {
+            condition: value.to_string(),
         }),
         
         // Attribute binding (v-bind:prop or :prop shorthand)
@@ -461,6 +482,39 @@ fn generate_directives(
         }
     }
 
+    // Handle v-text: set textContent
+    if let Some(directive) = directives.iter().find(|d| matches!(d, Directive::VText { .. })) {
+        if let Directive::VText { expression } = directive {
+            let element = generate_element_with_attrs(tag, &final_attrs);
+            return Some(format!(
+                "(() => {{ const el = {}; el.textContent = {}; return el; }})()",
+                element, expression
+            ));
+        }
+    }
+
+    // Handle v-html: set innerHTML
+    if let Some(directive) = directives.iter().find(|d| matches!(d, Directive::VHtml { .. })) {
+        if let Directive::VHtml { expression } = directive {
+            let element = generate_element_with_attrs(tag, &final_attrs);
+            return Some(format!(
+                "(() => {{ const el = {}; el.innerHTML = {}; return el; }})()",
+                element, expression
+            ));
+        }
+    }
+
+    // Handle v-show: toggle display style
+    if let Some(directive) = directives.iter().find(|d| matches!(d, Directive::VShow { .. })) {
+        if let Directive::VShow { condition } = directive {
+            let element = generate_element_with_attrs(tag, &final_attrs);
+            return Some(format!(
+                "(() => {{ const el = {}; el.style.display = {} ? '' : 'none'; return el; }})()",
+                element, condition
+            ));
+        }
+    }
+
     // Regenerate element if attributes were modified by directives
     if final_attrs.len() != attrs.len() {
         Some(generate_element(tag, &final_attrs, children))
@@ -476,6 +530,24 @@ fn capitalize(s: &str) -> String {
         None => String::new(),
         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
     }
+}
+
+/// Generate element code with attributes only (no children)
+fn generate_element_with_attrs(tag: &str, attrs: &[(String, String)]) -> String {
+    let mut code = format!("h(\"{}\"", tag);
+    
+    if !attrs.is_empty() {
+        code.push_str(", {");
+        let attr_strs: Vec<String> = attrs
+            .iter()
+            .map(|(k, v)| format!("\"{}\": {:?}", k, v))
+            .collect();
+        code.push_str(&attr_strs.join(", "));
+        code.push_str("}");
+    }
+    
+    code.push_str(")");
+    code
 }
 
 #[cfg(test)]
@@ -586,6 +658,61 @@ mod tests {
 
         assert!(render_fn.contains("_memo"), "Should contain _memo attribute");
         assert!(render_fn.contains("[item.id]"), "Should contain memo dependencies");
+    }
+
+    #[test]
+    fn test_parse_vtext() {
+        // Test that v-text directive parses correctly
+        let html = r#"<span v-text="message"></span>"#;
+        let nodes = parse_template(html).unwrap();
+        assert_eq!(nodes.len(), 1);
+    }
+
+    #[test]
+    fn test_generate_vtext() {
+        let html = r#"<span v-text="message"></span>"#;
+        let nodes = parse_template(html).unwrap();
+        let render_fn = generate_render_fn(&nodes);
+
+        assert!(render_fn.contains("textContent"), "Should contain textContent");
+        assert!(render_fn.contains("message"), "Should contain expression");
+    }
+
+    #[test]
+    fn test_parse_vhtml() {
+        // Test that v-html directive parses correctly
+        let html = r#"<div v-html="rawHtml"></div>"#;
+        let nodes = parse_template(html).unwrap();
+        assert_eq!(nodes.len(), 1);
+    }
+
+    #[test]
+    fn test_generate_vhtml() {
+        let html = r#"<div v-html="rawHtml"></div>"#;
+        let nodes = parse_template(html).unwrap();
+        let render_fn = generate_render_fn(&nodes);
+
+        assert!(render_fn.contains("innerHTML"), "Should contain innerHTML");
+        assert!(render_fn.contains("rawHtml"), "Should contain expression");
+    }
+
+    #[test]
+    fn test_parse_vshow() {
+        // Test that v-show directive parses correctly
+        let html = r#"<div v-show="isVisible">Content</div>"#;
+        let nodes = parse_template(html).unwrap();
+        assert_eq!(nodes.len(), 1);
+    }
+
+    #[test]
+    fn test_generate_vshow() {
+        let html = r#"<div v-show="isVisible">Content</div>"#;
+        let nodes = parse_template(html).unwrap();
+        let render_fn = generate_render_fn(&nodes);
+
+        assert!(render_fn.contains("style.display"), "Should contain style.display");
+        assert!(render_fn.contains("isVisible"), "Should contain condition");
+        assert!(render_fn.contains("'none'"), "Should contain 'none' for hiding");
     }
 
     #[test]
