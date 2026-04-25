@@ -9,6 +9,7 @@
 #![warn(missing_docs)]
 
 mod template_compiler;
+mod ts_compiler;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -394,13 +395,29 @@ fn compile_script(file_name: &str, script: &str) -> Result<String, SfcError> {
         return Ok("export default {}".to_string());
     }
 
-    // TODO: 集成完整的 TypeScript 编译器（支持泛型、装饰器、TSX）
-    // 当前版本：简化版 TS 转译（仅移除基本类型注解）
-    debug!(file = file_name, "Using basic TypeScript transpiler (demo mode)");
+    info!(file = file_name, "Compiling script with swc TypeScript compiler");
 
-    let js = transpile_ts_basic(script);
+    // 使用 swc 编译 TypeScript
+    let config = ts_compiler::TsCompilerConfig::default();
+    let compiler = ts_compiler::TsCompiler::new(config);
+    
+    let result = compiler.compile(script, file_name).map_err(|e| {
+        SfcError::ScriptError {
+            message: format!("TypeScript compilation failed: {}", e),
+            file: file_name.to_string(),
+            line: 1,
+            column: 1,
+        }
+    })?;
 
-    Ok(js)
+    debug!(
+        file = file_name,
+        compile_time_ms = result.compile_time_ms,
+        output_size = result.code.len(),
+        "Script compiled with swc"
+    );
+
+    Ok(result.code)
 }
 
 /// 编译样式块。
@@ -413,45 +430,6 @@ fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
             lang: style.lang.clone(),
         })
         .collect()
-}
-
-/// 简化的 TypeScript 转译（移除基本类型注解）。
-///
-/// # 限制
-///
-/// 当前版本仅支持：
-/// - 基本类型注解（string, number, boolean, any, void, never）
-/// - 简单函数返回类型
-/// - import type 语句移除
-///
-/// 不支持：
-/// - 泛型（Array<string>, Promise<void>）
-/// - 接口和类型别名
-/// - 装饰器
-/// - TSX
-/// - 复杂的交叉类型/联合类型
-fn transpile_ts_basic(source: &str) -> String {
-    use regex::Regex;
-
-    let mut result = source.to_string();
-
-    // 移除变量类型注解（粗糙版本）
-    // let x: number → let x
-    // const y: string = "hi" → const y = "hi"
-    let re1 = Regex::new(r":\s*(string|number|boolean|any|void|never)\b").unwrap();
-    result = re1.replace_all(&result, "").to_string();
-
-    // 移除函数返回类型
-    // ): number → )
-    let re2 = Regex::new(r"\):\s*(string|number|boolean|any|void)\s*\{").unwrap();
-    result = re2.replace_all(&result, ") {").to_string();
-
-    // 移除 import 类型
-    // import type { Foo } from 'bar' → （删除整行）
-    let re3 = Regex::new(r"^import\s+type\s+.*;$").unwrap();
-    result = re3.replace_all(&result, "").to_string();
-
-    result
 }
 
 /// 从文件路径提取组件名称。
@@ -581,6 +559,7 @@ const message = "Hello"
         );
     }
 }
+
 /// Initialize the SFC compiler layer.
 ///
 /// This function is called by the main Iris engine initialization chain.
@@ -595,6 +574,7 @@ const message = "Hello"
 /// ```ignore
 /// use iris_sfc::init;
 /// init(); // Initialize SFC compiler
+/// ```
 pub fn init() {
-info!("Iris SFC compiler initialized");
+    info!("Iris SFC compiler initialized");
 }
