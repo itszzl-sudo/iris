@@ -86,9 +86,19 @@ static PROPS_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"defineProps<\{([^}]+)\}>\(\)"#).unwrap()
 });
 
+/// Props 数组形式：defineProps(['prop1', 'prop2'])
+static PROPS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"defineProps\(\[([^\]]+)\]\)"#).unwrap()
+});
+
 /// Emits 解析器：TypeScript 接口 -> 运行时 emits
 static EMITS_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"defineEmits<\{([^}]+)\}>\(\)"#).unwrap()
+});
+
+/// Emits 数组形式：defineEmits(['event1', 'event2'])
+static EMITS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"defineEmits\(\[([^\]]+)\]\)"#).unwrap()
 });
 
 /// withDefaults 解析器
@@ -159,7 +169,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
     let mut result = MacroResult::default();
     let mut transformed = script.to_string();
     
-    // 解析 defineProps
+    // 解析 defineProps - TypeScript 泛型形式
     if let Some(caps) = PROPS_TYPE_RE.captures(script) {
         let props_interface = &caps[1];
         let runtime_props = parse_props_interface(props_interface);
@@ -167,6 +177,14 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
         
         // 移除宏调用
         transformed = PROPS_TYPE_RE.replace(&transformed, "/* props injected */").to_string();
+    }
+    // 解析 defineProps - 数组形式
+    else if let Some(caps) = PROPS_ARRAY_RE.captures(script) {
+        let props_array = &caps[1];
+        result.props = Some(format!("[{}]", props_array.trim()));
+        
+        // 移除宏调用
+        transformed = PROPS_ARRAY_RE.replace(&transformed, "/* props injected */").to_string();
     }
     
     // 解析 withDefaults
@@ -180,7 +198,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
         transformed = WITH_DEFAULTS_RE.replace(&transformed, "/* props with defaults injected */").to_string();
     }
     
-    // 解析 defineEmits
+    // 解析 defineEmits - TypeScript 泛型形式
     if let Some(caps) = EMITS_TYPE_RE.captures(script) {
         let emits_interface = &caps[1];
         let runtime_emits = parse_emits_interface(emits_interface);
@@ -188,6 +206,14 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
         
         // 移除宏调用
         transformed = EMITS_TYPE_RE.replace(&transformed, "/* emits injected */").to_string();
+    }
+    // 解析 defineEmits - 数组形式
+    else if let Some(caps) = EMITS_ARRAY_RE.captures(script) {
+        let emits_array = &caps[1];
+        result.emits = Some(format!("[{}]", emits_array.trim()));
+        
+        // 移除宏调用
+        transformed = EMITS_ARRAY_RE.replace(&transformed, "/* emits injected */").to_string();
     }
     
     // 提取顶层声明（用于 return）
