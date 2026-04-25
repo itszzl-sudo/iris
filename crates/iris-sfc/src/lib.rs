@@ -581,3 +581,20 @@ const message = "Hello"
         );
     }
 }
+/// Initialize the SFC compiler layer.
+///
+/// This function is called by the main Iris engine initialization chain.
+/// Currently, it only logs the initialization event. Pre-compiled regex patterns
+/// are automatically initialized on first use via `LazyLock`.
+///
+/// # Safety
+/// This function is safe to call multiple times (idempotent).
+///
+/// # Example
+///
+/// ```ignore
+/// use iris_sfc::init;
+/// init(); // Initialize SFC compiler
+pub fn init() {
+info!("Iris SFC compiler initialized");
+}
