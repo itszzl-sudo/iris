@@ -5,6 +5,7 @@
 - [lib.rs](file://crates/iris-sfc/src/lib.rs)
 - [template_compiler.rs](file://crates/iris-sfc/src/template_compiler.rs)
 - [ts_compiler.rs](file://crates/iris-sfc/src/ts_compiler.rs)
+- [css_modules.rs](file://crates/iris-sfc/src/css_modules.rs)
 - [Cargo.toml](file://crates/iris-sfc/Cargo.toml)
 - [sfc_demo.rs](file://crates/iris-sfc/examples/sfc_demo.rs)
 - [main.rs](file://crates/iris-app/src/main.rs)
@@ -14,11 +15,12 @@
 
 ## 更新摘要
 **变更内容**
-- **TypeScript编译器初始化机制重大改进**：从简化的转译方案升级为基于LazyLock的全局TsCompiler实例
+- **TypeScript类型检查系统重大改进**：新增基于环境变量的类型检查配置（IRIS_TYPE_CHECK、IRIS_TYPE_CHECK_STRICT），支持tsc命令行工具进行类型验证
+- **CSS Modules支持功能**：实现完整的类名作用域化处理，支持`:local()`和`:global()`语法
+- **全局初始化函数增强**：新增完整的init()函数，提供明确的初始化入口点
 - **性能优化和内存管理改进**：全局TsCompiler实例复用，禁用SourceMap以节省30-50%内存和提升10-15%编译速度
 - **依赖管理简化**：使用swc元包而非复杂的子包依赖，解决版本冲突问题
-- **初始化函数增强**：新增完整的init()函数，提供明确的初始化入口点
-- **错误处理系统详细文档**：增强的错误类型和位置信息
+- **错误处理系统详细文档**：增强的错误类型和位置信息，支持类型检查失败的非致命处理
 - **性能监控机制完善**：添加编译时间统计和内存使用监控
 
 ## 目录
@@ -28,16 +30,18 @@
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
 6. [初始化机制详解](#初始化机制详解)
-7. [依赖关系分析](#依赖关系分析)
-8. [性能考虑](#性能考虑)
-9. [故障排除指南](#故障排除指南)
-10. [结论](#结论)
+7. [TypeScript类型检查系统](#typescript类型检查系统)
+8. [CSS Modules支持功能](#css-modules支持功能)
+9. [依赖关系分析](#依赖关系分析)
+10. [性能考虑](#性能考虑)
+11. [故障排除指南](#故障排除指南)
+12. [结论](#结论)
 
 ## 简介
 
-Iris SFC（Single File Component）编译器是 Iris 引擎的核心组件之一，负责将 Vue 单文件组件（.vue 文件）即时编译为可执行模块。该编译器采用零编译器设计，直接运行源码，支持模板编译、TypeScript 转译和样式处理，为开发者提供毫秒级的热重载体验。
+Iris SFC（Single File Component）编译器是 Iris 引擎的核心组件之一，负责将 Vue 单文件组件（.vue 文件）即时编译为可执行模块。该编译器采用零编译器设计，直接运行源码，支持模板编译、TypeScript 转译、样式处理和CSS Modules作用域化，为开发者提供毫秒级的热重载体验。
 
-**重要变更**：编译器已成功集成 swc 62 版本的 TypeScript 编译器，采用基于 LazyLock 的全局 TsCompiler 实例，实现了性能优化和内存管理的重大改进。这一升级解决了复杂的依赖版本冲突问题，同时保持了简化的转译方案以确保项目稳定性。
+**重要变更**：编译器已成功集成 swc 62 版本的 TypeScript 编译器，采用基于 LazyLock 的全局 TsCompiler 实例，实现了性能优化和内存管理的重大改进。同时新增了完整的TypeScript类型检查系统和CSS Modules支持功能，显著提升了开发体验和代码质量保障。
 
 本文件专注于分析 SFC 编译器的初始化机制，包括预编译正则表达式的懒加载策略、全局 TypeScript 编译器实例的懒加载初始化、编译器配置管理以及与其他组件的集成方式。
 
@@ -51,25 +55,32 @@ subgraph "SFC 编译器模块"
 A[lib.rs<br/>主入口和初始化]
 B[template_compiler.rs<br/>HTML模板编译器]
 C[ts_compiler.rs<br/>TypeScript编译器]
+D[css_modules.rs<br/>CSS Modules处理器]
+E[cache.rs<br/>缓存管理]
+F[script_setup.rs<br/>脚本设置解析]
 end
 subgraph "示例和测试"
-D[sfc_demo.rs<br/>演示程序]
-E[Cargo.toml<br/>依赖配置]
+G[sfc_demo.rs<br/>演示程序]
+H[Cargo.toml<br/>依赖配置]
 end
 A --> B
 A --> C
-D --> A
-E --> A
+A --> D
+A --> E
+A --> F
+G --> A
+H --> A
 ```
 
 **图表来源**
-- [lib.rs:1-595](file://crates/iris-sfc/src/lib.rs#L1-L595)
+- [lib.rs:1-811](file://crates/iris-sfc/src/lib.rs#L1-L811)
 - [template_compiler.rs:1-607](file://crates/iris-sfc/src/template_compiler.rs#L1-L607)
-- [ts_compiler.rs:1-472](file://crates/iris-sfc/src/ts_compiler.rs#L1-L472)
+- [ts_compiler.rs:1-699](file://crates/iris-sfc/src/ts_compiler.rs#L1-L699)
+- [css_modules.rs:1-283](file://crates/iris-sfc/src/css_modules.rs#L1-L283)
 
 **章节来源**
 - [lib.rs:1-50](file://crates/iris-sfc/src/lib.rs#L1-L50)
-- [Cargo.toml:1-32](file://crates/iris-sfc/Cargo.toml#L1-L32)
+- [Cargo.toml:1-38](file://crates/iris-sfc/Cargo.toml#L1-L38)
 
 ## 核心组件分析
 
@@ -79,8 +90,9 @@ E --> A
 
 - **SFC 解析器**：使用预编译的正则表达式提取 template、script、style 块
 - **模板编译器**：基于 html5ever 的 HTML 解析和虚拟 DOM 生成
-- **TypeScript 编译器**：采用基于 LazyLock 的全局实例，支持完整的 swc 62 集成
-- **样式处理器**：支持多种样式语言和作用域处理
+- **TypeScript 编译器**：采用基于 LazyLock 的全局实例，支持完整的 swc 62 集成和类型检查
+- **样式处理器**：支持多种样式语言、作用域处理和CSS Modules类名作用域化
+- **缓存系统**：基于LRU的智能缓存机制，支持热重载加速
 
 ### 编译器配置系统
 
@@ -99,6 +111,8 @@ class StyleBlock {
 +String css
 +bool scoped
 +String lang
++bool module
++HashMap~String,String~ class_mapping
 }
 class SfcDescriptor {
 +Option~String~ template
@@ -109,16 +123,24 @@ class StyleRaw {
 +String content
 +bool scoped
 +String lang
++bool module
+}
+class TypeCheckConfig {
++bool enabled
++bool strict
++Option~String~ ts_config_path
 }
 SfcModule --> StyleBlock : "包含"
 SfcDescriptor --> StyleRaw : "包含"
 ```
 
 **图表来源**
-- [lib.rs:52-95](file://crates/iris-sfc/src/lib.rs#L52-L95)
+- [lib.rs:85-136](file://crates/iris-sfc/src/lib.rs#L85-L136)
+- [ts_compiler.rs:87-114](file://crates/iris-sfc/src/ts_compiler.rs#L87-L114)
 
 **章节来源**
-- [lib.rs:52-95](file://crates/iris-sfc/src/lib.rs#L52-L95)
+- [lib.rs:85-136](file://crates/iris-sfc/src/lib.rs#L85-L136)
+- [ts_compiler.rs:87-114](file://crates/iris-sfc/src/ts_compiler.rs#L87-L114)
 
 ## 架构概览
 
@@ -135,34 +157,44 @@ Parser[SFC解析器]
 Template[Templat编译器]
 Script[Script编译器]
 GlobalTsCompiler[全局TsCompiler实例]
+CssModules[CSS Modules处理器]
+Cache[SFC缓存实例]
 end
 subgraph "工具层"
 Regex[预编译正则表达式]
 Logger[日志系统]
 Error[错误处理]
+TypeChecker[类型检查器]
 end
 subgraph "外部依赖"
 Html5ever[html5ever]
 Swc[swc 62]
 Tracing[Tracing]
+Tsc[tsc 命令行]
+Xxhash[xxhash-rust]
 end
 App --> Init
 Init --> Parser
 Init --> Template
 Init --> Script
 Init --> GlobalTsCompiler
+Init --> CssModules
+Init --> Cache
 Parser --> Regex
 Template --> Html5ever
 Script --> GlobalTsCompiler
 GlobalTsCompiler --> Swc
+GlobalTsCompiler --> TypeChecker
+TypeChecker --> Tsc
+CssModules --> Xxhash
 Init --> Tracing
 ```
 
 **图表来源**
-- [lib.rs:33-45](file://crates/iris-sfc/src/lib.rs#L33-L45)
-- [lib.rs:162-210](file://crates/iris-sfc/src/lib.rs#L162-L210)
-- [template_compiler.rs:65-86](file://crates/iris-sfc/src/template_compiler.rs#L65-L86)
-- [ts_compiler.rs:83-101](file://crates/iris-sfc/src/ts_compiler.rs#L83-L101)
+- [lib.rs:38-83](file://crates/iris-sfc/src/lib.rs#L38-L83)
+- [lib.rs:554-590](file://crates/iris-sfc/src/lib.rs#L554-L590)
+- [ts_compiler.rs:275-435](file://crates/iris-sfc/src/ts_compiler.rs#L275-L435)
+- [css_modules.rs:47-161](file://crates/iris-sfc/src/css_modules.rs#L47-L161)
 
 ## 详细组件分析
 
@@ -188,8 +220,8 @@ Init-->>App : 初始化完成
 ```
 
 **图表来源**
-- [lib.rs:19-27](file://crates/iris-sfc/src/lib.rs#L19-L27)
-- [lib.rs:255-320](file://crates/iris-sfc/src/lib.rs#L255-L320)
+- [lib.rs:24-83](file://crates/iris-sfc/src/lib.rs#L24-L83)
+- [lib.rs:377-454](file://crates/iris-sfc/src/lib.rs#L377-L454)
 
 ### 全局 TypeScript 编译器实例
 
@@ -209,6 +241,7 @@ class TsCompiler {
 -compile_count AtomicUsize
 +new(config) TsCompiler
 +compile(source, filename) TsCompileResult
++type_check(source, filename, config) TypeCheckResult
 }
 class GlobalTsCompiler {
 <<static>>
@@ -219,15 +252,28 @@ class TsCompileResult {
 +Option~String~ source_map
 +f64 compile_time_ms
 }
+class TypeCheckConfig {
++bool enabled
++bool strict
++Option~String~ ts_config_path
+}
+class TypeCheckResult {
+<<enumeration>>
+Success
+Errors { errors : Vec~String~ }
+Skipped
+}
 TsCompiler --> TsCompilerConfig : "使用"
 TsCompiler --> TsCompileResult : "返回"
+TsCompiler --> TypeCheckConfig : "使用"
+TsCompiler --> TypeCheckResult : "返回"
 GlobalTsCompiler --> TsCompiler : "持有"
 ```
 
 **图表来源**
-- [lib.rs:33-45](file://crates/iris-sfc/src/lib.rs#L33-L45)
-- [ts_compiler.rs:83-101](file://crates/iris-sfc/src/ts_compiler.rs#L83-L101)
-- [ts_compiler.rs:25-68](file://crates/iris-sfc/src/ts_compiler.rs#L25-L68)
+- [lib.rs:38-55](file://crates/iris-sfc/src/lib.rs#L38-L55)
+- [ts_compiler.rs:127-145](file://crates/iris-sfc/src/ts_compiler.rs#L127-L145)
+- [ts_compiler.rs:87-125](file://crates/iris-sfc/src/ts_compiler.rs#L87-L125)
 
 ### 模板编译器初始化
 
@@ -246,12 +292,12 @@ ReturnResult --> End
 ```
 
 **图表来源**
-- [template_compiler.rs:65-86](file://crates/iris-sfc/src/template_compiler.rs#L65-L86)
-- [template_compiler.rs:268-290](file://crates/iris-sfc/src/template_compiler.rs#L268-L290)
+- [lib.rs:469-510](file://crates/iris-sfc/src/lib.rs#L469-L510)
+- [lib.rs:482-510](file://crates/iris-sfc/src/lib.rs#L482-L510)
 
 **章节来源**
-- [template_compiler.rs:1-607](file://crates/iris-sfc/src/template_compiler.rs#L1-L607)
-- [ts_compiler.rs:1-472](file://crates/iris-sfc/src/ts_compiler.rs#L1-L472)
+- [lib.rs:469-510](file://crates/iris-sfc/src/lib.rs#L469-L510)
+- [ts_compiler.rs:127-145](file://crates/iris-sfc/src/ts_compiler.rs#L127-L145)
 
 ## 初始化机制详解
 
@@ -296,8 +342,8 @@ B4 --> B5
 ```
 
 **图表来源**
-- [lib.rs:19-27](file://crates/iris-sfc/src/lib.rs#L19-L27)
-- [lib.rs:25-35](file://crates/iris-sfc/src/lib.rs#L25-L35)
+- [lib.rs:24-83](file://crates/iris-sfc/src/lib.rs#L24-L83)
+- [lib.rs:377-454](file://crates/iris-sfc/src/lib.rs#L377-L454)
 
 #### 初始化流程
 
@@ -317,8 +363,8 @@ Lib-->>User : 返回编译结果
 ```
 
 **图表来源**
-- [lib.rs:593-595](file://crates/iris-sfc/src/lib.rs#L593-L595)
-- [lib.rs:162-210](file://crates/iris-sfc/src/lib.rs#L162-L210)
+- [lib.rs:809-811](file://crates/iris-sfc/src/lib.rs#L809-L811)
+- [lib.rs:218-259](file://crates/iris-sfc/src/lib.rs#L218-L259)
 
 ### 全局 TypeScript 编译器初始化
 
@@ -367,8 +413,8 @@ Lib-->>App : 返回结果
 ```
 
 **图表来源**
-- [lib.rs:40-45](file://crates/iris-sfc/src/lib.rs#L40-L45)
-- [lib.rs:414-432](file://crates/iris-sfc/src/lib.rs#L414-L432)
+- [lib.rs:38-55](file://crates/iris-sfc/src/lib.rs#L38-L55)
+- [lib.rs:527-552](file://crates/iris-sfc/src/lib.rs#L527-L552)
 
 ### 编译器配置初始化
 
@@ -390,13 +436,26 @@ class TsCompiler {
 +new(config) TsCompiler
 +compile(source, filename) Result
 }
+class TypeCheckConfig {
++bool enabled : false (从环境变量读取)
++bool strict : false (从环境变量读取)
++Option~String~ ts_config_path : None
+}
+class TypeCheckResult {
+<<enumeration>>
+Success
+Errors { errors : Vec~String~ }
+Skipped
+}
 TsCompilerConfig <|-- Default : "实现"
 TsCompiler --> TsCompilerConfig : "使用"
+TsCompiler --> TypeCheckConfig : "使用"
+TsCompiler --> TypeCheckResult : "返回"
 ```
 
 **图表来源**
-- [ts_compiler.rs:25-68](file://crates/iris-sfc/src/ts_compiler.rs#L25-L68)
-- [ts_compiler.rs:83-101](file://crates/iris-sfc/src/ts_compiler.rs#L83-L101)
+- [ts_compiler.rs:34-72](file://crates/iris-sfc/src/ts_compiler.rs#L34-L72)
+- [ts_compiler.rs:87-125](file://crates/iris-sfc/src/ts_compiler.rs#L87-L125)
 
 #### 配置选项说明
 
@@ -406,6 +465,8 @@ TsCompiler --> TsCompilerConfig : "使用"
 | `keep_decorators` | bool | false | 是否保留装饰器 |
 | `source_map` | bool | false | 是否生成 source map（当前禁用以节省内存） |
 | `target` | EsVersion | ES2020 | 目标 ECMAScript 版本 |
+| `enabled` | bool | false | 是否启用类型检查（从环境变量读取） |
+| `strict` | bool | false | 是否使用严格模式（从环境变量读取） |
 
 ### 完整初始化函数
 
@@ -417,16 +478,178 @@ Start([应用启动]) --> CallInit["调用 init()"]
 CallInit --> LogInit["记录初始化事件"]
 LogInit --> LazyRegex["LazyLock 预编译正则"]
 LazyRegex --> GlobalTsCompiler["LazyLock 全局TsCompiler"]
-GlobalTsCompiler --> Ready["编译器就绪"]
+GlobalTsCompiler --> CssModules["LazyLock CSS Modules处理器"]
+CssModules --> GlobalCache["LazyLock 全局缓存实例"]
+GlobalCache --> Ready["编译器就绪"]
 Ready --> End([完成])
 ```
 
 **图表来源**
-- [lib.rs:578-595](file://crates/iris-sfc/src/lib.rs#L578-L595)
+- [lib.rs:794-811](file://crates/iris-sfc/src/lib.rs#L794-L811)
 
 **章节来源**
-- [lib.rs:578-595](file://crates/iris-sfc/src/lib.rs#L578-L595)
-- [ts_compiler.rs:36-44](file://crates/iris-sfc/src/ts_compiler.rs#L36-L44)
+- [lib.rs:794-811](file://crates/iris-sfc/src/lib.rs#L794-L811)
+- [ts_compiler.rs:134-145](file://crates/iris-sfc/src/ts_compiler.rs#L134-L145)
+
+## TypeScript类型检查系统
+
+**新增功能**：TypeScript类型检查系统提供了完整的类型验证能力，支持环境变量配置和非致命错误处理。
+
+### 类型检查配置系统
+
+```mermaid
+classDiagram
+class TypeCheckConfig {
++bool enabled
++bool strict
++Option~String~ ts_config_path
+}
+class TypeCheckResult {
+<<enumeration>>
+Success
+Errors { errors : Vec~String~ }
+Skipped
+}
+class TsCompiler {
++type_check(source, filename, config) TypeCheckResult
++is_tsc_available() bool
++write_temp_file(source, filename) PathBuf
++run_tsc(file_path, config) TypeCheckResult
++parse_tsc_errors(output) Vec~String~
+}
+TypeCheckConfig <|-- Default : "实现"
+TsCompiler --> TypeCheckConfig : "使用"
+TsCompiler --> TypeCheckResult : "返回"
+```
+
+**图表来源**
+- [ts_compiler.rs:87-125](file://crates/iris-sfc/src/ts_compiler.rs#L87-L125)
+- [ts_compiler.rs:275-435](file://crates/iris-sfc/src/ts_compiler.rs#L275-L435)
+
+### 环境变量配置
+
+类型检查系统支持以下环境变量配置：
+
+- `IRIS_TYPE_CHECK`：控制是否启用类型检查（true/false/1/0/yes/no）
+- `IRIS_TYPE_CHECK_STRICT`：控制是否使用严格模式（true/false/1/0/yes/no）
+
+### 类型检查流程
+
+```mermaid
+sequenceDiagram
+participant App as 应用程序
+participant Lib as SFC编译器
+participant TsCompiler as TypeScript编译器
+participant TypeChecker as 类型检查器
+participant Tsc as tsc命令行
+App->>Lib : 编译SFC组件
+Lib->>TsCompiler : type_check()
+TsCompiler->>TypeChecker : 检查tsc可用性
+TypeChecker->>Tsc : 检查tsc --version
+Tsc-->>TypeChecker : 返回版本信息
+TypeChecker-->>TsCompiler : tsc可用性结果
+TsCompiler->>TypeChecker : 写入临时文件
+TypeChecker->>Tsc : 运行类型检查
+Tsc-->>TypeChecker : 返回检查结果
+TypeChecker-->>TsCompiler : 解析错误信息
+TsCompiler-->>Lib : 返回类型检查结果
+Lib-->>App : 继续编译流程
+```
+
+**图表来源**
+- [lib.rs:288-313](file://crates/iris-sfc/src/lib.rs#L288-L313)
+- [ts_compiler.rs:291-409](file://crates/iris-sfc/src/ts_compiler.rs#L291-L409)
+
+### 类型检查结果处理
+
+类型检查系统支持三种结果状态：
+
+1. **Success**：类型检查通过，继续编译流程
+2. **Errors**：类型检查失败，记录错误但不中断编译（非致命）
+3. **Skipped**：类型检查被跳过（未启用或tsc不可用）
+
+**章节来源**
+- [lib.rs:288-313](file://crates/iris-sfc/src/lib.rs#L288-L313)
+- [ts_compiler.rs:87-125](file://crates/iris-sfc/src/ts_compiler.rs#L87-L125)
+- [ts_compiler.rs:275-435](file://crates/iris-sfc/src/ts_compiler.rs#L275-L435)
+
+## CSS Modules支持功能
+
+**新增功能**：CSS Modules支持实现了类名作用域化处理，为Vue组件提供独立的样式作用域。
+
+### CSS Modules处理器架构
+
+```mermaid
+classDiagram
+class CssModulesProcessor {
++generate_short_hash(content) String
++scope_class_name(class_name, hash) String
++transform_css(css, hash) String
++generate_mapping(css, hash) HashMap~String,String~
+}
+class ClassSelectorRegex {
+<<static>>
++CLASS_SELECTOR_RE : LazyLock~Regex~
+}
+class LocalRegex {
+<<static>>
++LOCAL_RE : LazyLock~Regex~
+}
+class GlobalRegex {
+<<static>>
++GLOBAL_RE : LazyLock~Regex~
+}
+CssModulesProcessor --> ClassSelectorRegex : "使用"
+CssModulesProcessor --> LocalRegex : "使用"
+CssModulesProcessor --> GlobalRegex : "使用"
+```
+
+**图表来源**
+- [css_modules.rs:47-161](file://crates/iris-sfc/src/css_modules.rs#L47-L161)
+- [css_modules.rs:32-45](file://crates/iris-sfc/src/css_modules.rs#L32-L45)
+
+### CSS Modules处理流程
+
+```mermaid
+flowchart TD
+Start([CSS Modules处理开始]) --> CheckModule{"样式块是否启用module?"}
+CheckModule --> |否| ReturnOriginal["返回原始样式"]
+CheckModule --> |是| GenerateHash["生成内容哈希"]
+GenerateHash --> TransformCSS["转换CSS内容"]
+TransformCSS --> ProcessLocal["处理:local()语法"]
+ProcessLocal --> ProcessGlobal["处理:global()语法"]
+ProcessGlobal --> ProcessSelectors["处理类名选择器"]
+ProcessSelectors --> GenerateMapping["生成类名映射"]
+GenerateMapping --> ReturnResult["返回作用域化样式"]
+ReturnOriginal --> End([结束])
+ReturnResult --> End
+```
+
+**图表来源**
+- [lib.rs:554-590](file://crates/iris-sfc/src/lib.rs#L554-L590)
+- [css_modules.rs:69-121](file://crates/iris-sfc/src/css_modules.rs#L69-L121)
+
+### 支持的CSS Modules特性
+
+1. **类名作用域化**：`.button` → `.button__hash123`
+2. **`:local()`语法**：作用域化指定类名
+3. **`:global()`语法**：保持类名不变（全局作用域）
+4. **类名映射生成**：`{ "button": "button__hash123" }`
+
+### CSS Modules集成测试
+
+编译器包含了完整的CSS Modules集成测试，验证以下功能：
+
+- 基础类名作用域化
+- `:global()`语法支持
+- `:local()`语法支持
+- 类名映射生成
+- 混合样式处理（普通样式 + CSS Modules）
+
+**章节来源**
+- [lib.rs:554-590](file://crates/iris-sfc/src/lib.rs#L554-L590)
+- [css_modules.rs:47-161](file://crates/iris-sfc/src/css_modules.rs#L47-L161)
+- [lib.rs:724-791](file://crates/iris-sfc/src/lib.rs#L724-L791)
 
 ## 依赖关系分析
 
@@ -441,42 +664,47 @@ A[regex 1.10<br/>正则表达式处理]
 B[serde 1.0<br/>序列化/反序列化]
 C[thiserror 1.0<br/>错误处理]
 D[tracing 0.1<br/>日志系统]
+E[lru 0.12<br/>LRU缓存]
+F[xxhash-rust 0.8<br/>哈希算法]
 end
 subgraph "编译器依赖"
-E[html5ever 0.27<br/>HTML解析]
-F[markup5ever_rcdom 0.3<br/>DOM树]
-G[swc 62<br/>TypeScript编译器元包]
-H[swc_common 21<br/>通用组件]
-I[swc_ecma_parser 39<br/>解析器]
-J[swc_ecma_codegen 26<br/>代码生成]
-K[swc_ecma_ast 23<br/>AST节点]
-L[swc_ecma_visit 23<br/>访问器]
-M[swc_ecma_transforms_typescript 46<br/>TS转换]
+G[html5ever 0.27<br/>HTML解析]
+H[markup5ever_rcdom 0.3<br/>DOM树]
+I[swc 62<br/>TypeScript编译器元包]
+J[swc_common 21<br/>通用组件]
+K[swc_ecma_parser 39<br/>解析器]
+L[swc_ecma_codegen 26<br/>代码生成]
+M[swc_ecma_ast 23<br/>AST节点]
+N[swc_ecma_visit 23<br/>访问器]
+O[swc_ecma_transforms_typescript 46<br/>TS转换]
 end
 subgraph "内部依赖"
-N[iris-core<br/>核心引擎]
-O[iris-js<br/>JS集成]
+P[iris-core<br/>核心引擎]
+Q[iris-js<br/>JS集成]
 end
-P[lib.rs] --> A
-P --> B
-P --> C
-P --> D
-Q[template_compiler.rs] --> E
-Q --> F
-R[ts_compiler.rs] --> G
-R --> H
-R --> I
-R --> J
-R --> K
-R --> L
-R --> M
-P --> N
-P --> O
+R[lib.rs] --> A
+R --> B
+R --> C
+R --> D
+R --> E
+R --> F
+S[template_compiler.rs] --> G
+S --> H
+T[ts_compiler.rs] --> I
+T --> J
+T --> K
+T --> L
+T --> M
+T --> N
+T --> O
+U[css_modules.rs] --> F
+R --> P
+R --> Q
 ```
 
 **图表来源**
-- [Cargo.toml:11-32](file://crates/iris-sfc/Cargo.toml#L11-L32)
-- [lib.rs:14-18](file://crates/iris-sfc/src/lib.rs#L14-L18)
+- [Cargo.toml:11-38](file://crates/iris-sfc/Cargo.toml#L11-L38)
+- [lib.rs:17-20](file://crates/iris-sfc/src/lib.rs#L17-L20)
 
 ### 内部模块依赖
 
@@ -485,18 +713,21 @@ graph LR
 subgraph "模块依赖图"
 A[lib.rs] --> B[template_compiler.rs]
 A --> C[ts_compiler.rs]
-D[sfc_demo.rs] --> A
-E[main.rs] --> A
+A --> D[css_modules.rs]
+A --> E[cache.rs]
+A --> F[script_setup.rs]
+G[sfc_demo.rs] --> A
+H[main.rs] --> A
 end
 ```
 
 **图表来源**
-- [lib.rs:11-12](file://crates/iris-sfc/src/lib.rs#L11-L12)
+- [lib.rs:11-15](file://crates/iris-sfc/src/lib.rs#L11-L15)
 - [sfc_demo.rs:7](file://crates/iris-sfc/examples/sfc_demo.rs#L7)
 
 **章节来源**
-- [Cargo.toml:11-32](file://crates/iris-sfc/Cargo.toml#L11-L32)
-- [lib.rs:11-12](file://crates/iris-sfc/src/lib.rs#L11-L12)
+- [Cargo.toml:11-38](file://crates/iris-sfc/Cargo.toml#L11-L38)
+- [lib.rs:11-15](file://crates/iris-sfc/src/lib.rs#L11-L15)
 
 ## 性能考虑
 
@@ -508,6 +739,8 @@ SFC 编译器在初始化阶段采用了多项性能优化策略：
 
 - **正则表达式懒加载**：使用 `LazyLock` 确保正则表达式只在首次使用时编译
 - **全局编译器实例懒加载**：使用 `LazyLock` 确保 TsCompiler 实例只在首次使用时创建
+- **CSS Modules处理器懒加载**：使用 `LazyLock` 确保正则表达式只在首次使用时编译
+- **全局缓存实例懒加载**：使用 `LazyLock` 确保缓存实例只在首次使用时创建
 - **编译器实例复用**：TypeScript 编译器实例可以重复使用，避免重复初始化
 - **缓存机制**：SFC 模块编译结果缓存，支持热重载时的增量更新
 
@@ -517,6 +750,7 @@ SFC 编译器在初始化阶段采用了多项性能优化策略：
 - **智能指针使用**：合理使用 `Arc` 和 `Rc` 管理共享资源
 - **生命周期优化**：通过生命周期参数减少运行时开销
 - **SourceMap内存优化**：禁用 Source Map 以节省 30-50% 内存
+- **哈希算法优化**：使用 xxhash-rust 提供高性能哈希计算
 
 ### 并发安全性
 
@@ -528,7 +762,9 @@ Start([并发请求]) --> CheckCache{"检查缓存"}
 CheckCache --> |命中| ReturnCached["返回缓存结果"]
 CheckCache --> |未命中| AcquireLock["获取锁"]
 AcquireLock --> Compile["编译源码"]
-Compile --> UpdateCache["更新缓存"]
+Compile --> TypeCheck["类型检查可选"]
+TypeCheck --> CssModules["CSS Modules处理可选"]
+CssModules --> UpdateCache["更新缓存"]
 UpdateCache --> ReleaseLock["释放锁"]
 ReleaseLock --> ReturnResult["返回结果"]
 ReturnCached --> End([结束])
@@ -536,7 +772,7 @@ ReturnResult --> End
 ```
 
 **图表来源**
-- [lib.rs:162-210](file://crates/iris-sfc/src/lib.rs#L162-L210)
+- [lib.rs:236-259](file://crates/iris-sfc/src/lib.rs#L236-L259)
 
 ### 性能监控增强
 
@@ -555,14 +791,24 @@ class TsCompileResult {
 +source_map : Option~String~
 +compile_time_ms : f64
 }
+class SfcModule {
++name : String
++render_fn : String
++script : String
++styles : Vec~StyleBlock~
++source_hash : u64
+}
 PerformanceMonitor --> TsCompileResult : "收集指标"
+SfcModule --> PerformanceMonitor : "包含"
 ```
 
 **图表来源**
-- [ts_compiler.rs:70-81](file://crates/iris-sfc/src/ts_compiler.rs#L70-L81)
+- [ts_compiler.rs:74-85](file://crates/iris-sfc/src/ts_compiler.rs#L74-L85)
+- [lib.rs:248-256](file://crates/iris-sfc/src/lib.rs#L248-L256)
 
 **章节来源**
-- [ts_compiler.rs:70-81](file://crates/iris-sfc/src/ts_compiler.rs#L70-L81)
+- [ts_compiler.rs:74-85](file://crates/iris-sfc/src/ts_compiler.rs#L74-L85)
+- [lib.rs:248-256](file://crates/iris-sfc/src/lib.rs#L248-L256)
 
 ## 故障排除指南
 
@@ -586,6 +832,36 @@ PerformanceMonitor --> TsCompileResult : "收集指标"
 2. 验证全局 TsCompiler 实例的 LazyLock 初始化
 3. 确认编译器配置参数（特别是 source_map 设置）
 4. 检查内存使用情况，确认禁用 Source Map 的影响
+
+#### CSS Modules处理器初始化失败
+
+**症状**：CSS Modules功能不可用或类名作用域化失败
+
+**解决方案**：
+1. 检查 xxhash-rust 依赖是否正确安装
+2. 验证 CSS Modules处理器的 LazyLock 初始化
+3. 确认正则表达式（CLASS_SELECTOR_RE、LOCAL_RE、GLOBAL_RE）是否正确
+4. 检查哈希算法生成是否正常
+
+#### 类型检查器初始化问题
+
+**症状**：类型检查功能不可用或频繁跳过
+
+**解决方案**：
+1. 检查 tsc 命令行工具是否正确安装
+2. 验证环境变量 IRIS_TYPE_CHECK 和 IRIS_TYPE_CHECK_STRICT 设置
+3. 确认临时文件写入权限
+4. 检查类型检查结果解析逻辑
+
+#### 全局缓存实例初始化失败
+
+**症状**：缓存功能不可用或性能异常
+
+**解决方案**：
+1. 检查 lru 依赖是否正确安装
+2. 验证缓存实例的 LazyLock 初始化
+3. 确认缓存容量和启用状态配置
+4. 检查缓存哈希计算是否正常
 
 #### 日志系统初始化问题
 
@@ -622,10 +898,33 @@ PerformanceMonitor --> TsCompileResult : "收集指标"
 3. 验证编译器配置参数
 4. 确认源码映射功能正常工作
 
+### CSS Modules集成问题
+
+**症状**：CSS Modules类名作用域化失败或映射不正确
+
+**解决方案**：
+1. 检查CSS内容中是否存在语法错误
+2. 验证类名选择器正则表达式是否正确匹配
+3. 确认哈希算法生成的唯一性
+4. 检查`:local()`和`:global()`语法解析
+5. 验证类名映射生成逻辑
+
+### 类型检查集成问题
+
+**症状**：类型检查功能不可用或频繁失败
+
+**解决方案**：
+1. 确认 tsc 命令行工具已正确安装
+2. 检查环境变量 IRIS_TYPE_CHECK 和 IRIS_TYPE_CHECK_STRICT 设置
+3. 验证临时文件创建和清理逻辑
+4. 确认类型检查结果解析和错误格式化
+5. 检查 tsc 命令行参数配置
+
 **章节来源**
-- [lib.rs:83-132](file://crates/iris-sfc/src/lib.rs#L83-L132)
-- [ts_compiler.rs:64-80](file://crates/iris-sfc/src/ts_compiler.rs#L64-L80)
-- [lib.rs:578-595](file://crates/iris-sfc/src/lib.rs#L578-L595)
+- [lib.rs:138-188](file://crates/iris-sfc/src/lib.rs#L138-L188)
+- [ts_compiler.rs:291-409](file://crates/iris-sfc/src/ts_compiler.rs#L291-L409)
+- [css_modules.rs:47-161](file://crates/iris-sfc/src/css_modules.rs#L47-L161)
+- [lib.rs:794-811](file://crates/iris-sfc/src/lib.rs#L794-L811)
 - [SWC-INTEGRATION-ISSUES.md:1-239](file://SWC-INTEGRATION-ISSUES.md#L1-L239)
 - [SWC62-INTEGRATION-COMPLETE.md:1-238](file://SWC62-INTEGRATION-COMPLETE.md#L1-L238)
 
@@ -642,16 +941,21 @@ Iris SFC 编译器的初始化机制展现了现代 Rust 应用的最佳实践�
 5. **完整的初始化流程**：新增的 `init()` 函数提供明确的初始化入口
 6. **优化的内存管理**：全局 TsCompiler 实例复用，禁用 Source Map 节省内存
 7. **稳定的依赖管理**：使用 swc 元包解决版本冲突问题
+8. **强大的类型检查**：基于环境变量的类型检查系统
+9. **完整的CSS Modules支持**：类名作用域化和映射生成功能
+10. **非致命错误处理**：类型检查失败不影响编译流程
 
 ### 技术亮点
 
 - **LazyLock 模式**：实现了高效的延迟初始化
 - **全局实例模式**：TsCompiler 实例在整个生命周期内复用
 - **内存优化策略**：禁用 Source Map 节省内存 30-50%
-- **分层架构**：模板编译器和 TypeScript 编译器分离
+- **分层架构**：模板编译器、TypeScript编译器、CSS Modules处理器分离
 - **增强的错误处理**：完善的错误类型和位置信息
 - **性能监控**：内置的编译时间和内存使用统计
 - **完整的API文档**：详细的函数文档和使用示例
+- **环境变量配置**：灵活的运行时配置选项
+- **非致命类型检查**：类型验证不影响编译流程
 
 ### 未来发展方向
 
@@ -661,5 +965,7 @@ Iris SFC 编译器的初始化机制展现了现代 Rust 应用的最佳实践�
 4. **热重载增强**：改进热重载的性能和稳定性
 5. **监控扩展**：增加更多性能指标和监控能力
 6. **功能增强**：在保持稳定性的同时逐步完善 swc 集成
+7. **类型检查优化**：支持更多tsconfig.json配置选项
+8. **CSS Modules增强**：支持更多CSS Modules特性和语法
 
-SFC 编译器初始化机制为整个 Iris 引擎提供了坚实的基础，其设计理念和实现方式值得在其他 Rust 项目中借鉴和学习。通过采用 LazyLock 模式、全局实例管理和内存优化策略，编译器在保证功能完整性的同时实现了卓越的性能表现。**重要变更**：成功的 swc 62 集成和全局 TsCompiler 实例的实现，标志着编译器初始化机制达到了新的高度，为未来的功能扩展奠定了良好的基础。
+SFC 编译器初始化机制为整个 Iris 引擎提供了坚实的基础，其设计理念和实现方式值得在其他 Rust 项目中借鉴和学习。通过采用 LazyLock 模式、全局实例管理和内存优化策略，编译器在保证功能完整性的同时实现了卓越的性能表现。**重要变更**：成功的 swc 62 集成、全局 TsCompiler 实例的实现、TypeScript类型检查系统和CSS Modules支持功能的新增，标志着编译器初始化机制达到了新的高度，为未来的功能扩展奠定了良好的基础。

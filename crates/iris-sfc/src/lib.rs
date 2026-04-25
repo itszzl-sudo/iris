@@ -12,6 +12,7 @@ mod cache;
 mod template_compiler;
 mod ts_compiler;
 mod css_modules;
+mod script_setup;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -119,6 +120,8 @@ struct SfcDescriptor {
     template: Option<String>,
     /// Script 原始源码。
     script: Option<String>,
+    /// Script 属性（lang, setup）。
+    script_attrs: script_setup::ScriptAttrs,
     /// Style 原始源码列表。
     styles: Vec<StyleRaw>,
 }
@@ -276,20 +279,29 @@ fn compile_sfc_internal(name: &str, source: &str, file_name: &str) -> Result<Sfc
         .map_err(|e| format!("Template compile error: {}", e))?;
     
     let script = if let Some(script_source) = &descriptor.script {
-        compile_script(file_name, script_source)
+        compile_script(file_name, script_source, &descriptor.script_attrs)
             .map_err(|e| format!("Script compile error: {}", e))?
     } else {
         String::new()
     };
     
     // 类型检查（如果启用）
+    // 注意：对转换后的脚本进行类型检查（包含宏展开）
     if let Some(script_source) = &descriptor.script {
         let type_check_config = ts_compiler::TypeCheckConfig::default();
         
         if type_check_config.enabled {
             debug!("Running type check...");
             
-            match (&*TS_COMPILER).type_check(script_source, file_name, &type_check_config) {
+            // 使用转换后的脚本进行类型检查
+            let script_for_check = if descriptor.script_attrs.setup {
+                // 如果是 script setup，使用转换后的脚本
+                script.clone()
+            } else {
+                script_source.clone()
+            };
+            
+            match (&*TS_COMPILER).type_check(&script_for_check, file_name, &type_check_config) {
                 ts_compiler::TypeCheckResult::Success => {
                     debug!("Type check passed");
                 }
@@ -344,7 +356,7 @@ pub fn compile_from_string(name: &str, source: &str) -> Result<SfcModule, SfcErr
 
     let render_fn = compile_template(name, descriptor.template.as_deref().unwrap_or(""))?;
     let script = if let Some(script_source) = &descriptor.script {
-        compile_script(name, script_source)?
+        compile_script(name, script_source, &descriptor.script_attrs)?
     } else {
         String::new()
     };
@@ -385,7 +397,15 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
     }
 
     // 提取 <script> 部分（支持属性如 lang="ts", setup）
+    let mut script_attrs = script_setup::ScriptAttrs {
+        lang: "javascript".to_string(),
+        setup: false,
+    };
+    
     if let Some(caps) = SCRIPT_RE.captures(source) {
+        if let Some(attrs_match) = caps.get(1) {
+            script_attrs = script_setup::parse_script_attrs(attrs_match.as_str());
+        }
         if let Some(content) = caps.get(2) {
             script = Some(content.as_str().to_string());
             debug!(script_size = content.as_str().len(), "Script extracted");
@@ -437,6 +457,7 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
     Ok(SfcDescriptor {
         template,
         script,
+        script_attrs,
         styles,
     })
 }
@@ -508,19 +529,35 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
 ///
 /// * `file_name` - 文件名（用于错误定位）
 /// * `script` - script 源码
+/// * `attrs` - script 属性
 ///
 /// # 返回
 ///
 /// 返回转译后的 JavaScript 代码。
-fn compile_script(file_name: &str, script: &str) -> Result<String, SfcError> {
+fn compile_script(file_name: &str, script: &str, attrs: &script_setup::ScriptAttrs) -> Result<String, SfcError> {
     if script.is_empty() {
         return Ok("export default {}".to_string());
     }
 
-    info!(file = file_name, "Compiling script with swc TypeScript compiler");
+    info!(file = file_name, setup = attrs.setup, "Compiling script with swc TypeScript compiler");
 
-    // 使用全局编译器实例（复用，提升性能）
-    let result = TS_COMPILER.compile(script, file_name).map_err(|e| {
+    // 1. 如果是 <script setup>，先转换编译器宏
+    let processed_script = if attrs.setup {
+        debug!("Transforming <script setup> and compiler macros");
+        script_setup::transform_script_setup(script).map_err(|e| {
+            SfcError::ScriptError {
+                message: format!("Script setup transformation failed: {}", e),
+                file: file_name.to_string(),
+                line: 1,
+                column: 1,
+            }
+        })?
+    } else {
+        script.to_string()
+    };
+
+    // 2. 使用全局编译器实例编译 TypeScript
+    let result = TS_COMPILER.compile(&processed_script, file_name).map_err(|e| {
         SfcError::ScriptError {
             message: format!("TypeScript compilation failed: {}", e),
             file: file_name.to_string(),
