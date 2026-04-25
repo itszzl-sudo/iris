@@ -8,6 +8,7 @@
 
 #![warn(missing_docs)]
 
+mod cache;
 mod template_compiler;
 mod ts_compiler;
 
@@ -15,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::LazyLock;
 use tracing::{debug, info, warn};
+
+pub use cache::*;
 
 /// 预编译的正则表达式（性能优化：避免每次调用时重新编译）。
 ///
@@ -41,6 +44,20 @@ static TS_COMPILER: LazyLock<ts_compiler::TsCompiler> = LazyLock::new(|| {
     ts_compiler::TsCompiler::new(ts_compiler::TsCompilerConfig {
         source_map: false,  // 禁用 Source Map（节省 30-50% 内存，提升 10-15% 编译速度）
         ..Default::default()
+    })
+});
+
+/// 全局 SFC 缓存实例（用于热重载加速）
+///
+/// 使用 LazyLock 确保：
+/// 1. 线程安全的懒初始化
+/// 2. 整个生命周期只创建一个缓存实例
+/// 3. 默认容量 100 项，自动 LRU 淘汰
+/// 4. 基于源码哈希，确保内容一致性
+static SFC_CACHE: LazyLock<SfcCache> = LazyLock::new(|| {
+    SfcCache::new(SfcCacheConfig {
+        capacity: 100,     // 缓存 100 个组件
+        enabled: true,     // 启用缓存
     })
 });
 

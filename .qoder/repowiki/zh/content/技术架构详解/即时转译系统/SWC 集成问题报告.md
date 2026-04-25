@@ -9,6 +9,7 @@
 - [crates/iris-sfc/Cargo.toml](file://crates/iris-sfc/Cargo.toml)
 - [crates/iris-sfc/src/lib.rs](file://crates/iris-sfc/src/lib.rs)
 - [crates/iris-sfc/src/ts_compiler.rs](file://crates/iris-sfc/src/ts_compiler.rs)
+- [crates/iris-sfc/src/template_compiler.rs](file://crates/iris-sfc/src/template_compiler.rs)
 - [crates/iris-sfc/examples/sfc_demo.rs](file://crates/iris-sfc/examples/sfc_demo.rs)
 - [crates/iris-core/src/lib.rs](file://crates/iris-core/src/lib.rs)
 - [crates/iris-gpu/src/lib.rs](file://crates/iris-gpu/src/lib.rs)
@@ -20,10 +21,10 @@
 
 ## 更新摘要
 **变更内容**
-- 更新以反映 SWC 集成状态的重大变化：原有复杂实现已丢弃，采用简化的正则表达式实现
-- 新增完整的可行性评估和集成完成报告文档分析
-- 更新架构图以反映当前基于 swc 62 的完整实现
-- 修正对 TypeScript 编译器实现的描述，从简化版正则表达式改为完整的 swc 62 实现
+- 更新以反映TypeScript编译器从简化的占位实现到完整的SWC 62集成的重大架构变更
+- 新增详细的TsCompiler实现、配置系统、性能优化等内容
+- 更新架构图以反映当前基于swc 62的完整实现
+- 修正对TypeScript编译器实现的描述，从简化版正则表达式改为完整的swc 62实现
 
 ## 目录
 1. [简介](#简介)
@@ -38,13 +39,13 @@
 
 ## 简介
 
-Iris 是一个基于 Rust 和 WebGPU 的跨平台前端运行时框架，专注于零编译直接运行源码的能力。该项目的核心目标是在桌面和浏览器环境中提供高性能的 Vue SFC（Single File Component）即时编译和热重载功能。
+Iris是一个基于Rust和WebGPU的跨平台前端运行时框架，专注于零编译直接运行源码的能力。该项目的核心目标是在桌面和浏览器环境中提供高性能的Vue SFC（Single File Component）即时编译和热重载功能。
 
-经过全面的技术评估和实现，Iris 已成功集成了 SWC 62 TypeScript 编译器，采用官方元包方式解决了复杂的版本兼容性问题。当前实现了完整的 TypeScript 到 JavaScript 转译功能，支持泛型、接口、装饰器、TSX 等高级特性。
+经过全面的技术评估和实现，Iris已成功集成了SWC 62 TypeScript编译器，采用官方元包方式解决了复杂的版本兼容性问题。当前实现了完整的TypeScript到JavaScript转译功能，支持泛型、接口、装饰器、TSX等高级特性。
 
 ## 项目结构
 
-Iris 项目采用多 crate 的工作区结构，主要包含以下核心模块：
+Iris项目采用多crate的工作区结构，主要包含以下核心模块：
 
 ```mermaid
 graph TB
@@ -91,9 +92,9 @@ GPU --> CORE
 
 ## 核心组件
 
-### SFC 编译器层
+### SFC编译器层
 
-Iris 的 SFC 编译器是整个系统的核心组件，负责将 Vue 单文件组件转换为可执行模块。当前实现了完整版本，集成了 SWC 62 TypeScript 编译器。
+Iris的SFC编译器是整个系统的核心组件，负责将Vue单文件组件转换为可执行模块。当前实现了完整版本，集成了SWC 62 TypeScript编译器。
 
 ```mermaid
 classDiagram
@@ -131,9 +132,9 @@ SfcCompiler --> SfcError : returns
 **图表来源**
 - [crates/iris-sfc/src/lib.rs:37-132](file://crates/iris-sfc/src/lib.rs#L37-L132)
 
-### TypeScript 编译器
+### TypeScript编译器
 
-TypeScript 编译器是 SFC 编译器的重要组成部分，现已实现完整的 SWC 62 集成，提供高性能的 TypeScript 到 JavaScript 转译功能。
+TypeScript编译器是SFC编译器的重要组成部分，现已实现完整的SWC 62集成，提供高性能的TypeScript到JavaScript转译功能。
 
 ```mermaid
 classDiagram
@@ -163,6 +164,7 @@ class TsCompileResult {
 class TsCompiler {
 -config : TsCompilerConfig
 -compiler : Arc~Compiler~
+-compile_count : AtomicUsize
 +new(config) TsCompiler
 +compile(source, filename) Result~TsCompileResult, String~
 -build_options() Options
@@ -182,7 +184,7 @@ TsCompilerConfig --> EsVersion : uses
 
 ## 架构概览
 
-Iris 的整体架构采用了分层设计，从底层硬件抽象到高层应用逻辑形成了清晰的层次结构。
+Iris的整体架构采用了分层设计，从底层硬件抽象到高层应用逻辑形成了清晰的层次结构。
 
 ```mermaid
 graph TB
@@ -225,17 +227,17 @@ JS --> SFC
 
 ## 详细组件分析
 
-### SWC 集成完成分析
+### SWC集成完成分析
 
-经过全面的技术评估和实现，Iris 已成功解决所有 SWC 集成问题，实现了完整的 TypeScript 编译功能。
+经过全面的技术评估和实现，Iris已成功解决所有SWC集成问题，实现了完整的TypeScript编译功能。
 
 #### 1. 版本兼容性冲突的解决方案
 
-**问题描述**: `unicode-id-start` 版本冲突导致无法选择兼容的版本。
+**问题描述**: `unicode-id-start`版本冲突导致无法选择兼容的版本。
 
-**根本原因**: SWC 子包之间的版本必须精确匹配，但不同子包依赖的共同依赖版本不兼容。
+**根本原因**: SWC子包之间的版本必须精确匹配，但不同子包依赖的共同依赖版本不兼容。
 
-**解决方案**: 采用官方 swc 元包方式，让 swc 自动管理内部依赖版本。
+**解决方案**: 采用官方swc元包方式，让swc自动管理内部依赖版本。
 
 ```mermaid
 flowchart TD
@@ -256,11 +258,11 @@ M --> N[无版本冲突]
 **图表来源**
 - [SWC62-INTEGRATION-COMPLETE.md:17-28](file://SWC62-INTEGRATION-COMPLETE.md#L17-L28)
 
-#### 2. API 变更问题的处理
+#### 2. API变更问题的处理
 
-**问题描述**: SWC API 在不同版本间频繁变更，包括 `TsSyntax` 改名为 `TsConfig`。
+**问题描述**: SWC API在不同版本间频繁变更，包括`TsSyntax`改名为`TsConfig`。
 
-**解决方案**: 采用当前版本的 API，使用 `TsConfig` 而非 `TsSyntax`。
+**解决方案**: 采用当前版本的API，使用`TsConfig`而非`TsSyntax`。
 
 **章节来源**
 - [SWC-INTEGRATION-ISSUES.md:46-61](file://SWC-INTEGRATION-ISSUES.md#L46-L61)
@@ -268,9 +270,9 @@ M --> N[无版本冲突]
 
 ### 完整实现的技术细节
 
-#### TypeScript 编译器实现
+#### TypeScript编译器实现
 
-当前的 TypeScript 编译器使用 SWC 62 的高层 Compiler API，实现了完整的 TypeScript 转译功能：
+当前的TypeScript编译器使用SWC 62的高层Compiler API，实现了完整的TypeScript转译功能：
 
 ```mermaid
 sequenceDiagram
@@ -303,19 +305,20 @@ SFC-->>App : 返回 JavaScript 代码
 
 #### 预编译正则表达式优化
 
-Iris 在 SFC 编译器中实现了多项性能优化措施：
+Iris在SFC编译器中实现了多项性能优化措施：
 
-1. **预编译正则表达式**: 使用 `LazyLock` 避免重复编译
+1. **预编译正则表达式**: 使用`LazyLock`避免重复编译
 2. **静态编译时间**: 每次编译 ~10-50μs，LazyLock 单次编译 ~0.1μs
-3. **性能提升**: 100-500 倍性能提升
+3. **性能提升**: 100-500倍性能提升
 
-#### SWC 编译器性能
+#### SWC编译器性能
 
-SWC 62 编译器实现了极高的编译性能：
+SWC 62编译器实现了极高的编译性能：
 
 1. **平均编译时间**: ~0.13ms（基于测试结果）
-2. **增量编译**: 编译时间 ~2 秒（依赖已缓存）
+2. **增量编译**: 编译时间 ~2秒（依赖已缓存）
 3. **并发处理**: 支持并行编译多个文件
+4. **内存管理**: 使用AtomicUsize进行编译计数，定期清理SourceMap缓存
 
 **章节来源**
 - [crates/iris-sfc/src/lib.rs:19-35](file://crates/iris-sfc/src/lib.rs#L19-L35)
@@ -384,16 +387,17 @@ JS --> ESM[ESM解析器]
 
 ### 编译性能优化
 
-Iris 在多个层面实现了性能优化：
+Iris在多个层面实现了性能优化：
 
-1. **预编译正则表达式**: 使用 `LazyLock` 避免重复编译
-2. **SWC 编译器**: 使用官方元包确保版本兼容性和最佳性能
-3. **增量编译**: 依赖已缓存，编译时间 ~2 秒
+1. **预编译正则表达式**: 使用`LazyLock`避免重复编译
+2. **SWC编译器**: 使用官方元包确保版本兼容性和最佳性能
+3. **增量编译**: 依赖已缓存，编译时间 ~2秒
 4. **并发处理**: 支持并行编译多个文件
+5. **内存管理**: 使用AtomicUsize进行编译计数，定期清理SourceMap缓存
 
 ### 渲染性能优化
 
-GPU 渲染器采用了批渲染技术：
+GPU渲染器采用了批渲染技术：
 
 ```mermaid
 flowchart LR
@@ -417,18 +421,18 @@ G --> H[避免内存溢出]
 ### 常见问题诊断
 
 1. **版本冲突问题**
-   - 检查 `Cargo.lock` 文件中的版本信息
-   - 使用 `cargo tree` 查看依赖树
-   - 确保使用官方 swc 元包方案
+   - 检查`Cargo.lock`文件中的版本信息
+   - 使用`cargo tree`查看依赖树
+   - 确保使用官方swc元包方案
 
-2. **API 变更问题**
-   - 检查 SWC 62 版本对应的 API 文档
-   - 使用 `TsConfig` 而非 `TsSyntax`
-   - 验证 Source map 类型兼容性
+2. **API变更问题**
+   - 检查SWC 62版本对应的API文档
+   - 使用`TsConfig`而非`TsSyntax`
+   - 验证Source map类型兼容性
 
 3. **编译错误处理**
    - 实现详细的错误信息收集
-   - 使用 `try_with_handler` 处理编译异常
+   - 使用`try_with_handler`处理编译异常
    - 记录编译时间和性能指标
 
 ### 调试工具
@@ -455,26 +459,29 @@ J --> K[更新代码实现]
 
 ## 结论
 
-Iris 项目已成功解决 SWC 集成的所有技术挑战，实现了完整的 TypeScript 编译功能。通过采用官方 swc 元包方案，项目不仅解决了复杂的版本兼容性问题，还获得了优秀的性能表现。
+Iris项目已成功解决SWC集成的所有技术挑战，实现了完整的TypeScript编译功能。通过采用官方swc元包方案，项目不仅解决了复杂的版本兼容性问题，还获得了优秀的性能表现。
 
 ### 主要成就
 
 1. **版本管理成功**: 采用官方元包方案，所有子包版本精确匹配
-2. **API 稳定性**: 使用 SWC 62 的稳定 API，避免了频繁的 API 变更问题
+2. **API稳定性**: 使用SWC 62的稳定API，避免了频繁的API变更问题
 3. **性能卓越**: 平均编译时间仅 ~0.13ms，满足实时编译需求
-4. **功能完整**: 支持泛型、接口、装饰器、TSX 等高级 TypeScript 特性
+4. **功能完整**: 支持泛型、接口、装饰器、TSX等高级TypeScript特性
+5. **内存管理优化**: 实现了编译计数和SourceMap缓存清理机制
 
 ### 技术突破
 
-1. **依赖冲突解决**: 通过官方元包方案彻底解决了 `unicode-id-start` 版本冲突
-2. **API 兼容性**: 采用当前版本的 API，避免了历史版本的 API 变更问题
-3. **性能优化**: 实现了预编译正则表达式和 SWC 编译器的双重性能优化
+1. **依赖冲突解决**: 通过官方元包方案彻底解决了`unicode-id-start`版本冲突
+2. **API兼容性**: 采用当前版本的API，避免了历史版本的API变更问题
+3. **性能优化**: 实现了预编译正则表达式和SWC编译器的双重性能优化
+4. **错误处理**: 实现了完整的错误收集和报告机制
 
 ### 未来发展方向
 
-1. **功能增强**: 继续完善 SWC 62 的高级特性支持
+1. **功能增强**: 继续完善SWC 62的高级特性支持
 2. **性能优化**: 进一步优化编译性能和内存使用
 3. **错误处理**: 增强编译错误的详细报告和诊断能力
 4. **测试覆盖**: 扩展单元测试和集成测试的覆盖范围
+5. **配置系统**: 增加更多编译配置选项和自定义转换插件支持
 
-通过这些措施，Iris 项目已成功建立了稳定、高性能的 TypeScript 编译基础设施，为开发者提供了卓越的开发体验。
+通过这些措施，Iris项目已成功建立了稳定、高性能的TypeScript编译基础设施，为开发者提供了卓越的开发体验。

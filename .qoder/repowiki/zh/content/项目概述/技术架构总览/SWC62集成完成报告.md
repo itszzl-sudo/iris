@@ -14,6 +14,13 @@
 - [crates/iris-core/src/lib.rs](file://crates/iris-core/src/lib.rs)
 </cite>
 
+## 更新摘要
+**变更内容**
+- 更新了TypeScript编译器架构，从简化实现升级到完整的SWC62 Compiler API
+- 新增了EsVersion枚举和完整的编译配置系统
+- 增强了错误处理机制和性能优化策略
+- 完善了热重载系统的架构设计
+
 ## 目录
 1. [项目概述](#项目概述)
 2. [项目结构](#项目结构)
@@ -27,15 +34,15 @@
 
 ## 项目概述
 
-Iris项目成功完成了SWC62 TypeScript编译器的集成，这是一个重要的里程碑，标志着项目从早期的简化实现向完整的生产级编译器架构过渡。
+Iris项目成功完成了SWC62 TypeScript编译器的完整集成，这是一个重要的里程碑，标志着项目从早期的简化实现向完整的生产级编译器架构过渡。
 
 ### 主要成就
 
-- **✅ SWC62集成成功**：成功升级到最新的SWC 62版本，使用官方元包和兼容的子包版本
-- **✅ 依赖配置正确**：所有swc相关依赖版本兼容，无版本冲突
-- **✅ 编译器API完整**：TsCompiler实现了完整的编译器接口
-- **✅ 测试覆盖全面**：所有测试用例通过，包括性能测试
-- **✅ 性能优异**：平均编译时间仅为0.13ms
+- **✅ SWC62完整集成**：成功升级到最新的SWC 62版本，使用官方元包和兼容的子包版本
+- **✅ 完整Compiler API**：TsCompiler实现了完整的编译器接口，支持TypeScript到JavaScript的完整转换
+- **✅ 高性能编译**：平均编译时间仅为0.13ms，使用Compiler API获得最佳性能
+- **✅ 完善的错误处理**：提供详细的编译错误信息和位置定位
+- **✅ 全面的测试覆盖**：所有测试用例通过，包括性能基准测试和错误处理测试
 
 ## 项目结构
 
@@ -51,14 +58,14 @@ A --> E[iris-js<br/>JS桥接]
 A --> F[iris-sfc<br/>SFC编译器]
 A --> G[iris-app<br/>应用入口]
 end
-subgraph "SWC62集成"
-H[swc = 62]
-I[swc_common = 21]
-J[swc_ecma_parser = 39]
-K[swc_ecma_transforms_typescript = 46]
-L[swc_ecma_codegen = 26]
-M[swc_ecma_ast = 23]
-N[swc_ecma_visit = 23]
+subgraph "SWC62完整集成"
+H[swc = 62<br/>官方元包]
+I[swc_common = 21<br/>通用编译器基础设施]
+J[swc_ecma_parser = 39<br/>ECMA语法解析器]
+K[swc_ecma_transforms_typescript = 46<br/>TypeScript转换器]
+L[swc_ecma_codegen = 26<br/>代码生成器]
+M[swc_ecma_ast = 23<br/>抽象语法树定义]
+N[swc_ecma_visit = 23<br/>AST访问器]
 end
 F --> H
 F --> I
@@ -88,6 +95,7 @@ classDiagram
 class TsCompiler {
 -config : TsCompilerConfig
 -compiler : Arc~Compiler~
+-compile_count : AtomicUsize
 +new(config) : TsCompiler
 +compile(source, filename) : Result~TsCompileResult, String~
 -build_options() : Options
@@ -114,14 +122,16 @@ ES2020
 ES2021
 ES2022
 ESNext
+-to_swc() : swc_ecma_ast : : EsVersion
 }
 TsCompiler --> TsCompilerConfig : "使用"
 TsCompiler --> TsCompileResult : "返回"
 TsCompilerConfig --> EsVersion : "包含"
+EsVersion --> swc_ecma_ast : "转换为"
 ```
 
 **图表来源**
-- [crates/iris-sfc/src/ts_compiler.rs:27-205](file://crates/iris-sfc/src/ts_compiler.rs#L27-L205)
+- [crates/iris-sfc/src/ts_compiler.rs:27-247](file://crates/iris-sfc/src/ts_compiler.rs#L27-L247)
 
 ### SFC编译器架构
 
@@ -140,9 +150,10 @@ SFC->>Template : compile_template()
 Template->>Template : 解析HTML模板
 Template->>Template : 生成渲染函数
 SFC->>TS : compile_script()
-TS->>TS : 使用SWC62编译TypeScript
+TS->>TS : 使用SWC62 Compiler API编译TypeScript
 TS->>TS : 移除类型注解和接口
 TS->>TS : 生成JavaScript代码
+TS->>TS : Source Map生成
 SFC->>SFC : 编译样式块
 SFC->>GPU : 返回编译结果
 GPU->>App : 渲染组件
@@ -150,11 +161,11 @@ GPU->>App : 渲染组件
 
 **图表来源**
 - [crates/iris-sfc/src/lib.rs:143-210](file://crates/iris-sfc/src/lib.rs#L143-L210)
-- [crates/iris-sfc/src/ts_compiler.rs:94-176](file://crates/iris-sfc/src/ts_compiler.rs#L94-L176)
+- [crates/iris-sfc/src/ts_compiler.rs:103-201](file://crates/iris-sfc/src/ts_compiler.rs#L103-L201)
 
 **章节来源**
 - [crates/iris-sfc/src/lib.rs:378-421](file://crates/iris-sfc/src/lib.rs#L378-L421)
-- [crates/iris-sfc/src/ts_compiler.rs:1-358](file://crates/iris-sfc/src/ts_compiler.rs#L1-L358)
+- [crates/iris-sfc/src/ts_compiler.rs:1-472](file://crates/iris-sfc/src/ts_compiler.rs#L1-L472)
 
 ## 架构概览
 
@@ -214,9 +225,10 @@ CompileTemplate --> CheckScript{"是否有脚本?"}
 SkipTemplate --> CheckScript
 CheckScript --> |是| CompileScript["编译TypeScript脚本"]
 CheckScript --> |否| SkipScript["使用空脚本"]
-CompileScript --> CompileStyles["编译样式块"]
-SkipScript --> CompileStyles
-CompileStyles --> GenerateCode["生成最终代码"]
+CompileScript --> BuildOptions["构建编译选项"]
+BuildOptions --> ParseTS["解析TypeScript"]
+ParseTS --> ProcessJS["处理JavaScript"]
+ProcessJS --> GenerateCode["生成最终代码"]
 GenerateCode --> CacheResult["缓存编译结果"]
 CacheResult --> End([编译完成])
 ```
@@ -237,9 +249,10 @@ TsCompiler组件实现了完整的SWC62编译器API，提供了强大的TypeScri
 #### 关键特性
 
 - **完整的TypeScript支持**：支持接口、泛型、装饰器、枚举等
-- **高性能编译**：平均编译时间仅0.13ms
+- **高性能编译**：使用Compiler API，平均编译时间仅0.13ms
 - **Source Map生成**：可选的调试信息支持
 - **错误处理**：完善的错误报告和位置信息
+- **编译器复用**：使用Arc包装器避免重复创建
 
 #### 编译配置
 
@@ -251,8 +264,8 @@ TsCompiler组件实现了完整的SWC62编译器API，提供了强大的TypeScri
 | target | ES2020 | 目标ECMAScript版本 |
 
 **章节来源**
-- [crates/iris-sfc/src/ts_compiler.rs:27-63](file://crates/iris-sfc/src/ts_compiler.rs#L27-L63)
-- [crates/iris-sfc/src/ts_compiler.rs:94-176](file://crates/iris-sfc/src/ts_compiler.rs#L94-L176)
+- [crates/iris-sfc/src/ts_compiler.rs:30-68](file://crates/iris-sfc/src/ts_compiler.rs#L30-L68)
+- [crates/iris-sfc/src/ts_compiler.rs:103-201](file://crates/iris-sfc/src/ts_compiler.rs#L103-L201)
 
 ### 模板编译器
 
@@ -382,6 +395,7 @@ Iris在编译器层面采用了多项性能优化措施：
 - SFC模块缓存（最大100个条目）
 - 缓存键规范化处理（Windows大小写不敏感）
 - 内存泄漏防护机制
+- 编译器实例复用（Arc包装）
 
 #### 文件监控优化
 - 100ms文件轮询间隔
@@ -392,10 +406,11 @@ Iris在编译器层面采用了多项性能优化措施：
 
 | 测试项目 | 结果 | 说明 |
 |----------|------|------|
-| TypeScript编译速度 | 0.13ms平均 | 基于SWC62的高性能编译 |
+| TypeScript编译速度 | 0.13ms平均 | 基于SWC62 Compiler API的高性能编译 |
 | 正则表达式编译 | 100-500倍提升 | LazyLock优化效果 |
 | 文件监控轮询 | 100ms间隔 | 降低CPU占用 |
 | 缓存命中率 | 高 | 减少重复编译 |
+| 编译器复用 | 无重复创建 | 使用Arc包装器 |
 
 **章节来源**
 - [crates/iris-sfc/src/lib.rs:19-35](file://crates/iris-sfc/src/lib.rs#L19-L35)
@@ -433,6 +448,7 @@ Iris在编译器层面采用了多项性能优化措施：
 - 实施缓存策略
 - 调整文件监控轮询间隔
 - 限制缓存大小防止内存泄漏
+- 使用编译器实例复用
 
 **章节来源**
 - [SWC62-INTEGRATION-COMPLETE.md:84-96](file://SWC62-INTEGRATION-COMPLETE.md#L84-L96)
@@ -448,6 +464,7 @@ SWC62集成项目取得了圆满成功，实现了以下关键目标：
 - **性能显著提升**：编译速度达到0.13ms的优异水平
 - **稳定性保障**：所有测试用例通过，包含性能基准测试
 - **可扩展性设计**：为后续功能增强预留了充足空间
+- **错误处理完善**：提供详细的编译错误信息和位置定位
 
 ### 技术优势
 
@@ -455,6 +472,7 @@ SWC62集成项目取得了圆满成功，实现了以下关键目标：
 - **测试覆盖全**：3个核心单元测试全部通过
 - **依赖清晰**：使用官方元包，版本完全兼容
 - **易于升级**：保留完整的API接口，便于后续升级
+- **内存优化**：编译器实例复用，避免重复创建
 
 ### 后续发展方向
 
@@ -462,5 +480,6 @@ SWC62集成项目取得了圆满成功，实现了以下关键目标：
 2. **错误处理完善**：提供详细的编译错误信息
 3. **性能优化**：实现编译结果缓存和增量编译
 4. **功能增强**：支持JSX/TSX、装饰器等高级特性
+5. **Source Map优化**：改进调试体验和错误定位
 
 这次集成为Iris项目奠定了坚实的TypeScript编译基础，为未来的功能扩展和性能优化提供了良好的起点。

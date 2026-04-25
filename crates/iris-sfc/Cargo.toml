@@ -29,3 +29,9 @@ swc_ecma_visit = "23"
 # HTML 解析（用于模板编译器）
 html5ever = "0.27"
 markup5ever_rcdom = "0.3"
+
+# LRU 缓存（用于热重载）
+lru = "0.12"
+
+# XXH3 哈希算法（用于源码哈希计算）
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
