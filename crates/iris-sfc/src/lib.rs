@@ -282,6 +282,33 @@ fn compile_sfc_internal(name: &str, source: &str, file_name: &str) -> Result<Sfc
         String::new()
     };
     
+    // 类型检查（如果启用）
+    if let Some(script_source) = &descriptor.script {
+        let type_check_config = ts_compiler::TypeCheckConfig::default();
+        
+        if type_check_config.enabled {
+            debug!("Running type check...");
+            
+            match (&*TS_COMPILER).type_check(script_source, file_name, &type_check_config) {
+                ts_compiler::TypeCheckResult::Success => {
+                    debug!("Type check passed");
+                }
+                ts_compiler::TypeCheckResult::Errors { errors } => {
+                    warn!(
+                        error_count = errors.len(),
+                        "Type check failed (non-fatal)"
+                    );
+                    // 注意：类型检查失败不阻断编译，仅警告
+                    // 如果需要阻断，可以返回错误：
+                    // return Err(format!("Type check failed:\n{}", errors.join("\n")));
+                }
+                ts_compiler::TypeCheckResult::Skipped => {
+                    debug!("Type check skipped");
+                }
+            }
+        }
+    }
+    
     let styles = compile_styles(&descriptor.styles);
 
     debug!(

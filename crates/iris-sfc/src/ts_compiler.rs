@@ -10,6 +10,10 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::process::Command;
+use std::fs;
+use std::env;
+use std::path::PathBuf;
 
 use swc::{
     Compiler,
@@ -78,6 +82,46 @@ pub struct TsCompileResult {
     pub source_map: Option<String>,
     /// 编译时间（毫秒）
     pub compile_time_ms: f64,
+}
+
+/// 类型检查配置
+#[derive(Debug, Clone)]
+pub struct TypeCheckConfig {
+    /// 是否启用类型检查（默认从环境变量 IRIS_TYPE_CHECK 读取）
+    pub enabled: bool,
+    /// 是否使用严格模式（默认从环境变量 IRIS_TYPE_CHECK_STRICT 读取）
+    pub strict: bool,
+    /// tsconfig.json 路径（可选）
+    pub ts_config_path: Option<String>,
+}
+
+impl Default for TypeCheckConfig {
+    fn default() -> Self {
+        let enabled = env::var("IRIS_TYPE_CHECK")
+            .map(|v| v == "true" || v == "1" || v == "yes")
+            .unwrap_or(false);
+        
+        let strict = env::var("IRIS_TYPE_CHECK_STRICT")
+            .map(|v| v == "true" || v == "1" || v == "yes")
+            .unwrap_or(false);
+        
+        Self {
+            enabled,
+            strict,
+            ts_config_path: None,
+        }
+    }
+}
+
+/// 类型检查结果
+#[derive(Debug)]
+pub enum TypeCheckResult {
+    /// 类型检查通过
+    Success,
+    /// 类型检查失败，包含错误信息
+    Errors { errors: Vec<String> },
+    /// 跳过类型检查（未启用）
+    Skipped,
 }
 
 /// TypeScript 编译器
@@ -226,6 +270,167 @@ impl TsCompiler {
             },
             ..Default::default()
         }
+    }
+    
+    /// 执行 TypeScript 类型检查
+    /// 
+    /// # 参数
+    /// 
+    /// * `source` - TypeScript 源码
+    /// * `filename` - 文件名（用于错误报告）
+    /// * `config` - 类型检查配置
+    /// 
+    /// # 返回
+    /// 
+    /// 类型检查结果
+    /// 
+    /// # 注意
+    /// 
+    /// 此函数需要系统安装 `tsc` (TypeScript 编译器)
+    /// 如果未安装，将返回 Skipped 并警告
+    pub fn type_check(
+        &self,
+        source: &str,
+        filename: &str,
+        config: &TypeCheckConfig,
+    ) -> TypeCheckResult {
+        if !config.enabled {
+            debug!("Type check disabled, skipping");
+            return TypeCheckResult::Skipped;
+        }
+        
+        // 检查 tsc 是否可用
+        if !Self::is_tsc_available() {
+            warn!(
+                "TypeScript compiler (tsc) not found. Type checking disabled.\n\
+                 Install TypeScript: npm install -g typescript"
+            );
+            return TypeCheckResult::Skipped;
+        }
+        
+        // 写入临时文件
+        let temp_path = match Self::write_temp_file(source, filename) {
+            Ok(path) => path,
+            Err(e) => {
+                warn!("Failed to create temp file for type check: {}", e);
+                return TypeCheckResult::Skipped;
+            }
+        };
+        
+        // 运行 tsc
+        let result = Self::run_tsc(&temp_path, config);
+        
+        // 清理临时文件
+        if let Err(e) = fs::remove_file(&temp_path) {
+            warn!("Failed to cleanup temp file: {}", e);
+        }
+        
+        result
+    }
+    
+    /// 检查 tsc 是否可用
+    fn is_tsc_available() -> bool {
+        Command::new(if cfg!(windows) { "tsc.cmd" } else { "tsc" })
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+    
+    /// 写入临时 TypeScript 文件
+    fn write_temp_file(source: &str, _filename: &str) -> Result<PathBuf, String> {
+        let temp_dir = env::temp_dir();
+        let temp_path = temp_dir.join(format!("iris_type_check_{}.ts", 
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        ));
+        
+        fs::write(&temp_path, source)
+            .map_err(|e| format!("Failed to write temp file: {}", e))?;
+        
+        debug!(
+            path = ?temp_path,
+            size = source.len(),
+            "Temp file created for type check"
+        );
+        
+        Ok(temp_path)
+    }
+    
+    /// 运行 tsc 进行类型检查
+    fn run_tsc(file_path: &PathBuf, config: &TypeCheckConfig) -> TypeCheckResult {
+        let tsc_cmd = if cfg!(windows) { "tsc.cmd" } else { "tsc" };
+        
+        let mut cmd = Command::new(tsc_cmd);
+        cmd.arg("--noEmit")  // 只检查，不生成文件
+            .arg("--pretty")
+            .arg("--noEmitOnError");
+        
+        if config.strict {
+            cmd.arg("--strict");
+        }
+        
+        if let Some(ts_config) = &config.ts_config_path {
+            cmd.arg("--project").arg(ts_config);
+        }
+        
+        cmd.arg(file_path);
+        
+        debug!(cmd = ?cmd, "Running tsc for type check");
+        
+        match cmd.output() {
+            Ok(output) => {
+                if output.status.success() {
+                    debug!("Type check passed");
+                    TypeCheckResult::Success
+                } else {
+                    // 解析错误信息
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let error_output = if !stderr.is_empty() { stderr } else { stdout };
+                    
+                    let errors = Self::parse_tsc_errors(&error_output);
+                    
+                    warn!(
+                        error_count = errors.len(),
+                        "Type check failed"
+                    );
+                    
+                    TypeCheckResult::Errors { errors }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to run tsc: {}", e);
+                TypeCheckResult::Skipped
+            }
+        }
+    }
+    
+    /// 解析 tsc 错误信息
+    fn parse_tsc_errors(output: &str) -> Vec<String> {
+        let mut errors = Vec::new();
+        
+        // 简单解析：按行分割，提取错误信息
+        for line in output.lines() {
+            // 跳过空行和提示行
+            if line.trim().is_empty() || line.starts_with("Found") {
+                continue;
+            }
+            
+            // 保留所有非空行作为错误信息
+            if !line.trim().is_empty() {
+                errors.push(line.trim().to_string());
+            }
+        }
+        
+        // 如果没有解析到错误，保留原始输出
+        if errors.is_empty() && !output.trim().is_empty() {
+            errors.push(output.trim().to_string());
+        }
+        
+        errors
     }
 }
 
@@ -467,5 +672,27 @@ mod tests {
             let result = compiler.compile(&ts, &format!("test{}.ts", i));
             assert!(result.is_ok(), "Compilation {} should succeed", i);
         }
+    }
+    
+    #[test]
+    fn test_type_check_disabled_by_default() {
+        // 测试默认情况下类型检查是禁用的
+        let compiler = TsCompiler::new(TsCompilerConfig::default());
+        let config = TypeCheckConfig::default();
+        
+        // 默认应该禁用类型检查（除非设置了环境变量）
+        let result = compiler.type_check("const x: number = 1;", "test.ts", &config);
+        
+        // 应该返回 Skipped（因为默认禁用或 tsc 未安装）
+        assert!(matches!(result, TypeCheckResult::Skipped));
+    }
+    
+    #[test]
+    fn test_type_check_config_from_env() {
+        // 测试配置从环境变量读取
+        let config = TypeCheckConfig::default();
+        
+        // 验证配置结构
+        assert!(config.ts_config_path.is_none());
     }
 }
