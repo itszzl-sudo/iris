@@ -41,7 +41,9 @@ pub struct TsCompilerConfig {
 }
 
 /// ECMAScript 版本
+/// 注意：当前只使用 ES2020，其他版本为未来功能预留
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum EsVersion {
     ES2015,
     ES2016,
@@ -71,6 +73,8 @@ pub struct TsCompileResult {
     /// 编译后的 JavaScript 代码
     pub code: String,
     /// Source map（如果启用）
+    /// 注意：当前默认禁用，未来可按需启用用于浏览器调试和错误监控
+    #[allow(dead_code)]
     pub source_map: Option<String>,
     /// 编译时间（毫秒）
     pub compile_time_ms: f64,
