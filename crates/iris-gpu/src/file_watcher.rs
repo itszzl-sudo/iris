@@ -201,7 +201,9 @@ fn matches_extension(path: &Path, extensions: &HashSet<String>) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| {
             let ext_lower = ext.to_lowercase();
-            extensions.iter().any(|allowed| allowed.to_lowercase() == ext_lower)
+            extensions
+                .iter()
+                .any(|allowed| allowed.to_lowercase() == ext_lower)
         })
         .unwrap_or(false)
 }
@@ -307,8 +309,10 @@ impl FileWatcher {
 
                 // 过滤事件（使用优化后的 matches_extension）
                 if let Some(allowed_exts) = &extensions {
-                    let should_process =
-                        event.paths.iter().any(|path| matches_extension(path, allowed_exts));
+                    let should_process = event
+                        .paths
+                        .iter()
+                        .any(|path| matches_extension(path, allowed_exts));
 
                     if !should_process {
                         return;
@@ -515,10 +519,7 @@ mod tests {
 
     #[test]
     fn test_matches_extension() {
-        let exts: HashSet<String> = ["vue", "js", "ts"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let exts: HashSet<String> = ["vue", "js", "ts"].iter().map(|s| s.to_string()).collect();
 
         // 匹配
         assert!(matches_extension(Path::new("test.vue"), &exts));
@@ -640,7 +641,7 @@ mod tests {
         // 初始状态，刚创建就检查，时间间隔为 0，不应该触发
         // 但我们应该模拟“收到事件后等待”的场景
         debounce.update(); // 模拟收到事件
-        
+
         // 立即检查，不应该触发（时间间隔 < 100ms）
         assert!(!debounce.should_fire());
 

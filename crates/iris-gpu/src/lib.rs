@@ -10,8 +10,8 @@ mod batch_renderer;
 mod file_watcher;
 
 pub use batch_renderer::{BatchRenderer, BatchVertex, DrawCommand};
-pub use file_watcher::{deduplicate_changes, FileChange, FileWatcher, WatcherConfig};
 use bytemuck::{Pod, Zeroable};
+pub use file_watcher::{deduplicate_changes, FileChange, FileWatcher, WatcherConfig};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
@@ -118,9 +118,8 @@ impl Renderer {
         // 临时借用创建 surface，随后通过 unsafe 延长生命周期为 'static。
         // 这是安全的，因为 Renderer 拥有 window 的所有权，且 surface 先被 drop。
         let surface = instance.create_surface(&window)?;
-        let surface = unsafe {
-            std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(surface)
-        };
+        let surface =
+            unsafe { std::mem::transmute::<wgpu::Surface<'_>, wgpu::Surface<'static>>(surface) };
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -352,7 +351,7 @@ impl Renderer {
         // 去重：同一文件的多次变更只保留最后一次
         if !changes.is_empty() {
             let deduplicated = file_watcher::deduplicate_changes(changes);
-            
+
             // 打印去重后的事件
             for change in &deduplicated {
                 println!(
@@ -361,7 +360,7 @@ impl Renderer {
                     change.extension().unwrap_or("unknown")
                 );
             }
-            
+
             deduplicated
         } else {
             Vec::new()
@@ -390,11 +389,15 @@ impl Renderer {
     /// 2. 使用批渲染系统绘制多个矩形（单次 draw call）
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Iris Render Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Iris Render Encoder"),
+            });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

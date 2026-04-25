@@ -141,7 +141,7 @@ impl SfcCache {
             enabled = config.enabled,
             "Initializing SFC cache"
         );
-        
+
         // 确保容量至少为 1，避免 panic
         let safe_capacity = config.capacity.max(1);
 
@@ -175,7 +175,12 @@ impl SfcCache {
     /// ## 返回
     ///
     /// 返回编译后的 SFC 模块
-    pub fn get_or_compile<F>(&self, name: &str, source: &str, compile_fn: F) -> Result<SfcModule, String>
+    pub fn get_or_compile<F>(
+        &self,
+        name: &str,
+        source: &str,
+        compile_fn: F,
+    ) -> Result<SfcModule, String>
     where
         F: FnOnce() -> Result<SfcModule, String>,
     {
@@ -209,11 +214,7 @@ impl SfcCache {
         }
 
         // 缓存未命中，执行编译
-        debug!(
-            name = name,
-            hash = key.hash(),
-            "Cache miss, compiling"
-        );
+        debug!(name = name, hash = key.hash(), "Cache miss, compiling");
 
         {
             let mut stats = self.stats.lock().unwrap();
@@ -226,12 +227,12 @@ impl SfcCache {
         // 将结果存入缓存
         {
             let mut cache = self.cache.lock().unwrap();
-            
+
             // 如果缓存已满，记录淘汰信息
             if cache.len() >= self.config.capacity {
                 let mut stats = self.stats.lock().unwrap();
                 stats.evictions += 1;
-                
+
                 if let Some((evicted_key, _)) = cache.peek_lru() {
                     debug!(
                         evicted_hash = evicted_key.hash(),
@@ -249,11 +250,7 @@ impl SfcCache {
             );
         }
 
-        debug!(
-            name = name,
-            hash = key.hash(),
-            "Compiled and cached"
-        );
+        debug!(name = name, hash = key.hash(), "Compiled and cached");
 
         Ok(module)
     }
@@ -262,7 +259,7 @@ impl SfcCache {
     pub fn clear(&self) {
         let mut cache = self.cache.lock().unwrap();
         cache.clear();
-        
+
         debug!("Cache cleared");
     }
 

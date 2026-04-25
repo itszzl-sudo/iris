@@ -8,26 +8,18 @@
 //!
 //! 使用 swc 高层 Compiler API，提供稳定可靠的 TypeScript 编译
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::process::Command;
-use std::fs;
 use std::env;
+use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use swc::{
-    Compiler,
-    config::{Options, Config, JscConfig},
-    try_with_handler,
-    HandlerOpts,
+    config::{Config, JscConfig, Options},
+    try_with_handler, Compiler, HandlerOpts,
 };
-use swc_common::{
-    errors::ColorConfig,
-    FileName,
-    SourceMap,
-    Globals,
-    GLOBALS,
-};
+use swc_common::{errors::ColorConfig, FileName, Globals, SourceMap, GLOBALS};
 use swc_ecma_parser::{Syntax, TsSyntax};
 use tracing::{debug, info, warn};
 
@@ -100,11 +92,11 @@ impl Default for TypeCheckConfig {
         let enabled = env::var("IRIS_TYPE_CHECK")
             .map(|v| v == "true" || v == "1" || v == "yes")
             .unwrap_or(false);
-        
+
         let strict = env::var("IRIS_TYPE_CHECK_STRICT")
             .map(|v| v == "true" || v == "1" || v == "yes")
             .unwrap_or(false);
-        
+
         Self {
             enabled,
             strict,
@@ -140,7 +132,7 @@ impl Drop for TempFileGuard {
 pub struct TsCompiler {
     config: TsCompilerConfig,
     compiler: Arc<Compiler>,
-    compile_count: AtomicUsize,  // 编译计数器，用于定期清理 SourceMap
+    compile_count: AtomicUsize, // 编译计数器，用于定期清理 SourceMap
 }
 
 impl TsCompiler {
@@ -283,21 +275,21 @@ impl TsCompiler {
             ..Default::default()
         }
     }
-    
+
     /// 执行 TypeScript 类型检查
-    /// 
+    ///
     /// # 参数
-    /// 
+    ///
     /// * `source` - TypeScript 源码
     /// * `filename` - 文件名（用于错误报告）
     /// * `config` - 类型检查配置
-    /// 
+    ///
     /// # 返回
-    /// 
+    ///
     /// 类型检查结果
-    /// 
+    ///
     /// # 注意
-    /// 
+    ///
     /// 此函数需要系统安装 `tsc` (TypeScript 编译器)
     /// 如果未安装，将返回 Skipped 并警告
     pub fn type_check(
@@ -310,7 +302,7 @@ impl TsCompiler {
             debug!("Type check disabled, skipping");
             return TypeCheckResult::Skipped;
         }
-        
+
         // 检查 tsc 是否可用
         if !Self::is_tsc_available() {
             warn!(
@@ -319,7 +311,7 @@ impl TsCompiler {
             );
             return TypeCheckResult::Skipped;
         }
-        
+
         // 写入临时文件
         let temp_path = match Self::write_temp_file(source, filename) {
             Ok(path) => path,
@@ -328,14 +320,14 @@ impl TsCompiler {
                 return TypeCheckResult::Skipped;
             }
         };
-        
+
         // 使用守卫确保临时文件始终被清理（RAII 模式）
         let _guard = TempFileGuard(temp_path.clone());
-        
+
         // 运行 tsc
         Self::run_tsc(&temp_path, config)
     }
-    
+
     /// 检查 tsc 是否可用
     fn is_tsc_available() -> bool {
         Command::new(if cfg!(windows) { "tsc.cmd" } else { "tsc" })
@@ -344,50 +336,50 @@ impl TsCompiler {
             .map(|output| output.status.success())
             .unwrap_or(false)
     }
-    
+
     /// 写入临时 TypeScript 文件
     fn write_temp_file(source: &str, _filename: &str) -> Result<PathBuf, String> {
         let temp_dir = env::temp_dir();
-        let temp_path = temp_dir.join(format!("iris_type_check_{}.ts", 
+        let temp_path = temp_dir.join(format!(
+            "iris_type_check_{}.ts",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis()
         ));
-        
-        fs::write(&temp_path, source)
-            .map_err(|e| format!("Failed to write temp file: {}", e))?;
-        
+
+        fs::write(&temp_path, source).map_err(|e| format!("Failed to write temp file: {}", e))?;
+
         debug!(
             path = ?temp_path,
             size = source.len(),
             "Temp file created for type check"
         );
-        
+
         Ok(temp_path)
     }
-    
+
     /// 运行 tsc 进行类型检查
     fn run_tsc(file_path: &PathBuf, config: &TypeCheckConfig) -> TypeCheckResult {
         let tsc_cmd = if cfg!(windows) { "tsc.cmd" } else { "tsc" };
-        
+
         let mut cmd = Command::new(tsc_cmd);
-        cmd.arg("--noEmit")  // 只检查，不生成文件
+        cmd.arg("--noEmit") // 只检查，不生成文件
             .arg("--pretty")
             .arg("--noEmitOnError");
-        
+
         if config.strict {
             cmd.arg("--strict");
         }
-        
+
         if let Some(ts_config) = &config.ts_config_path {
             cmd.arg("--project").arg(ts_config);
         }
-        
+
         cmd.arg(file_path);
-        
+
         debug!(cmd = ?cmd, "Running tsc for type check");
-        
+
         match cmd.output() {
             Ok(output) => {
                 if output.status.success() {
@@ -398,14 +390,11 @@ impl TsCompiler {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let error_output = if !stderr.is_empty() { stderr } else { stdout };
-                    
+
                     let errors = Self::parse_tsc_errors(&error_output);
-                    
-                    warn!(
-                        error_count = errors.len(),
-                        "Type check failed"
-                    );
-                    
+
+                    warn!(error_count = errors.len(), "Type check failed");
+
                     TypeCheckResult::Errors { errors }
                 }
             }
@@ -415,29 +404,29 @@ impl TsCompiler {
             }
         }
     }
-    
+
     /// 解析 tsc 错误信息
     fn parse_tsc_errors(output: &str) -> Vec<String> {
         let mut errors = Vec::new();
-        
+
         // 简单解析：按行分割，提取错误信息
         for line in output.lines() {
             // 跳过空行和提示行
             if line.trim().is_empty() || line.starts_with("Found") {
                 continue;
             }
-            
+
             // 保留所有非空行作为错误信息
             if !line.trim().is_empty() {
                 errors.push(line.trim().to_string());
             }
         }
-        
+
         // 如果没有解析到错误，保留原始输出
         if errors.is_empty() && !output.trim().is_empty() {
             errors.push(output.trim().to_string());
         }
-        
+
         errors
     }
 }
@@ -481,7 +470,7 @@ mod tests {
         assert!(result.code.contains("const count = 42"));
         assert!(!result.code.contains(": number"));
         assert!(!result.code.contains(": string"));
-        
+
         // 验证函数保留
         assert!(result.code.contains("function greet"));
         assert!(result.code.contains("user.name"));
@@ -508,10 +497,10 @@ mod tests {
 
         // interface 应该被移除
         assert!(!result.code.contains("interface"));
-        
+
         // 泛型应该被移除
         assert!(!result.code.contains("<T>"));
-        
+
         // 代码应该可执行
         assert!(result.code.contains("const user ="));
         assert!(result.code.contains("identity(user)"));
@@ -564,7 +553,7 @@ mod tests {
         "#;
 
         let compiler = TsCompiler::new(TsCompilerConfig::default());
-        
+
         // 编译 50 次测试性能
         let start = std::time::Instant::now();
         for _ in 0..50 {
@@ -574,7 +563,7 @@ mod tests {
         let avg_time = elapsed.as_millis() as f64 / 50.0;
 
         println!("Average compile time: {:.2} ms", avg_time);
-        
+
         // 平均编译时间应该小于 20ms（完整的 swc 编译）
         assert!(avg_time < 20.0, "Compile time too slow: {:.2} ms", avg_time);
     }
@@ -668,38 +657,41 @@ mod tests {
     fn test_multiple_compilations() {
         // 测试编译器实例复用和 SourceMap 管理
         let compiler = TsCompiler::new(TsCompilerConfig::default());
-        
+
         for i in 0..10 {
-            let ts = format!(r#"
+            let ts = format!(
+                r#"
                 const value{}: number = {};
                 function test{}(): number {{
                     return value{};
                 }}
-            "#, i, i, i, i);
-            
+            "#,
+                i, i, i, i
+            );
+
             let result = compiler.compile(&ts, &format!("test{}.ts", i));
             assert!(result.is_ok(), "Compilation {} should succeed", i);
         }
     }
-    
+
     #[test]
     fn test_type_check_disabled_by_default() {
         // 测试默认情况下类型检查是禁用的
         let compiler = TsCompiler::new(TsCompilerConfig::default());
         let config = TypeCheckConfig::default();
-        
+
         // 默认应该禁用类型检查（除非设置了环境变量）
         let result = compiler.type_check("const x: number = 1;", "test.ts", &config);
-        
+
         // 应该返回 Skipped（因为默认禁用或 tsc 未安装）
         assert!(matches!(result, TypeCheckResult::Skipped));
     }
-    
+
     #[test]
     fn test_type_check_config_from_env() {
         // 测试配置从环境变量读取
         let config = TypeCheckConfig::default();
-        
+
         // 验证配置结构
         assert!(config.ts_config_path.is_none());
     }

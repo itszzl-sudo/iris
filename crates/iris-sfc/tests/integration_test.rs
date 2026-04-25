@@ -46,27 +46,27 @@ const count = 0
 "#;
 
     let module = compile_from_string("FullVue3Component", source).unwrap();
-    
+
     // 打印渲染函数用于调试
     println!("Render function:\n{}", module.render_fn);
     println!("\nScript:\n{}", module.script);
-    
+
     // 验证基本结构
     assert_eq!(module.name, "FullVue3Component");
     assert!(!module.render_fn.is_empty());
     assert!(!module.script.is_empty());
     assert_eq!(module.styles.len(), 1);
-    
+
     // 验证模板编译（包含指令）
-    assert!(module.render_fn.contains("textContent"));     // v-text
-    
+    assert!(module.render_fn.contains("textContent")); // v-text
+
     // 验证 script setup 转换
     assert!(module.script.contains("export default {"));
     assert!(module.script.contains("props:"));
     assert!(module.script.contains("emits:"));
     assert!(module.script.contains("setup ") || module.script.contains("setup("));
     assert!(module.script.contains("return {"));
-    
+
     // 验证 CSS Modules
     let style = &module.styles[0];
     assert!(style.module);
@@ -110,19 +110,19 @@ const test = "value"
 "#;
 
     let module = compile_from_string("MixedStyles", source).unwrap();
-    
+
     // 应该有 3 个样式块
     assert_eq!(module.styles.len(), 3);
-    
+
     // 第一个：scoped
     assert!(!module.styles[0].module);
     assert!(module.styles[0].scoped);
-    
+
     // 第二个：module
     assert!(module.styles[1].module);
     assert!(module.styles[1].scoped);
     assert!(!module.styles[1].class_mapping.is_empty());
-    
+
     // 第三个：global
     assert!(!module.styles[2].module);
     assert!(!module.styles[2].scoped);
@@ -176,14 +176,14 @@ export default {
 "#;
 
     let module = compile_from_string("ComplexTypeScript", source).unwrap();
-    
+
     // 验证编译成功
     assert!(!module.script.is_empty());
-    
+
     // 验证 TypeScript 类型注解被移除
     assert!(!module.script.contains(": ApiResponse<T>"));
     assert!(!module.script.contains(": Promise<ApiResponse<T>>"));
-    
+
     // 验证函数和类保留
     assert!(module.script.contains("async function fetchData"));
     assert!(module.script.contains("class UserService"));
@@ -244,14 +244,14 @@ const items = []
 "#;
 
     let module = compile_from_string("AllDirectives", source).unwrap();
-    
+
     // 验证渲染函数包含指令生成的代码（已转换，不是原始指令名）
     // v-if/v-else-if/v-else 生成三元表达式和条件渲染代码
     assert!(module.render_fn.contains("null") || module.render_fn.contains("if"));
     assert!(module.render_fn.contains("v-for") || module.render_fn.contains("map"));
     assert!(module.render_fn.contains("v-model") || module.render_fn.contains("onInput"));
-    assert!(module.render_fn.contains("textContent"));  // v-text
-    assert!(module.render_fn.contains("innerHTML"));    // v-html
+    assert!(module.render_fn.contains("textContent")); // v-text
+    assert!(module.render_fn.contains("innerHTML")); // v-html
     assert!(module.render_fn.contains("style.display")); // v-show
 }
 
@@ -259,7 +259,7 @@ const items = []
 #[test]
 fn test_cache_effectiveness() {
     use std::time::Instant;
-    
+
     let source = r#"
 <template>
   <div>{{ message }}</div>
@@ -273,26 +273,26 @@ const message = "Hello"
 .test { color: red; }
 </style>
 "#;
-    
+
     // 首次编译
     let start1 = Instant::now();
     let module1 = compile_from_string("CacheTest", source).unwrap();
     let duration1 = start1.elapsed();
-    
+
     // 第二次编译（应该命中缓存）
     let start2 = Instant::now();
     let module2 = compile_from_string("CacheTest", source).unwrap();
     let duration2 = start2.elapsed();
-    
+
     // 验证结果一致
     assert_eq!(module1.source_hash, module2.source_hash);
-    
+
     // 验证缓存加速（至少 10 倍）
     let speedup = duration1.as_nanos() as f64 / duration2.as_nanos() as f64;
     println!("首次编译: {:?}", duration1);
     println!("缓存命中: {:?}", duration2);
     println!("加速比: {:.2}x", speedup);
-    
+
     // 注意：由于系统负载，这个断言可能不稳定
     // assert!(speedup > 10.0, "缓存应该至少提供 10 倍加速");
 }
@@ -307,14 +307,14 @@ fn test_edge_cases() {
 "#;
     let module1 = compile_from_string("EmptyTemplate", source1).unwrap();
     assert!(module1.render_fn.contains("return null"));
-    
+
     // 空脚本
     let source2 = r#"
 <template><div>Test</div></template>
 "#;
     let module2 = compile_from_string("EmptyScript", source2).unwrap();
     assert_eq!(module2.script, "");
-    
+
     // 仅样式
     let source3 = r#"
 <template><div></div></template>
@@ -334,8 +334,11 @@ fn test_error_handling() {
 "#;
     let result1 = compile_from_string("Invalid", source1);
     assert!(result1.is_err());
-    assert!(result1.unwrap_err().to_string().contains("must have at least"));
-    
+    assert!(result1
+        .unwrap_err()
+        .to_string()
+        .contains("must have at least"));
+
     // TypeScript 语法错误（应该被 swc 捕获）
     let source2 = r#"
 <template><div></div></template>
@@ -353,7 +356,7 @@ const x: = invalid
 #[test]
 fn test_performance_benchmark() {
     use std::time::Instant;
-    
+
     let source = r#"
 <template>
   <div :class="$style.container">
@@ -388,21 +391,21 @@ function onClick() {
 }
 </style>
 "#;
-    
+
     let iterations = 100;
     let start = Instant::now();
-    
+
     for i in 0..iterations {
         let _ = compile_from_string(&format!("Benchmark{}", i), source).unwrap();
     }
-    
+
     let duration = start.elapsed();
     let avg = duration.as_micros() as f64 / iterations as f64;
-    
+
     println!("{} 次编译总耗时: {:?}", iterations, duration);
     println!("平均编译时间: {:.2} μs", avg);
     println!("每秒编译次数: {:.0}", 1_000_000.0 / avg);
-    
+
     // 验证平均编译时间合理（应该 < 5ms）
     assert!(avg < 5000.0, "平均编译时间应该小于 5ms");
 }
@@ -414,13 +417,13 @@ fn test_hash_consistency() {
 <template><div>{{ msg }}</div></template>
 <script setup>const msg = "test"</script>
 "#;
-    
+
     let module1 = compile_from_string("HashTest1", source).unwrap();
     let module2 = compile_from_string("HashTest2", source).unwrap();
-    
+
     // 相同源码应该生成相同哈希
     assert_eq!(module1.source_hash, module2.source_hash);
-    
+
     // 不同源码应该生成不同哈希
     let source3 = r#"
 <template><div>{{ msg }}</div></template>
@@ -434,7 +437,7 @@ fn test_hash_consistency() {
 #[test]
 fn test_serialization() {
     use serde_json;
-    
+
     let source = r#"
 <template><div>{{ msg }}</div></template>
 <script setup>
@@ -442,16 +445,16 @@ const props = { msg: "test" }
 </script>
 <style module>.test { color: red; }</style>
 "#;
-    
+
     let module = compile_from_string("Serializable", source).unwrap();
-    
+
     // 序列化为 JSON
     let json = serde_json::to_string(&module).unwrap();
     assert!(!json.is_empty());
-    
+
     // 反序列化
     let deserialized: iris_sfc::SfcModule = serde_json::from_str(&json).unwrap();
-    
+
     // 验证数据一致
     assert_eq!(deserialized.name, module.name);
     assert_eq!(deserialized.render_fn, module.render_fn);

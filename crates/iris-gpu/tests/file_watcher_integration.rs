@@ -28,12 +28,12 @@ impl TempDir {
 
     fn create_file(&self, name: &str, content: &str) -> PathBuf {
         let file_path = self.path.join(name);
-        
+
         // 创建子目录（如果存在）
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent).expect("Failed to create parent dirs");
         }
-        
+
         fs::write(&file_path, content).expect("Failed to write file");
         file_path
     }
@@ -148,14 +148,17 @@ fn test_event_deduplication() {
 /// 测试：扩展名过滤应该不区分大小写
 #[test]
 fn test_case_insensitive_extension_filter() {
-    let config = WatcherConfig::new("/tmp")
-        .extensions(vec!["vue".to_string(), "js".to_string()]);
+    let config = WatcherConfig::new("/tmp").extensions(vec!["vue".to_string(), "js".to_string()]);
 
     if let Some(exts) = &config.extensions {
         // Vue 文件（各种大小写）
         assert!(exts.iter().any(|e| e.to_lowercase() == "vue"));
-        assert!(exts.iter().any(|e| e.to_lowercase() == "Vue".to_lowercase()));
-        assert!(exts.iter().any(|e| e.to_lowercase() == "VUE".to_lowercase()));
+        assert!(exts
+            .iter()
+            .any(|e| e.to_lowercase() == "Vue".to_lowercase()));
+        assert!(exts
+            .iter()
+            .any(|e| e.to_lowercase() == "VUE".to_lowercase()));
 
         // JS 文件
         assert!(exts.iter().any(|e| e.to_lowercase() == "js"));
@@ -165,8 +168,7 @@ fn test_case_insensitive_extension_filter() {
 /// 测试：防抖延迟配置
 #[test]
 fn test_debounce_delay_config() {
-    let config = WatcherConfig::new("/tmp")
-        .debounce_delay(Duration::from_millis(300));
+    let config = WatcherConfig::new("/tmp").debounce_delay(Duration::from_millis(300));
 
     assert_eq!(config.debounce_delay, Duration::from_millis(300));
 }
@@ -297,9 +299,7 @@ fn test_invalid_path_handling() {
         let invalid_bytes = b"\xff\xfe";
         let invalid_path = PathBuf::from(OsStr::from_bytes(invalid_bytes));
 
-        let change = FileChange::Modified {
-            path: invalid_path,
-        };
+        let change = FileChange::Modified { path: invalid_path };
 
         // 应该能获取路径，但扩展名可能为 None
         assert!(change.path().exists() || !change.path().exists());

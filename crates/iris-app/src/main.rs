@@ -68,9 +68,7 @@ impl SfcModuleCache {
     fn get_file_info(path: &Path) -> (SystemTime, u64) {
         match std::fs::metadata(path) {
             Ok(metadata) => {
-                let modified = metadata
-                    .modified()
-                    .unwrap_or(SystemTime::UNIX_EPOCH);
+                let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
                 let size = metadata.len();
                 (modified, size)
             }
@@ -270,7 +268,7 @@ impl IrisApp {
                 FileChange::Renamed { from, to } => {
                     let from_normalized = normalize_path(&from);
                     let to_normalized = normalize_path(&to);
-                    
+
                     if self.sfc_cache.contains_key(&from_normalized) {
                         info!(from = ?from, to = ?to, "Vue file renamed");
                         if let Some(mut module) = self.sfc_cache.remove(&from_normalized) {
@@ -312,11 +310,11 @@ impl IrisApp {
                     style_count = module.styles.len(),
                     "SFC compiled successfully"
                 );
-                
+
                 // 创建缓存
                 let cache = SfcModuleCache::new(path.clone());
                 self.sfc_cache.insert(path.clone(), cache);
-                
+
                 // TODO: 更新 GPU 资源
                 // self.update_gpu_resources(&module);
             }
@@ -351,7 +349,7 @@ impl IrisApp {
             let time_diff = modified
                 .duration_since(cache.last_modified)
                 .unwrap_or_default();
-            
+
             if time_diff <= MIN_MODIFY_THRESHOLD && size == cache.cached_size {
                 debug!(path = ?path, "File not actually modified, skipping");
                 return;
@@ -369,7 +367,7 @@ impl IrisApp {
                     name = %module.name,
                     "SFC hot reloaded successfully"
                 );
-                
+
                 // 更新缓存信息
                 if let Some(cache) = self.sfc_cache.get_mut(path) {
                     let (modified, size) = SfcModuleCache::get_file_info(path);
@@ -377,13 +375,13 @@ impl IrisApp {
                     cache.cached_size = size;
                     cache.state = SfcModuleState::Compiled;
                 }
-                
+
                 // TODO: 增量更新 GPU 资源
                 // self.patch_gpu_resources(&module);
             }
             Err(e) => {
                 error!(path = ?path, error = %e, "Failed to hot reload SFC");
-                
+
                 // 回滚到旧状态（如果有）
                 if let Some(old) = old_cache {
                     warn!(path = ?path, "Restoring previous version after failed hot reload");
@@ -416,10 +414,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
-        .with_target(true)  // 显示模块路径
-        .with_thread_ids(false)  // 隐藏线程 ID（更简洁）
-        .with_file(false)  // 隐藏文件名（生产环境）
-        .with_line_number(false)  // 隐藏行号
+        .with_target(true) // 显示模块路径
+        .with_thread_ids(false) // 隐藏线程 ID（更简洁）
+        .with_file(false) // 隐藏文件名（生产环境）
+        .with_line_number(false) // 隐藏行号
         .init();
 
     info!("╔══════════════════════════════════════════╗");

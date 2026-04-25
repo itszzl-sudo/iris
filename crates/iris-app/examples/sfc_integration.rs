@@ -1,5 +1,5 @@
 //! Iris SFC 与 iris-app 集成示例
-//! 
+//!
 //! 演示如何在 Iris 应用中使用 SFC 编译器
 
 use iris_sfc::{compile_from_string, SfcModule};
@@ -7,7 +7,7 @@ use iris_sfc::{compile_from_string, SfcModule};
 fn main() {
     println!("🚀 Iris SFC Integration Example");
     println!("================================\n");
-    
+
     // 示例 1: 完整功能组件
     println!("📦 Compiling Full Featured Component...");
     let full = create_full_featured_component();
@@ -22,7 +22,7 @@ fn main() {
         println!("   - Class mappings: {}", style.class_mapping.len());
     }
     println!();
-    
+
     // 示例 2: 计数器组件
     println!("📦 Compiling Counter Component...");
     let counter = create_counter_component();
@@ -30,15 +30,18 @@ fn main() {
     println!("✅ Render function: {} bytes", counter.render_fn.len());
     println!("✅ Styles: {} blocks", counter.styles.len());
     println!();
-    
+
     // 示例 3: TypeScript 组件
     println!("📦 Compiling TypeScript Component...");
     let ts = create_typescript_component();
     println!("✅ Name: {}", ts.name);
     println!("✅ Script compiled: {} bytes", ts.script.len());
-    println!("✅ Type annotations removed: {}", !ts.script.contains(": User"));
+    println!(
+        "✅ Type annotations removed: {}",
+        !ts.script.contains(": User")
+    );
     println!();
-    
+
     println!("✨ All components compiled successfully!");
 }
 
@@ -104,8 +107,7 @@ function increment() {
 </style>
 "#;
 
-    compile_from_string("FullFeaturedComponent", vue_source)
-        .expect("Failed to compile component")
+    compile_from_string("FullFeaturedComponent", vue_source).expect("Failed to compile component")
 }
 
 /// 示例：简单的计数器组件
@@ -144,8 +146,7 @@ button {
 </style>
 "#;
 
-    compile_from_string("CounterComponent", vue_source)
-        .expect("Failed to compile counter")
+    compile_from_string("CounterComponent", vue_source).expect("Failed to compile counter")
 }
 
 /// 示例：TypeScript 组件
@@ -196,12 +197,12 @@ mod tests {
     #[test]
     fn test_full_featured_component() {
         let module = create_full_featured_component();
-        
+
         assert_eq!(module.name, "FullFeaturedComponent");
         assert!(!module.render_fn.is_empty());
         assert!(!module.script.is_empty());
         assert_eq!(module.styles.len(), 1);
-        
+
         // 验证 CSS Modules
         let style = &module.styles[0];
         assert!(style.module);
@@ -212,12 +213,12 @@ mod tests {
     #[test]
     fn test_counter_component() {
         let module = create_counter_component();
-        
+
         assert_eq!(module.name, "CounterComponent");
         assert!(!module.render_fn.is_empty());
         assert!(!module.script.is_empty());
         assert_eq!(module.styles.len(), 1);
-        
+
         // 验证 scoped 样式
         let style = &module.styles[0];
         assert!(style.scoped);
@@ -227,11 +228,11 @@ mod tests {
     #[test]
     fn test_typescript_component() {
         let module = create_typescript_component();
-        
+
         assert_eq!(module.name, "TypeScriptComponent");
         assert!(!module.render_fn.is_empty());
         assert!(!module.script.is_empty());
-        
+
         // 验证 TypeScript 被编译
         // 类型注解应该被移除
         assert!(!module.script.contains(": User"));
@@ -241,14 +242,14 @@ mod tests {
     #[test]
     fn test_component_serialization() {
         let module = create_full_featured_component();
-        
+
         // 序列化为 JSON（使用有 CSS Modules 的组件）
         let json = serde_json::to_string(&module).unwrap();
         assert!(!json.is_empty());
-        
+
         // 反序列化
         let deserialized: SfcModule = serde_json::from_str(&json).unwrap();
-        
+
         // 验证数据一致
         assert_eq!(deserialized.name, module.name);
         assert_eq!(deserialized.render_fn, module.render_fn);

@@ -9,10 +9,10 @@
 #![warn(missing_docs)]
 
 mod cache;
-mod template_compiler;
-mod ts_compiler;
 mod css_modules;
 mod script_setup;
+mod template_compiler;
+mod ts_compiler;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -27,13 +27,11 @@ pub use cache::*;
 /// - 每次编译：~10-50μs
 /// - LazyLock 单次编译：~0.1μs
 /// - 性能提升：100-500 倍
-static TEMPLATE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?s)<template\b[^>]*>(.*?)</\s*template\s*>"#).unwrap()
-});
+static TEMPLATE_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"(?s)<template\b[^>]*>(.*?)</\s*template\s*>"#).unwrap());
 
-static SCRIPT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?s)<script\b([^>]*)>(.*?)</\s*script\s*>"#).unwrap()
-});
+static SCRIPT_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"(?s)<script\b([^>]*)>(.*?)</\s*script\s*>"#).unwrap());
 
 /// 全局 TypeScript 编译器实例（复用，避免重复创建）
 ///
@@ -46,8 +44,8 @@ static TS_COMPILER: LazyLock<ts_compiler::TsCompiler> = LazyLock::new(|| {
     // 从环境变量读取 Source Map 配置
     let enable_source_map = std::env::var("IRIS_SOURCE_MAP")
         .map(|v| v == "true" || v == "1" || v == "yes")
-        .unwrap_or(false);  // 默认禁用
-    
+        .unwrap_or(false); // 默认禁用
+
     ts_compiler::TsCompiler::new(ts_compiler::TsCompilerConfig {
         source_map: enable_source_map,
         ..Default::default()
@@ -66,21 +64,17 @@ static SFC_CACHE: LazyLock<SfcCache> = LazyLock::new(|| {
     let capacity = std::env::var("IRIS_CACHE_CAPACITY")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(100);  // 默认 100 项
-    
+        .unwrap_or(100); // 默认 100 项
+
     let enabled = std::env::var("IRIS_CACHE_ENABLED")
         .map(|v| v != "false" && v != "0" && v != "no")
-        .unwrap_or(true);  // 默认启用
-    
-    SfcCache::new(SfcCacheConfig {
-        capacity,
-        enabled,
-    })
+        .unwrap_or(true); // 默认启用
+
+    SfcCache::new(SfcCacheConfig { capacity, enabled })
 });
 
-static STYLE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(?s)<style\b([^>]*)>(.*?)</\s*style\s*>"#).unwrap()
-});
+static STYLE_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#"(?s)<style\b([^>]*)>(.*?)</\s*style\s*>"#).unwrap());
 
 /// Vue SFC 编译结果。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -208,7 +202,7 @@ impl SfcError {
             SfcError::ScriptError { .. } => ErrorSeverity::Fatal,
         }
     }
-    
+
     /// 获取文件名
     pub fn file(&self) -> &str {
         match self {
@@ -218,39 +212,42 @@ impl SfcError {
             SfcError::ScriptError { file, .. } => file,
         }
     }
-    
+
     /// 格式化为人类可读的错误信息（带颜色支持）
     pub fn format_pretty(&self, use_color: bool) -> String {
         let reset = if use_color { "\x1b[0m" } else { "" };
         let red = if use_color { "\x1b[31m" } else { "" };
         let yellow = if use_color { "\x1b[33m" } else { "" };
         let cyan = if use_color { "\x1b[36m" } else { "" };
-        
+
         format!(
             "{}error{}: {}\n{}help{}: {}",
-            red, reset,
+            red,
+            reset,
             self,
-            cyan, reset,
+            cyan,
+            reset,
             self.help_message()
         )
     }
-    
+
     /// 获取帮助信息
     fn help_message(&self) -> String {
         match self {
-            SfcError::IoError { source, file } => {
-                match source.kind() {
-                    std::io::ErrorKind::NotFound => {
-                        format!("File '{}' not found. Check the file path.", file)
-                    }
-                    std::io::ErrorKind::PermissionDenied => {
-                        format!("Permission denied when reading '{}'. Check file permissions.", file)
-                    }
-                    _ => {
-                        format!("IO error occurred while reading '{}': {}", file, source)
-                    }
+            SfcError::IoError { source, file } => match source.kind() {
+                std::io::ErrorKind::NotFound => {
+                    format!("File '{}' not found. Check the file path.", file)
                 }
-            }
+                std::io::ErrorKind::PermissionDenied => {
+                    format!(
+                        "Permission denied when reading '{}'. Check file permissions.",
+                        file
+                    )
+                }
+                _ => {
+                    format!("IO error occurred while reading '{}': {}", file, source)
+                }
+            },
             SfcError::ParseError { message, .. } => {
                 if message.contains("must have at least") {
                     "A .vue file must contain either a <template> or <script> tag.".to_string()
@@ -326,18 +323,20 @@ pub fn compile<P: AsRef<Path>>(path: P) -> Result<SfcModule, SfcError> {
 
     // 使用缓存编译（自动处理缓存命中/未命中）
     let start_time = std::time::Instant::now();
-    let module = SFC_CACHE.get_or_compile(&name, &source, || {
-        // 实际编译逻辑（仅在缓存未命中时执行）
-        compile_sfc_internal(&name, &source, &file_name)
-    }).map_err(|e| SfcError::ScriptError {
-        message: e,
-        file: file_name.clone(),
-        line: 1,
-        column: 1,
-    })?;
-    
+    let module = SFC_CACHE
+        .get_or_compile(&name, &source, || {
+            // 实际编译逻辑（仅在缓存未命中时执行）
+            compile_sfc_internal(&name, &source, &file_name)
+        })
+        .map_err(|e| SfcError::ScriptError {
+            message: e,
+            file: file_name.clone(),
+            line: 1,
+            column: 1,
+        })?;
+
     let compile_time = start_time.elapsed();
-    
+
     // 记录编译时间日志
     debug!(
         name = %name,
@@ -368,22 +367,22 @@ fn compile_sfc_internal(name: &str, source: &str, file_name: &str) -> Result<Sfc
 
     let render_fn = compile_template(file_name, descriptor.template.as_deref().unwrap_or(""))
         .map_err(|e| format!("Template compile error: {}", e))?;
-    
+
     let script = if let Some(script_source) = &descriptor.script {
         compile_script(file_name, script_source, &descriptor.script_attrs)
             .map_err(|e| format!("Script compile error: {}", e))?
     } else {
         String::new()
     };
-    
+
     // 类型检查（如果启用）
     // 注意：对转换后的脚本进行类型检查（包含宏展开）
     if let Some(script_source) = &descriptor.script {
         let type_check_config = ts_compiler::TypeCheckConfig::default();
-        
+
         if type_check_config.enabled {
             debug!("Running type check...");
-            
+
             // 使用转换后的脚本进行类型检查
             let script_for_check = if descriptor.script_attrs.setup {
                 // 如果是 script setup，使用转换后的脚本
@@ -391,16 +390,13 @@ fn compile_sfc_internal(name: &str, source: &str, file_name: &str) -> Result<Sfc
             } else {
                 script_source.clone()
             };
-            
+
             match (&*TS_COMPILER).type_check(&script_for_check, file_name, &type_check_config) {
                 ts_compiler::TypeCheckResult::Success => {
                     debug!("Type check passed");
                 }
                 ts_compiler::TypeCheckResult::Errors { errors } => {
-                    warn!(
-                        error_count = errors.len(),
-                        "Type check failed (non-fatal)"
-                    );
+                    warn!(error_count = errors.len(), "Type check failed (non-fatal)");
                     // 注意：类型检查失败不阻断编译，仅警告
                     // 如果需要阻断，可以返回错误：
                     // return Err(format!("Type check failed:\n{}", errors.join("\n")));
@@ -411,7 +407,7 @@ fn compile_sfc_internal(name: &str, source: &str, file_name: &str) -> Result<Sfc
             }
         }
     }
-    
+
     let styles = compile_styles(&descriptor.styles);
 
     debug!(
@@ -492,7 +488,7 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
         lang: "javascript".to_string(),
         setup: false,
     };
-    
+
     if let Some(caps) = SCRIPT_RE.captures(source) {
         if let Some(attrs_match) = caps.get(1) {
             script_attrs = script_setup::parse_script_attrs(attrs_match.as_str());
@@ -585,17 +581,19 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
         return Ok("function render() { return null; }".to_string());
     }
 
-    info!(file = file_name, "Compiling Vue template with full compiler");
+    info!(
+        file = file_name,
+        "Compiling Vue template with full compiler"
+    );
 
     // 步骤 1: 解析 HTML 为 AST
-    let vnodes = template_compiler::parse_template(template).map_err(|e| {
-        SfcError::TemplateError {
+    let vnodes =
+        template_compiler::parse_template(template).map_err(|e| SfcError::TemplateError {
             message: format!("Failed to parse template: {}", e),
             file: file_name.to_string(),
             line: 1,
             column: 1,
-        }
-    })?;
+        })?;
 
     // 步骤 2: 生成渲染函数
     let render_fn = template_compiler::generate_render_fn(&vnodes);
@@ -625,37 +623,43 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
 /// # 返回
 ///
 /// 返回转译后的 JavaScript 代码。
-fn compile_script(file_name: &str, script: &str, attrs: &script_setup::ScriptAttrs) -> Result<String, SfcError> {
+fn compile_script(
+    file_name: &str,
+    script: &str,
+    attrs: &script_setup::ScriptAttrs,
+) -> Result<String, SfcError> {
     if script.is_empty() {
         return Ok("export default {}".to_string());
     }
 
-    info!(file = file_name, setup = attrs.setup, "Compiling script with swc TypeScript compiler");
+    info!(
+        file = file_name,
+        setup = attrs.setup,
+        "Compiling script with swc TypeScript compiler"
+    );
 
     // 1. 如果是 <script setup>，先转换编译器宏
     let processed_script = if attrs.setup {
         debug!("Transforming <script setup> and compiler macros");
-        script_setup::transform_script_setup(script).map_err(|e| {
-            SfcError::ScriptError {
-                message: format!("Script setup transformation failed: {}", e),
-                file: file_name.to_string(),
-                line: 1,
-                column: 1,
-            }
+        script_setup::transform_script_setup(script).map_err(|e| SfcError::ScriptError {
+            message: format!("Script setup transformation failed: {}", e),
+            file: file_name.to_string(),
+            line: 1,
+            column: 1,
         })?
     } else {
         script.to_string()
     };
 
     // 2. 使用全局编译器实例编译 TypeScript
-    let result = TS_COMPILER.compile(&processed_script, file_name).map_err(|e| {
-        SfcError::ScriptError {
+    let result = TS_COMPILER
+        .compile(&processed_script, file_name)
+        .map_err(|e| SfcError::ScriptError {
             message: format!("TypeScript compilation failed: {}", e),
             file: file_name.to_string(),
             line: 1,
             column: 1,
-        }
-    })?;
+        })?;
 
     debug!(
         file = file_name,
@@ -677,13 +681,13 @@ fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
                 let hash = css_modules::generate_short_hash(&style.content);
                 let scoped_css = css_modules::transform_css(&style.content, &hash);
                 let class_mapping = css_modules::generate_mapping(&style.content, &hash);
-                
+
                 debug!(
                     hash = %hash,
                     class_count = class_mapping.len(),
                     "CSS Modules compiled"
                 );
-                
+
                 StyleBlock {
                     css: scoped_css,
                     scoped: true, // CSS Modules 自动 scoped
@@ -787,7 +791,7 @@ function add(a: number, b: number): number {
         use crate::ts_compiler::{TsCompiler, TsCompilerConfig};
         let compiler = TsCompiler::new(TsCompilerConfig::default());
         let result = compiler.compile(ts, "test.ts").unwrap();
-        
+
         assert!(!result.code.contains(": number"));
         assert!(!result.code.contains(": string"));
         assert!(result.code.contains("function add(a, b)"));
@@ -863,16 +867,25 @@ export default {
         let module = compile_from_string("TestComponent", source).unwrap();
         assert_eq!(module.name, "TestComponent");
         assert_eq!(module.styles.len(), 1);
-        
+
         let style = &module.styles[0];
         assert!(style.module, "Style should be a CSS Module");
         assert!(style.scoped, "CSS Module should be automatically scoped");
         assert!(!style.class_mapping.is_empty(), "Should have class mapping");
-        
+
         // 验证类名被作用域化
-        assert!(style.css.contains("__"), "CSS should contain scoped class names");
-        assert!(style.class_mapping.contains_key("container"), "Should map 'container' class");
-        assert!(style.class_mapping.contains_key("button"), "Should map 'button' class");
+        assert!(
+            style.css.contains("__"),
+            "CSS should contain scoped class names"
+        );
+        assert!(
+            style.class_mapping.contains_key("container"),
+            "Should map 'container' class"
+        );
+        assert!(
+            style.class_mapping.contains_key("button"),
+            "Should map 'button' class"
+        );
     }
 
     #[test]
@@ -895,11 +908,11 @@ export default {
 
         let module = compile_from_string("TestComponent", source).unwrap();
         assert_eq!(module.styles.len(), 2);
-        
+
         // 第一个样式：普通 scoped
         assert!(!module.styles[0].module);
         assert!(module.styles[0].scoped);
-        
+
         // 第二个样式：CSS Module
         assert!(module.styles[1].module);
         assert!(module.styles[1].scoped);

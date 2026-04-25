@@ -123,7 +123,8 @@ pub fn run_app<A: Application>(app: A) -> Result<(), Box<dyn std::error::Error>>
             window_id: winit::window::WindowId,
             event: WindowEvent,
         ) {
-            self.app.window_event(&self.ctx, event_loop, window_id, event);
+            self.app
+                .window_event(&self.ctx, event_loop, window_id, event);
         }
 
         fn device_event(
@@ -132,7 +133,8 @@ pub fn run_app<A: Application>(app: A) -> Result<(), Box<dyn std::error::Error>>
             device_id: winit::event::DeviceId,
             event: DeviceEvent,
         ) {
-            self.app.device_event(&self.ctx, event_loop, device_id, event);
+            self.app
+                .device_event(&self.ctx, event_loop, device_id, event);
         }
 
         fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

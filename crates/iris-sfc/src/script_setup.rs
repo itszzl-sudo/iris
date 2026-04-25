@@ -12,19 +12,19 @@
 //! ```vue
 //! <script setup lang="ts">
 //! import { ref } from 'vue'
-//! 
+//!
 //! const props = defineProps<{
 //!   title: string
 //!   count?: number
 //! }>()
-//! 
+//!
 //! const emit = defineEmits<{
 //!   change: [value: number]
 //!   update: []
 //! }>()
-//! 
+//!
 //! const count = ref(0)
-//! 
+//!
 //! function increment() {
 //!   count.value++
 //!   emit('change', count.value)
@@ -35,7 +35,7 @@
 //! **输出** (标准组件):
 //! ```javascript
 //! import { ref } from 'vue'
-//! 
+//!
 //! export default {
 //!   props: {
 //!     title: { type: String, required: true },
@@ -82,44 +82,45 @@ pub struct MacroResult {
 }
 
 /// Props 解析器：TypeScript 接口 -> 运行时 props
-static PROPS_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"defineProps<\{([^}]+)\}>\(\)"#).unwrap()
-});
+static PROPS_TYPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"defineProps<\{([^}]+)\}>\(\)"#).unwrap());
 
 /// Props 数组形式：defineProps(['prop1', 'prop2'])
 static PROPS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps\(\[([^\]]+)\]\)\s*;?\s*$"#).unwrap()
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps\(\[([^\]]+)\]\)\s*;?\s*$"#)
+        .unwrap()
 });
 
 /// Props 泛型形式（包含变量声明）
 static PROPS_TYPE_FULL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps<\{([^}]+)\}>\(\)\s*;?\s*$"#).unwrap()
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps<\{([^}]+)\}>\(\)\s*;?\s*$"#)
+        .unwrap()
 });
 
 /// Emits 解析器：TypeScript 接口 -> 运行时 emits
-static EMITS_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"defineEmits<\{([^}]+)\}>\(\)"#).unwrap()
-});
+static EMITS_TYPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"defineEmits<\{([^}]+)\}>\(\)"#).unwrap());
 
 /// Emits 数组形式：defineEmits(['event1', 'event2'])
 static EMITS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits\(\[([^\]]+)\]\)\s*;?\s*$"#).unwrap()
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits\(\[([^\]]+)\]\)\s*;?\s*$"#)
+        .unwrap()
 });
 
 /// Emits 泛型形式（包含变量声明）
 static EMITS_TYPE_FULL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits<\{([^}]+)\}>\(\)\s*;?\s*$"#).unwrap()
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits<\{([^}]+)\}>\(\)\s*;?\s*$"#)
+        .unwrap()
 });
 
 /// withDefaults 解析器
 static WITH_DEFAULTS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"withDefaults\s*\(\s*defineProps<\{([^}]+)\}>\(\)\s*,\s*\{([^}]*)\}\s*\)"#).unwrap()
+    Regex::new(r#"withDefaults\s*\(\s*defineProps<\{([^}]+)\}>\(\)\s*,\s*\{([^}]*)\}\s*\)"#)
+        .unwrap()
 });
 
 /// lang 属性解析器
-static LANG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"lang=["']([^"']+)["']"#).unwrap()
-});
+static LANG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"lang=["']([^"']+)["']"#).unwrap());
 
 /// 解析 script 标签属性
 pub fn parse_script_attrs(attrs_str: &str) -> ScriptAttrs {
@@ -131,7 +132,8 @@ pub fn parse_script_attrs(attrs_str: &str) -> ScriptAttrs {
 
 /// 从属性字符串提取 lang
 fn extract_lang(attrs: &str) -> String {
-    LANG_RE.captures(attrs)
+    LANG_RE
+        .captures(attrs)
         .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
         .unwrap_or_else(|| "javascript".to_string())
 }
@@ -147,30 +149,30 @@ fn extract_lang(attrs: &str) -> String {
 /// 转换后的标准组件代码
 pub fn transform_script_setup(script: &str) -> Result<String, String> {
     let macros = parse_macros(script)?;
-    
+
     // 如果没有宏，直接返回原脚本
     if macros.props.is_none() && macros.emits.is_none() {
         return Ok(wrap_as_setup(script, &[]));
     }
-    
+
     // 构建标准组件
     let mut component = String::from("export default {\n");
-    
+
     // 添加 props
     if let Some(props_def) = &macros.props {
         component.push_str(&format!("  props: {},\n", props_def));
     }
-    
+
     // 添加 emits
     if let Some(emits_def) = &macros.emits {
         component.push_str(&format!("  emits: {},\n", emits_def));
     }
-    
+
     // 添加 setup 函数（直接生成，不需要 remove export default）
     let setup_fn = generate_setup_function(&macros.transformed_script, &macros.exposed_vars);
     component.push_str(&setup_fn);
     component.push_str("}\n");
-    
+
     Ok(component)
 }
 
@@ -178,58 +180,68 @@ pub fn transform_script_setup(script: &str) -> Result<String, String> {
 fn parse_macros(script: &str) -> Result<MacroResult, String> {
     let mut result = MacroResult::default();
     let mut transformed = script.to_string();
-    
+
     // 解析 defineProps - TypeScript 泛型形式（包含变量声明）
     if let Some(caps) = PROPS_TYPE_FULL_RE.captures(script) {
         let props_interface = &caps[2];
         let runtime_props = parse_props_interface(props_interface);
         result.props = Some(runtime_props);
-        
+
         // 移除整行（包括变量声明）
-        transformed = PROPS_TYPE_FULL_RE.replace(&transformed, "/* props injected */").to_string();
+        transformed = PROPS_TYPE_FULL_RE
+            .replace(&transformed, "/* props injected */")
+            .to_string();
     }
     // 解析 defineProps - 数组形式（包含变量声明）
     else if let Some(caps) = PROPS_ARRAY_RE.captures(script) {
         let props_array = &caps[2];
         result.props = Some(format!("[{}]", props_array.trim()));
-        
+
         // 移除整行（包括变量声明）
-        transformed = PROPS_ARRAY_RE.replace(&transformed, "/* props injected */").to_string();
+        transformed = PROPS_ARRAY_RE
+            .replace(&transformed, "/* props injected */")
+            .to_string();
     }
-    
+
     // 解析 withDefaults
     if let Some(caps) = WITH_DEFAULTS_RE.captures(script) {
         let props_interface = &caps[1];
         let defaults = &caps[2];
         let runtime_props = parse_props_interface_with_defaults(props_interface, defaults);
         result.props = Some(runtime_props);
-        
+
         // 移除宏调用
-        transformed = WITH_DEFAULTS_RE.replace(&transformed, "/* props with defaults injected */").to_string();
+        transformed = WITH_DEFAULTS_RE
+            .replace(&transformed, "/* props with defaults injected */")
+            .to_string();
     }
-    
+
     // 解析 defineEmits - TypeScript 泛型形式（包含变量声明）
     if let Some(caps) = EMITS_TYPE_FULL_RE.captures(&transformed) {
         let emits_interface = &caps[2];
         let runtime_emits = parse_emits_interface(emits_interface);
         result.emits = Some(runtime_emits);
-        
+
         // 移除整行（包括变量声明）
-        transformed = EMITS_TYPE_FULL_RE.replace(&transformed, "/* emits injected */").to_string();
+        transformed = EMITS_TYPE_FULL_RE
+            .replace(&transformed, "/* emits injected */")
+            .to_string();
     }
     // 解析 defineEmits - 数组形式（包含变量声明）
     else if let Some(caps) = EMITS_ARRAY_RE.captures(&transformed) {
         let emits_array = &caps[2];
         result.emits = Some(format!("[{}]", emits_array.trim()));
-        
+
         // 移除整行（包括变量声明）
-        transformed = EMITS_ARRAY_RE.replace(&transformed, "/* emits injected */").to_string();
+        transformed = EMITS_ARRAY_RE
+            .replace(&transformed, "/* emits injected */")
+            .to_string();
     }
-    
+
     // 提取顶层声明（用于 return）
     result.exposed_vars = extract_top_level_declarations(&transformed);
     result.transformed_script = transformed;
-    
+
     Ok(result)
 }
 
@@ -239,19 +251,19 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 /// 输出: `{ title: { type: String, required: true }, count: { type: Number, required: false } }`
 fn parse_props_interface(interface: &str) -> String {
     let mut props = Vec::new();
-    
+
     for line in interface.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        
+
         // 解析 prop 定义：name?: type
         if let Some(colon_pos) = line.find(':') {
             let name = line[..colon_pos].trim().trim_end_matches('?');
             let is_optional = line[..colon_pos].trim().ends_with('?');
             let type_str = line[colon_pos + 1..].trim().trim_end_matches(',');
-            
+
             // 检测复杂类型并给出警告
             if type_str.contains('{') || type_str.contains('|') || type_str.contains('&') {
                 warn!(
@@ -261,24 +273,24 @@ fn parse_props_interface(interface: &str) -> String {
                      Consider using runtime props definition for complex types."
                 );
             }
-            
+
             let js_type = map_ts_to_js_type(type_str);
             let required = if is_optional { "false" } else { "true" };
-            
+
             props.push(format!(
                 "    {}: {{ type: {}, required: {} }}",
                 name, js_type, required
             ));
         }
     }
-    
+
     format!("{{\n{}\n  }}", props.join(",\n"))
 }
 
 /// 解析带默认值的 Props 接口
 fn parse_props_interface_with_defaults(interface: &str, defaults: &str) -> String {
     let mut props = Vec::new();
-    
+
     // 解析默认值
     let defaults_map: std::collections::HashMap<&str, &str> = defaults
         .split(',')
@@ -291,31 +303,31 @@ fn parse_props_interface_with_defaults(interface: &str, defaults: &str) -> Strin
             }
         })
         .collect();
-    
+
     for line in interface.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        
+
         if let Some(colon_pos) = line.find(':') {
             let name = line[..colon_pos].trim().trim_end_matches('?');
             let type_str = line[colon_pos + 1..].trim().trim_end_matches(',');
-            
+
             let js_type = map_ts_to_js_type(type_str);
             let has_default = defaults_map.contains_key(name);
-            
+
             let mut prop_def = format!("    {}: {{ type: {}", name, js_type);
-            
+
             if has_default {
                 prop_def.push_str(&format!(", default: {}", defaults_map[name]));
             }
-            
+
             prop_def.push_str(" }");
             props.push(prop_def);
         }
     }
-    
+
     format!("{{\n{}\n  }}", props.join(",\n"))
 }
 
@@ -325,13 +337,13 @@ fn parse_props_interface_with_defaults(interface: &str, defaults: &str) -> Strin
 /// 输出: `['change', 'update']`
 fn parse_emits_interface(interface: &str) -> String {
     let mut events = Vec::new();
-    
+
     for line in interface.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        
+
         // 解析事件名：name: [...]
         if let Some(colon_pos) = line.find(':') {
             let name = line[..colon_pos].trim().trim_end_matches(',');
@@ -340,7 +352,7 @@ fn parse_emits_interface(interface: &str) -> String {
             }
         }
     }
-    
+
     format!("[{}]", events.join(", "))
 }
 
@@ -361,11 +373,11 @@ fn map_ts_to_js_type(ts_type: &str) -> String {
 /// 提取顶层声明（用于 setup return）
 fn extract_top_level_declarations(script: &str) -> Vec<String> {
     let mut vars = Vec::new();
-    
+
     // 简单启发式：查找 const/let/function 声明
     for line in script.lines() {
         let line = line.trim();
-        
+
         if line.starts_with("const ") {
             if let Some(eq_pos) = line.find(|c: char| c == '=' || c == '(') {
                 let name = line[6..eq_pos].trim();
@@ -389,7 +401,7 @@ fn extract_top_level_declarations(script: &str) -> Vec<String> {
             }
         }
     }
-    
+
     vars
 }
 
@@ -398,13 +410,15 @@ fn generate_setup_function(script: &str, exposed_vars: &[String]) -> String {
     let return_stmt = if exposed_vars.is_empty() {
         String::new()
     } else {
-        format!("\n    return {{\n        {}\n    }};", exposed_vars.join(",\n        "))
+        format!(
+            "\n    return {{\n        {}\n    }};",
+            exposed_vars.join(",\n        ")
+        )
     };
-    
+
     format!(
         "  setup(props, {{ emit }}) {{{}\n{}\n  }}\n",
-        script,
-        return_stmt
+        script, return_stmt
     )
 }
 
@@ -413,13 +427,15 @@ fn wrap_as_setup(script: &str, exposed_vars: &[String]) -> String {
     let return_stmt = if exposed_vars.is_empty() {
         String::new()
     } else {
-        format!("\n    return {{\n        {}\n    }};", exposed_vars.join(",\n        "))
+        format!(
+            "\n    return {{\n        {}\n    }};",
+            exposed_vars.join(",\n        ")
+        )
     };
-    
+
     format!(
         "export default {{\n  setup(props, {{ emit }}) {{{}\n{}\n  }}\n}}",
-        script,
-        return_stmt
+        script, return_stmt
     )
 }
 
@@ -432,7 +448,7 @@ mod tests {
         let attrs = parse_script_attrs("lang=\"ts\" setup");
         assert_eq!(attrs.lang, "ts");
         assert!(attrs.setup);
-        
+
         let attrs2 = parse_script_attrs("lang=\"js\"");
         assert_eq!(attrs2.lang, "js");
         assert!(!attrs2.setup);
@@ -445,7 +461,7 @@ mod tests {
             count?: number
             disabled: boolean
         "#;
-        
+
         let result = parse_props_interface(interface);
         assert!(result.contains("title: { type: String, required: true }"));
         assert!(result.contains("count: { type: Number, required: false }"));
@@ -458,7 +474,7 @@ mod tests {
             change: [value: number]
             update: []
         "#;
-        
+
         let result = parse_emits_interface(interface);
         assert_eq!(result, "['change', 'update']");
     }
@@ -488,7 +504,7 @@ function increment() {
   count.value++
 }
 "#;
-        
+
         let result = transform_script_setup(script).unwrap();
         assert!(result.contains("export default {"));
         assert!(result.contains("props:"));
@@ -504,7 +520,7 @@ let visible = true
 function handleClick() {}
 const { a, b } = obj
 "#;
-        
+
         let vars = extract_top_level_declarations(script);
         assert!(vars.contains(&"count".to_string()));
         // let 声明的解析：查找 '=' 或 '('

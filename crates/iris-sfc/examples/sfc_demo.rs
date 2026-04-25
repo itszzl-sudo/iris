@@ -25,7 +25,7 @@ fn is_utf8_terminal() -> bool {
         if let Ok(cp) = env::var("IRIS_CODE_PAGE") {
             return cp == "65001";
         }
-        
+
         // 检查 Windows Terminal（默认支持 UTF-8）
         if env::var("WT_SESSION").is_ok() {
             return true;
@@ -153,7 +153,7 @@ fn main() {
     // 测试 1: 简单组件
     println!("{} 测试 1: 简单 Vue 组件", charset.info);
     println!("{}", charset.separator.repeat(50));
-    
+
     let simple_vue = r#"<template>
   <div class="container">
     <h1>Hello, Iris!</h1>
@@ -185,15 +185,15 @@ h1 {
             println!("   名称: {}", module.name);
             println!("   源码哈希: {:x}", module.source_hash);
             println!("   样式块数量: {}\n", module.styles.len());
-            
+
             println!("{} 渲染函数:", charset.render);
             println!("{}", module.render_fn);
             println!();
-            
+
             println!("{} Script:", charset.script);
             println!("{}", module.script);
             println!();
-            
+
             println!("{} Styles:", charset.styles);
             for (i, style) in module.styles.iter().enumerate() {
                 println!("  样式块 {}:", i + 1);
@@ -209,7 +209,7 @@ h1 {
     // 测试 2: TypeScript 组件
     println!("\n\n{} 测试 2: TypeScript 组件", charset.info);
     println!("{}", charset.separator.repeat(50));
-    
+
     let ts_vue = r#"<template>
   <div>
     <h2>TypeScript Test</h2>
@@ -244,7 +244,7 @@ function increment(): void {
     // 测试 3: 多样式块
     println!("\n\n{} 测试 3: 多样式块组件", charset.info);
     println!("{}", charset.separator.repeat(50));
-    
+
     let multi_style_vue = r#"<template>
   <div class="app">
     <h1>Multi-Style Component</h1>
@@ -275,7 +275,7 @@ h1 {
         Ok(module) => {
             println!("{} 多样式块组件编译成功！\n", charset.success);
             println!("{} 样式块数量: {}", charset.test, module.styles.len());
-            
+
             for (i, style) in module.styles.iter().enumerate() {
                 println!("\n  样式块 {}:", i + 1);
                 println!("    Scoped: {}", style.scoped);
