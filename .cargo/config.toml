@@ -2,16 +2,23 @@
 # 配置位置：项目根目录 .cargo/config.toml
 
 # ============================================
-# 1. 镜像源配置 - 使用清华大学 TUNA 镜像
+# 1. 镜像源配置 - 使用清华大学 TUNA 镜像（推荐）
 # ============================================
 
 # 使用清华大学 crates.io 镜像
 [source.crates-io]
 replace-with = 'tuna'
 
-# 清华大学镜像源（git 协议，速度快）
+# 清华大学镜像源（git 协议，稳定可靠）
 [source.tuna]
 registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"
+
+# 备选：字节跳动镜像（sparse 协议，速度更快）
+# [source.crates-io]
+# replace-with = 'bytedance'
+#
+# [source.bytedance]
+# registry = "sparse+https://mirrors.bytedance.com/crates.io-index/"
 
 # ============================================
 # 2. 网络优化 - 加速下载
@@ -20,8 +27,8 @@ registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"
 [net]
 # 并行下载数量（默认 4，增加到 8）
 retry = 3
-# 注意：sparse-registry 需要在 Cargo 1.68+ 中使用
-# 如果使用 git 协议的镜像源，此选项无效
+# 启用 sparse 协议（更快的索引更新）
+sparse-registry = true
 
 # ============================================
 # 3. 编译优化 - 加速编译
