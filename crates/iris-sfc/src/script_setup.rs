@@ -88,7 +88,12 @@ static PROPS_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Props 数组形式：defineProps(['prop1', 'prop2'])
 static PROPS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"defineProps\(\[([^\]]+)\]\)"#).unwrap()
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps\(\[([^\]]+)\]\)\s*;?\s*$"#).unwrap()
+});
+
+/// Props 泛型形式（包含变量声明）
+static PROPS_TYPE_FULL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps<\{([^}]+)\}>\(\)\s*;?\s*$"#).unwrap()
 });
 
 /// Emits 解析器：TypeScript 接口 -> 运行时 emits
@@ -98,7 +103,12 @@ static EMITS_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Emits 数组形式：defineEmits(['event1', 'event2'])
 static EMITS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"defineEmits\(\[([^\]]+)\]\)"#).unwrap()
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits\(\[([^\]]+)\]\)\s*;?\s*$"#).unwrap()
+});
+
+/// Emits 泛型形式（包含变量声明）
+static EMITS_TYPE_FULL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits<\{([^}]+)\}>\(\)\s*;?\s*$"#).unwrap()
 });
 
 /// withDefaults 解析器
@@ -169,21 +179,21 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
     let mut result = MacroResult::default();
     let mut transformed = script.to_string();
     
-    // 解析 defineProps - TypeScript 泛型形式
-    if let Some(caps) = PROPS_TYPE_RE.captures(script) {
-        let props_interface = &caps[1];
+    // 解析 defineProps - TypeScript 泛型形式（包含变量声明）
+    if let Some(caps) = PROPS_TYPE_FULL_RE.captures(script) {
+        let props_interface = &caps[2];
         let runtime_props = parse_props_interface(props_interface);
         result.props = Some(runtime_props);
         
-        // 移除宏调用
-        transformed = PROPS_TYPE_RE.replace(&transformed, "/* props injected */").to_string();
+        // 移除整行（包括变量声明）
+        transformed = PROPS_TYPE_FULL_RE.replace(&transformed, "/* props injected */").to_string();
     }
-    // 解析 defineProps - 数组形式
+    // 解析 defineProps - 数组形式（包含变量声明）
     else if let Some(caps) = PROPS_ARRAY_RE.captures(script) {
-        let props_array = &caps[1];
+        let props_array = &caps[2];
         result.props = Some(format!("[{}]", props_array.trim()));
         
-        // 移除宏调用
+        // 移除整行（包括变量声明）
         transformed = PROPS_ARRAY_RE.replace(&transformed, "/* props injected */").to_string();
     }
     
@@ -198,21 +208,21 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
         transformed = WITH_DEFAULTS_RE.replace(&transformed, "/* props with defaults injected */").to_string();
     }
     
-    // 解析 defineEmits - TypeScript 泛型形式
-    if let Some(caps) = EMITS_TYPE_RE.captures(script) {
-        let emits_interface = &caps[1];
+    // 解析 defineEmits - TypeScript 泛型形式（包含变量声明）
+    if let Some(caps) = EMITS_TYPE_FULL_RE.captures(&transformed) {
+        let emits_interface = &caps[2];
         let runtime_emits = parse_emits_interface(emits_interface);
         result.emits = Some(runtime_emits);
         
-        // 移除宏调用
-        transformed = EMITS_TYPE_RE.replace(&transformed, "/* emits injected */").to_string();
+        // 移除整行（包括变量声明）
+        transformed = EMITS_TYPE_FULL_RE.replace(&transformed, "/* emits injected */").to_string();
     }
-    // 解析 defineEmits - 数组形式
-    else if let Some(caps) = EMITS_ARRAY_RE.captures(script) {
-        let emits_array = &caps[1];
+    // 解析 defineEmits - 数组形式（包含变量声明）
+    else if let Some(caps) = EMITS_ARRAY_RE.captures(&transformed) {
+        let emits_array = &caps[2];
         result.emits = Some(format!("[{}]", emits_array.trim()));
         
-        // 移除宏调用
+        // 移除整行（包括变量声明）
         transformed = EMITS_ARRAY_RE.replace(&transformed, "/* emits injected */").to_string();
     }
     

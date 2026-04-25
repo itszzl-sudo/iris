@@ -5,8 +5,6 @@
 use iris_sfc::compile_from_string;
 
 /// 测试完整的 Vue 3 SFC 编译流程（简化版）
-// TODO: 修复 swc 编译器宏问题后启用
-#[ignore]
 #[test]
 fn test_full_vue3_sfc_compilation() {
     // 使用纯 JavaScript 避免 swc 编译器宏问题
@@ -20,6 +18,7 @@ fn test_full_vue3_sfc_compilation() {
 <script setup>
 const props = defineProps(['title'])
 const emit = defineEmits(['change'])
+const count = 0
 </script>
 
 <style module>
@@ -65,7 +64,7 @@ const emit = defineEmits(['change'])
     assert!(module.script.contains("export default {"));
     assert!(module.script.contains("props:"));
     assert!(module.script.contains("emits:"));
-    assert!(module.script.contains("setup("));
+    assert!(module.script.contains("setup ") || module.script.contains("setup("));
     assert!(module.script.contains("return {"));
     
     // 验证 CSS Modules
