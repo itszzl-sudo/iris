@@ -1,10 +1,10 @@
-//! Iris SFC —— SFC/TS 即时转译层
+﻿//! Iris SFC 鈥斺€?SFC/TS 鍗虫椂杞瘧灞?
 //!
-//! 核心使命：零编译直接运行源码。
-//! 解析 .vue 文件，提取 template/script/style，编译为可执行模块。
+//! 鏍稿績浣垮懡锛氶浂缂栬瘧鐩存帴杩愯婧愮爜銆?
+//! 瑙ｆ瀽 .vue 鏂囦欢锛屾彁鍙?template/script/style锛岀紪璇戜负鍙墽琛屾ā鍧椼€?
 //!
-//! **注意**：当前实现是简化版本（演示用途），用于验证热重载流程。
-//! 完整的模板编译器和 TypeScript 转译器将在后续版本实现。
+//! **娉ㄦ剰**锛氬綋鍓嶅疄鐜版槸绠€鍖栫増鏈紙婕旂ず鐢ㄩ€旓級锛岀敤浜庨獙璇佺儹閲嶈浇娴佺▼銆?
+//! 瀹屾暣鐨勬ā鏉跨紪璇戝櫒鍜?TypeScript 杞瘧鍣ㄥ皢鍦ㄥ悗缁増鏈疄鐜般€?
 
 #![warn(missing_docs)]
 
@@ -15,12 +15,12 @@ use std::path::Path;
 use std::sync::LazyLock;
 use tracing::{debug, info, warn};
 
-/// 预编译的正则表达式（性能优化：避免每次调用时重新编译）。
+/// 棰勭紪璇戠殑姝ｅ垯琛ㄨ揪寮忥紙鎬ц兘浼樺寲锛氶伩鍏嶆瘡娆¤皟鐢ㄦ椂閲嶆柊缂栬瘧锛夈€?
 ///
-/// 性能对比：
-/// - 每次编译：~10-50μs
-/// - LazyLock 单次编译：~0.1μs
-/// - 性能提升：100-500 倍
+/// 鎬ц兘瀵规瘮锛?
+/// - 姣忔缂栬瘧锛殈10-50渭s
+/// - LazyLock 鍗曟缂栬瘧锛殈0.1渭s
+/// - 鎬ц兘鎻愬崌锛?00-500 鍊?
 static TEMPLATE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?s)<template\b[^>]*>(.*?)</\s*template\s*>"#).unwrap()
 });
@@ -33,44 +33,44 @@ static STYLE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?s)<style\b([^>]*)>(.*?)</\s*style\s*>"#).unwrap()
 });
 
-/// Vue SFC 编译结果。
+/// Vue SFC 缂栬瘧缁撴灉銆?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SfcModule {
-    /// 组件名称（从文件名提取）。
+    /// 缁勪欢鍚嶇О锛堜粠鏂囦欢鍚嶆彁鍙栵級銆?
     pub name: String,
-    /// Template 编译结果（渲染函数）。
+    /// Template 缂栬瘧缁撴灉锛堟覆鏌撳嚱鏁帮級銆?
     pub render_fn: String,
-    /// Script 编译结果（JavaScript）。
+    /// Script 缂栬瘧缁撴灉锛圝avaScript锛夈€?
     pub script: String,
-    /// Style 编译结果（CSS）。
+    /// Style 缂栬瘧缁撴灉锛圕SS锛夈€?
     pub styles: Vec<StyleBlock>,
-    /// 源码哈希（用于缓存验证）。
+    /// 婧愮爜鍝堝笇锛堢敤浜庣紦瀛橀獙璇侊級銆?
     pub source_hash: u64,
 }
 
-/// 样式块。
+/// 鏍峰紡鍧椼€?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StyleBlock {
-    /// CSS 内容。
+    /// CSS 鍐呭銆?
     pub css: String,
-    /// 是否 scoped。
+    /// 鏄惁 scoped銆?
     pub scoped: bool,
-    /// 样式语言（css/scss/less）。
+    /// 鏍峰紡璇█锛坈ss/scss/less锛夈€?
     pub lang: String,
 }
 
-/// SFC 解析结果（中间表示）。
+/// SFC 瑙ｆ瀽缁撴灉锛堜腑闂磋〃绀猴級銆?
 #[derive(Debug)]
 struct SfcDescriptor {
-    /// Template 原始源码。
+    /// Template 鍘熷婧愮爜銆?
     template: Option<String>,
-    /// Script 原始源码。
+    /// Script 鍘熷婧愮爜銆?
     script: Option<String>,
-    /// Style 原始源码列表。
+    /// Style 鍘熷婧愮爜鍒楄〃銆?
     styles: Vec<StyleRaw>,
 }
 
-/// 原始样式块（编译前）。
+/// 鍘熷鏍峰紡鍧楋紙缂栬瘧鍓嶏級銆?
 #[derive(Debug)]
 struct StyleRaw {
     content: String,
@@ -78,10 +78,10 @@ struct StyleRaw {
     lang: String,
 }
 
-/// 编译错误类型（包含位置信息）。
+/// 缂栬瘧閿欒绫诲瀷锛堝寘鍚綅缃俊鎭級銆?
 #[derive(Debug, thiserror::Error)]
 pub enum SfcError {
-    /// 文件读取失败。
+    /// 鏂囦欢璇诲彇澶辫触銆?
     #[error("Failed to read file: {file} - {source}")]
     IoError {
         /// The underlying IO error.
@@ -90,7 +90,7 @@ pub enum SfcError {
         file: String,
     },
 
-    /// SFC 格式错误。
+    /// SFC 鏍煎紡閿欒銆?
     #[error("Parse error at {file}:{line}:{column}: {message}")]
     ParseError {
         /// Error message.
@@ -103,7 +103,7 @@ pub enum SfcError {
         column: usize,
     },
 
-    /// Template 编译失败。
+    /// Template 缂栬瘧澶辫触銆?
     #[error("Template error at {file}:{line}:{column}: {message}")]
     TemplateError {
         /// Error message.
@@ -116,7 +116,7 @@ pub enum SfcError {
         column: usize,
     },
 
-    /// Script 转译失败。
+    /// Script 杞瘧澶辫触銆?
     #[error("Script error at {file}:{line}:{column}: {message}")]
     ScriptError {
         /// Error message.
@@ -139,17 +139,17 @@ impl From<std::io::Error> for SfcError {
     }
 }
 
-/// 编译 .vue 文件。
+/// 缂栬瘧 .vue 鏂囦欢銆?
 ///
-/// # 参数
+/// # 鍙傛暟
 ///
-/// * `path` - .vue 文件路径
+/// * `path` - .vue 鏂囦欢璺緞
 ///
-/// # 返回
+/// # 杩斿洖
 ///
-/// 返回编译后的 SFC 模块。
+/// 杩斿洖缂栬瘧鍚庣殑 SFC 妯″潡銆?
 ///
-/// # 示例
+/// # 绀轰緥
 ///
 /// ```ignore
 /// use iris_sfc::compile;
@@ -167,22 +167,22 @@ pub fn compile<P: AsRef<Path>>(path: P) -> Result<SfcModule, SfcError> {
 
     info!(path = ?path, "Compiling Vue SFC");
 
-    // 读取文件
+    // 璇诲彇鏂囦欢
     let source = std::fs::read_to_string(path).map_err(|e| SfcError::IoError {
         source: e,
         file: file_name.clone(),
     })?;
 
-    // 计算源码哈希
+    // 璁＄畻婧愮爜鍝堝笇
     let source_hash = calculate_hash(&source);
 
-    // 提取组件名
+    // 鎻愬彇缁勪欢鍚?
     let name = extract_component_name(path);
 
-    // 解析 SFC
+    // 瑙ｆ瀽 SFC
     let descriptor = parse_sfc(&source, &file_name)?;
 
-    // 编译各部分（传递文件名用于错误定位）
+    // 缂栬瘧鍚勯儴鍒嗭紙浼犻€掓枃浠跺悕鐢ㄤ簬閿欒瀹氫綅锛?
     let render_fn = compile_template(&file_name, descriptor.template.as_deref().unwrap_or(""))?;
     let script = if let Some(script_source) = &descriptor.script {
         compile_script(&file_name, script_source)?
@@ -208,16 +208,16 @@ pub fn compile<P: AsRef<Path>>(path: P) -> Result<SfcModule, SfcError> {
     })
 }
 
-/// 从字符串编译 .vue 文件（用于测试）。
+/// 浠庡瓧绗︿覆缂栬瘧 .vue 鏂囦欢锛堢敤浜庢祴璇曪級銆?
 ///
-/// # 参数
+/// # 鍙傛暟
 ///
-/// * `name` - 组件名称
-/// * `source` - .vue 源码字符串
+/// * `name` - 缁勪欢鍚嶇О
+/// * `source` - .vue 婧愮爜瀛楃涓?
 ///
-/// # 返回
+/// # 杩斿洖
 ///
-/// 返回编译后的 SFC 模块。
+/// 杩斿洖缂栬瘧鍚庣殑 SFC 妯″潡銆?
 pub fn compile_from_string(name: &str, source: &str) -> Result<SfcModule, SfcError> {
     let source_hash = calculate_hash(source);
     let descriptor = parse_sfc(source, name)?;
@@ -239,24 +239,24 @@ pub fn compile_from_string(name: &str, source: &str) -> Result<SfcModule, SfcErr
     })
 }
 
-/// SFC 解析器。
+/// SFC 瑙ｆ瀽鍣ㄣ€?
 ///
-/// 使用预编译的正则表达式提取 template/script/style 块。
+/// 浣跨敤棰勭紪璇戠殑姝ｅ垯琛ㄨ揪寮忔彁鍙?template/script/style 鍧椼€?
 ///
-/// # 参数
+/// # 鍙傛暟
 ///
-/// * `source` - .vue 源码字符串
-/// * `file_name` - 文件名（用于错误定位）
+/// * `source` - .vue 婧愮爜瀛楃涓?
+/// * `file_name` - 鏂囦欢鍚嶏紙鐢ㄤ簬閿欒瀹氫綅锛?
 ///
-/// # 返回
+/// # 杩斿洖
 ///
-/// 返回解析后的 SFC 描述符。
+/// 杩斿洖瑙ｆ瀽鍚庣殑 SFC 鎻忚堪绗︺€?
 fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
     let mut template = None;
     let mut script = None;
     let mut styles = Vec::new();
 
-    // 提取 <template> 部分（使用预编译正则，支持多行）
+    // 鎻愬彇 <template> 閮ㄥ垎锛堜娇鐢ㄩ缂栬瘧姝ｅ垯锛屾敮鎸佸琛岋級
     if let Some(caps) = TEMPLATE_RE.captures(source) {
         if let Some(content) = caps.get(1) {
             template = Some(content.as_str().to_string());
@@ -264,7 +264,7 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
         }
     }
 
-    // 提取 <script> 部分（支持属性如 lang="ts", setup）
+    // 鎻愬彇 <script> 閮ㄥ垎锛堟敮鎸佸睘鎬у lang="ts", setup锛?
     if let Some(caps) = SCRIPT_RE.captures(source) {
         if let Some(content) = caps.get(2) {
             script = Some(content.as_str().to_string());
@@ -272,7 +272,7 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
         }
     }
 
-    // 提取所有 <style> 部分（支持多个样式块）
+    // 鎻愬彇鎵€鏈?<style> 閮ㄥ垎锛堟敮鎸佸涓牱寮忓潡锛?
     for caps in STYLE_RE.captures_iter(source) {
         let attrs = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let content = caps.get(2).map(|m| m.as_str()).unwrap_or("");
@@ -294,7 +294,7 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
         });
     }
 
-    // SFC 至少要有一个 template 或 script（允许纯逻辑组件）
+    // SFC 鑷冲皯瑕佹湁涓€涓?template 鎴?script锛堝厑璁哥函閫昏緫缁勪欢锛?
     if template.is_none() && script.is_none() {
         return Err(SfcError::ParseError {
             message: "SFC must have at least <template> or <script>".to_string(),
@@ -318,9 +318,9 @@ fn parse_sfc(source: &str, file_name: &str) -> Result<SfcDescriptor, SfcError> {
     })
 }
 
-/// 从标签属性中提取 lang 属性。
+/// 浠庢爣绛惧睘鎬т腑鎻愬彇 lang 灞炴€с€?
 ///
-/// 例如：`<script lang="ts">` → `"ts"`
+/// 渚嬪锛歚<script lang="ts">` 鈫?`"ts"`
 fn extract_lang(attrs: &str) -> String {
     if let Some(start) = attrs.find("lang=\"") {
         let start = start + 6;
@@ -331,19 +331,19 @@ fn extract_lang(attrs: &str) -> String {
     "css".to_string()
 }
 
-/// Template 编译器（完整版）。
+/// Template 缂栬瘧鍣紙瀹屾暣鐗堬級銆?
 ///
-/// 使用 html5ever 解析 HTML 模板，生成虚拟 DOM 创建函数。
-/// 支持 Vue 指令：v-if, v-for, v-bind, v-on, v-model
+/// 浣跨敤 html5ever 瑙ｆ瀽 HTML 妯℃澘锛岀敓鎴愯櫄鎷?DOM 鍒涘缓鍑芥暟銆?
+/// 鏀寔 Vue 鎸囦护锛歷-if, v-for, v-bind, v-on, v-model
 ///
-/// # 参数
+/// # 鍙傛暟
 ///
-/// * `file_name` - 文件名（用于错误定位）
-/// * `template` - 模板源码
+/// * `file_name` - 鏂囦欢鍚嶏紙鐢ㄤ簬閿欒瀹氫綅锛?
+/// * `template` - 妯℃澘婧愮爜
 ///
-/// # 返回
+/// # 杩斿洖
 ///
-/// 返回渲染函数字符串。
+/// 杩斿洖娓叉煋鍑芥暟瀛楃涓层€?
 fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError> {
     if template.is_empty() {
         warn!(file = file_name, "Template is empty");
@@ -352,7 +352,7 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
 
     info!(file = file_name, "Compiling Vue template with full compiler");
 
-    // 步骤 1: 解析 HTML 为 AST
+    // 姝ラ 1: 瑙ｆ瀽 HTML 涓?AST
     let vnodes = template_compiler::parse_template(template).map_err(|e| {
         SfcError::TemplateError {
             message: format!("Failed to parse template: {}", e),
@@ -362,7 +362,7 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
         }
     })?;
 
-    // 步骤 2: 生成渲染函数
+    // 姝ラ 2: 鐢熸垚娓叉煋鍑芥暟
     let render_fn = template_compiler::generate_render_fn(&vnodes);
 
     debug!(
@@ -374,28 +374,28 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
     Ok(render_fn)
 }
 
-/// Script 编译器（TypeScript 转译）。
+/// Script 缂栬瘧鍣紙TypeScript 杞瘧锛夈€?
 ///
-/// # 注意
+/// # 娉ㄦ剰
 ///
-/// **当前实现是演示版本**：只移除基本类型注解。
-/// 完整版本应该集成 swc 或其他 TS 编译器，支持泛型、装饰器、TSX。
+/// **褰撳墠瀹炵幇鏄紨绀虹増鏈?*锛氬彧绉婚櫎鍩烘湰绫诲瀷娉ㄨВ銆?
+/// 瀹屾暣鐗堟湰搴旇闆嗘垚 swc 鎴栧叾浠?TS 缂栬瘧鍣紝鏀寔娉涘瀷銆佽楗板櫒銆乀SX銆?
 ///
-/// # 参数
+/// # 鍙傛暟
 ///
-/// * `file_name` - 文件名（用于错误定位）
-/// * `script` - script 源码
+/// * `file_name` - 鏂囦欢鍚嶏紙鐢ㄤ簬閿欒瀹氫綅锛?
+/// * `script` - script 婧愮爜
 ///
-/// # 返回
+/// # 杩斿洖
 ///
-/// 返回转译后的 JavaScript 代码。
+/// 杩斿洖杞瘧鍚庣殑 JavaScript 浠ｇ爜銆?
 fn compile_script(file_name: &str, script: &str) -> Result<String, SfcError> {
     if script.is_empty() {
         return Ok("export default {}".to_string());
     }
 
-    // TODO: 集成完整的 TypeScript 编译器（支持泛型、装饰器、TSX）
-    // 当前版本：简化版 TS 转译（仅移除基本类型注解）
+    // TODO: 闆嗘垚瀹屾暣鐨?TypeScript 缂栬瘧鍣紙鏀寔娉涘瀷銆佽楗板櫒銆乀SX锛?
+    // 褰撳墠鐗堟湰锛氱畝鍖栫増 TS 杞瘧锛堜粎绉婚櫎鍩烘湰绫诲瀷娉ㄨВ锛?
     debug!(file = file_name, "Using basic TypeScript transpiler (demo mode)");
 
     let js = transpile_ts_basic(script);
@@ -403,7 +403,7 @@ fn compile_script(file_name: &str, script: &str) -> Result<String, SfcError> {
     Ok(js)
 }
 
-/// 编译样式块。
+/// 缂栬瘧鏍峰紡鍧椼€?
 fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
     styles
         .iter()
@@ -415,55 +415,55 @@ fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
         .collect()
 }
 
-/// 简化的 TypeScript 转译（移除基本类型注解）。
+/// 绠€鍖栫殑 TypeScript 杞瘧锛堢Щ闄ゅ熀鏈被鍨嬫敞瑙ｏ級銆?
 ///
-/// # 限制
+/// # 闄愬埗
 ///
-/// 当前版本仅支持：
-/// - 基本类型注解（string, number, boolean, any, void, never）
-/// - 简单函数返回类型
-/// - import type 语句移除
+/// 褰撳墠鐗堟湰浠呮敮鎸侊細
+/// - 鍩烘湰绫诲瀷娉ㄨВ锛坰tring, number, boolean, any, void, never锛?
+/// - 绠€鍗曞嚱鏁拌繑鍥炵被鍨?
+/// - import type 璇彞绉婚櫎
 ///
-/// 不支持：
-/// - 泛型（Array<string>, Promise<void>）
-/// - 接口和类型别名
-/// - 装饰器
+/// 涓嶆敮鎸侊細
+/// - 娉涘瀷锛圓rray<string>, Promise<void>锛?
+/// - 鎺ュ彛鍜岀被鍨嬪埆鍚?
+/// - 瑁呴グ鍣?
 /// - TSX
-/// - 复杂的交叉类型/联合类型
+/// - 澶嶆潅鐨勪氦鍙夌被鍨?鑱斿悎绫诲瀷
 fn transpile_ts_basic(source: &str) -> String {
     use regex::Regex;
 
     let mut result = source.to_string();
 
-    // 移除变量类型注解（粗糙版本）
-    // let x: number → let x
-    // const y: string = "hi" → const y = "hi"
+    // 绉婚櫎鍙橀噺绫诲瀷娉ㄨВ锛堢矖绯欑増鏈級
+    // let x: number 鈫?let x
+    // const y: string = "hi" 鈫?const y = "hi"
     let re1 = Regex::new(r":\s*(string|number|boolean|any|void|never)\b").unwrap();
     result = re1.replace_all(&result, "").to_string();
 
-    // 移除函数返回类型
-    // ): number → )
+    // 绉婚櫎鍑芥暟杩斿洖绫诲瀷
+    // ): number 鈫?)
     let re2 = Regex::new(r"\):\s*(string|number|boolean|any|void)\s*\{").unwrap();
     result = re2.replace_all(&result, ") {").to_string();
 
-    // 移除 import 类型
-    // import type { Foo } from 'bar' → （删除整行）
+    // 绉婚櫎 import 绫诲瀷
+    // import type { Foo } from 'bar' 鈫?锛堝垹闄ゆ暣琛岋級
     let re3 = Regex::new(r"^import\s+type\s+.*;$").unwrap();
     result = re3.replace_all(&result, "").to_string();
 
     result
 }
 
-/// 从文件路径提取组件名称。
+/// 浠庢枃浠惰矾寰勬彁鍙栫粍浠跺悕绉般€?
 ///
-/// 例如：`components/App.vue` → `"App"`
+/// 渚嬪锛歚components/App.vue` 鈫?`"App"`
 fn extract_component_name(path: &Path) -> String {
     path.file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| String::from("Anonymous"))
 }
 
-/// 计算字符串的简单哈希。
+/// 璁＄畻瀛楃涓茬殑绠€鍗曞搱甯屻€?
 fn calculate_hash(s: &str) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -580,4 +580,24 @@ const message = "Hello"
             "MyComponent"
         );
     }
+}
+
+/// Initialize the SFC compiler layer.`n///`n/// This function is called by the main Iris engine initialization chain.`n/// Currently, it only logs the initialization event. Pre-compiled regex patterns`n/// are automatically initialized on first use via `LazyLock`.`n///`n/// # Safety`n/// This function is safe to call multiple times (idempotent).`n///`n/// # Example`n///`n/// ```ignore`n/// use iris_sfc::init;`n/// init(); // Initialize SFC compiler`n/// ````n///`npub fn init() {
+/// Initialize the SFC compiler layer.
+///
+/// This function is called by the main Iris engine initialization chain.
+/// Currently, it only logs the initialization event. Pre-compiled regex patterns
+/// are automatically initialized on first use via `LazyLock`.
+///
+/// # Safety
+/// This function is safe to call multiple times (idempotent).
+///
+/// # Example
+///
+/// ```ignore
+/// use iris_sfc::init;
+/// init(); // Initialize SFC compiler
+/// ```
+pub fn init() {
+    info!("Iris SFC compiler initialized");
 }
