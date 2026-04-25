@@ -30,6 +30,16 @@ static SCRIPT_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?s)<script\b([^>]*)>(.*?)</\s*script\s*>"#).unwrap()
 });
 
+/// 全局 TypeScript 编译器实例（复用，避免重复创建）
+///
+/// 使用 LazyLock 确保：
+/// 1. 线程安全的懒初始化
+/// 2. 整个生命周期只创建一个 TsCompiler 实例
+/// 3. 复用内部缓存和 SourceMap
+static TS_COMPILER: LazyLock<ts_compiler::TsCompiler> = LazyLock::new(|| {
+    ts_compiler::TsCompiler::new(ts_compiler::TsCompilerConfig::default())
+});
+
 static STYLE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(?s)<style\b([^>]*)>(.*?)</\s*style\s*>"#).unwrap()
 });
@@ -397,11 +407,8 @@ fn compile_script(file_name: &str, script: &str) -> Result<String, SfcError> {
 
     info!(file = file_name, "Compiling script with swc TypeScript compiler");
 
-    // 使用 swc 编译 TypeScript
-    let config = ts_compiler::TsCompilerConfig::default();
-    let compiler = ts_compiler::TsCompiler::new(config);
-    
-    let result = compiler.compile(script, file_name).map_err(|e| {
+    // 使用全局编译器实例（复用，提升性能）
+    let result = TS_COMPILER.compile(script, file_name).map_err(|e| {
         SfcError::ScriptError {
             message: format!("TypeScript compilation failed: {}", e),
             file: file_name.to_string(),

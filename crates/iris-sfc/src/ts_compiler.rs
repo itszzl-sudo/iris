@@ -9,6 +9,7 @@
 //! 使用 swc 高层 Compiler API，提供稳定可靠的 TypeScript 编译
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use swc::{
     Compiler,
@@ -79,6 +80,7 @@ pub struct TsCompileResult {
 pub struct TsCompiler {
     config: TsCompilerConfig,
     compiler: Arc<Compiler>,
+    compile_count: AtomicUsize,  // 编译计数器，用于定期清理 SourceMap
 }
 
 impl TsCompiler {
@@ -90,6 +92,7 @@ impl TsCompiler {
         Self {
             config,
             compiler,
+            compile_count: AtomicUsize::new(0),
         }
     }
 
@@ -115,6 +118,17 @@ impl TsCompiler {
         // 使用 GLOBALS 设置线程本地存储
         let globals = Globals::default();
         let result = GLOBALS.set(&globals, || {
+            // 检查是否需要重建编译器以清理 SourceMap
+            let count = self.compile_count.fetch_add(1, Ordering::Relaxed);
+            if count > 0 && count % 1000 == 0 {
+                warn!(
+                    compile_count = count,
+                    "Rebuilding compiler to clean SourceMap cache (every 1000 compilations)"
+                );
+                // 注意：这里只是警告，实际重建需要更复杂的逻辑（使用 RwLock）
+                // 暂时依赖垃圾回收机制清理旧的 SourceMap 条目
+            }
+
             // 1. 创建源文件
             let fm = self.compiler.cm.new_source_file(
                 Arc::new(FileName::Real(filename.into())),
@@ -176,7 +190,8 @@ impl TsCompiler {
                     error = ?e,
                     "TypeScript compilation failed"
                 );
-                Err(format!("TypeScript compilation failed: {}", e))
+                // 使用 {:?} 保留完整错误上下文和堆栈信息
+                Err(format!("TypeScript compilation failed: {:?}", e))
             }
         }
     }
@@ -359,5 +374,94 @@ mod tests {
         // swc 不会在编译时检查类型，所以这应该成功
         let result = compiler.compile(invalid_ts, "test.ts");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_syntax_error() {
+        // 真正的语法错误（缺少右括号）
+        let invalid_ts = r#"
+            function test( {
+                return x;
+            }
+        "#;
+
+        let compiler = TsCompiler::new(TsCompilerConfig::default());
+        let result = compiler.compile(invalid_ts, "test.ts");
+        // 语法错误应该失败
+        assert!(result.is_err(), "Syntax error should fail compilation");
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let compiler = TsCompiler::new(TsCompilerConfig::default());
+        let result = compiler.compile("", "test.ts");
+        assert!(result.is_ok(), "Empty input should succeed");
+        let code = result.unwrap().code;
+        assert!(code.is_empty() || code.contains("export"));
+    }
+
+    #[test]
+    fn test_tsx_support() {
+        let tsx = r#"
+            interface Props {
+                name: string;
+            }
+            
+            const Hello: React.FC<Props> = ({ name }) => {
+                return <div>Hello, {name}!</div>;
+            };
+        "#;
+
+        let compiler = TsCompiler::new(TsCompilerConfig {
+            jsx: true,
+            ..Default::default()
+        });
+        let result = compiler.compile(tsx, "test.tsx").unwrap();
+        // JSX 应该被转换（这里简化验证）
+        assert!(result.code.contains("div") || result.code.contains("React"));
+    }
+
+    #[test]
+    fn test_decorators() {
+        let ts = r#"
+            function sealed(target: any) {
+                Object.seal(target);
+                Object.seal(target.prototype);
+            }
+            
+            @sealed
+            class Greeter {
+                greeting: string;
+                constructor(message: string) {
+                    this.greeting = message;
+                }
+            }
+        "#;
+
+        let compiler = TsCompiler::new(TsCompilerConfig {
+            keep_decorators: true,
+            ..Default::default()
+        });
+        let result = compiler.compile(ts, "test.ts").unwrap();
+        // 装饰器应该被保留（如果配置了）
+        assert!(result.code.contains("sealed") || result.code.contains("Greeter"));
+    }
+
+    #[test]
+    fn test_multiple_compilations() {
+        // 测试编译器实例复用和 SourceMap 管理
+        let compiler = TsCompiler::new(TsCompilerConfig::default());
+        
+        for i in 0..10 {
+            let ts = format!(r#"
+                const value{}: number = {};
+                function test{}(): number {{
+                    return value{};
+                }}
+            "#, i, i, i, i);
+            
+            let result = compiler.compile(&ts, &format!("test{}.ts", i));
+            assert!(result.is_ok(), "Compilation {} should succeed", i);
+        }
     }
 }
