@@ -57,6 +57,7 @@
 
 use regex::Regex;
 use std::sync::LazyLock;
+use tracing::warn;
 
 /// Script 属性
 #[derive(Debug, Clone)]
@@ -95,6 +96,11 @@ static WITH_DEFAULTS_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"withDefaults\s*\(\s*defineProps<\{([^}]+)\}>\(\)\s*,\s*\{([^}]*)\}\s*\)"#).unwrap()
 });
 
+/// lang 属性解析器
+static LANG_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"lang=["']([^"']+)["']"#).unwrap()
+});
+
 /// 解析 script 标签属性
 pub fn parse_script_attrs(attrs_str: &str) -> ScriptAttrs {
     ScriptAttrs {
@@ -105,9 +111,7 @@ pub fn parse_script_attrs(attrs_str: &str) -> ScriptAttrs {
 
 /// 从属性字符串提取 lang
 fn extract_lang(attrs: &str) -> String {
-    Regex::new(r#"lang=["']([^"']+)["']"#)
-        .ok()
-        .and_then(|re| re.captures(attrs))
+    LANG_RE.captures(attrs)
         .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
         .unwrap_or_else(|| "javascript".to_string())
 }
@@ -211,6 +215,16 @@ fn parse_props_interface(interface: &str) -> String {
             let name = line[..colon_pos].trim().trim_end_matches('?');
             let is_optional = line[..colon_pos].trim().ends_with('?');
             let type_str = line[colon_pos + 1..].trim().trim_end_matches(',');
+            
+            // 检测复杂类型并给出警告
+            if type_str.contains('{') || type_str.contains('|') || type_str.contains('&') {
+                warn!(
+                    prop_name = name,
+                    prop_type = type_str,
+                    "Complex type detected in props. Using 'null' as runtime type. \
+                     Consider using runtime props definition for complex types."
+                );
+            }
             
             let js_type = map_ts_to_js_type(type_str);
             let required = if is_optional { "false" } else { "true" };

@@ -112,6 +112,10 @@ pub fn transform_css(css: &str, hash: &str) -> String {
     result = CLASS_SELECTOR_RE
         .replace_all(&result, |caps: &regex::Captures| {
             let class_name = &caps[1];
+            // 跳过已经作用域化的类名（包含 __hash 后缀）
+            if class_name.contains("__") {
+                return format!(".{}", class_name);
+            }
             let scoped = scope_class_name(class_name, hash);
             format!(".{}", scoped)
         })
@@ -133,28 +137,28 @@ pub fn transform_css(css: &str, hash: &str) -> String {
 pub fn generate_mapping(css: &str, hash: &str) -> HashMap<String, String> {
     let mut mapping = HashMap::new();
     
-    // 使用简单方法：查找所有不在 :global() 中的类名
-    let mut in_global = false;
-    let mut current_pos = 0;
+    // 先找出所有 :global() 块的范围
+    let mut global_ranges = Vec::new();
+    for cap in GLOBAL_RE.captures_iter(css) {
+        if let Some(m) = cap.get(0) {
+            global_ranges.push((m.start(), m.end()));
+        }
+    }
     
+    // 提取所有类名，排除在 :global() 范围内的
     for cap in CLASS_SELECTOR_RE.captures_iter(css) {
         let class_name = cap[1].to_string();
         let match_start = cap.get(0).unwrap().start();
         
-        // 检查这个类名是否在 :global() 内
-        let before_text = &css[current_pos..match_start];
-        
-        // 简单启发式：如果前面有 :global( 且还没闭合，则跳过
-        if before_text.contains(":global(") && !before_text.contains(")") {
-            in_global = true;
-        }
+        // 检查是否在 :global() 范围内
+        let in_global = global_ranges.iter().any(|&(start, end)| {
+            match_start >= start && match_start < end
+        });
         
         if !in_global {
             let scoped = scope_class_name(&class_name, hash);
             mapping.insert(class_name, scoped);
         }
-        
-        current_pos = match_start;
     }
     
     mapping

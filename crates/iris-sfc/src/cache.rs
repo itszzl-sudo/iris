@@ -141,12 +141,18 @@ impl SfcCache {
             enabled = config.enabled,
             "Initializing SFC cache"
         );
+        
+        // 确保容量至少为 1，避免 panic
+        let safe_capacity = config.capacity.max(1);
 
         Self {
             cache: Mutex::new(LruCache::new(
-                std::num::NonZeroUsize::new(config.capacity).unwrap(),
+                std::num::NonZeroUsize::new(safe_capacity).unwrap(),
             )),
-            config,
+            config: SfcCacheConfig {
+                capacity: safe_capacity,
+                ..config
+            },
             stats: Mutex::new(CacheStats::default()),
         }
     }
