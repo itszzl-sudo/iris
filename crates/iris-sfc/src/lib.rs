@@ -139,7 +139,7 @@ struct StyleRaw {
 #[derive(Debug, thiserror::Error)]
 pub enum SfcError {
     /// 文件读取失败。
-    #[error("Failed to read file: {file} - {source}")]
+    #[error("❌ Failed to read file: {file}\n   Reason: {source}\n   💡 Suggestion: Check if file exists and you have read permissions.")]
     IoError {
         /// The underlying IO error.
         source: std::io::Error,
@@ -148,7 +148,7 @@ pub enum SfcError {
     },
 
     /// SFC 格式错误。
-    #[error("Parse error at {file}:{line}:{column}: {message}")]
+    #[error("❌ Parse error at {file}:{line}:{column}\n   {message}\n   💡 Suggestion: Ensure .vue file has at least <template> or <script> tag.")]
     ParseError {
         /// Error message.
         message: String,
@@ -161,7 +161,7 @@ pub enum SfcError {
     },
 
     /// Template 编译失败。
-    #[error("Template error at {file}:{line}:{column}: {message}")]
+    #[error("❌ Template error at {file}:{line}:{column}\n   {message}\n   💡 Suggestion: Check for invalid HTML syntax or unsupported directives.")]
     TemplateError {
         /// Error message.
         message: String,
@@ -174,7 +174,7 @@ pub enum SfcError {
     },
 
     /// Script 转译失败。
-    #[error("Script error at {file}:{line}:{column}: {message}")]
+    #[error("❌ Script error at {file}:{line}:{column}\n   {message}\n   💡 Suggestion: Check TypeScript syntax and ensure all compiler macros are valid.")]
     ScriptError {
         /// Error message.
         message: String,
@@ -185,6 +185,97 @@ pub enum SfcError {
         /// Column number (1-based).
         column: usize,
     },
+}
+
+/// 错误严重性级别
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorSeverity {
+    /// 致命错误，编译失败
+    Fatal,
+    /// 警告，编译成功但有潜在问题
+    Warning,
+    /// 信息提示
+    Info,
+}
+
+impl SfcError {
+    /// 获取错误严重性级别
+    pub fn severity(&self) -> ErrorSeverity {
+        match self {
+            SfcError::IoError { .. } => ErrorSeverity::Fatal,
+            SfcError::ParseError { .. } => ErrorSeverity::Fatal,
+            SfcError::TemplateError { .. } => ErrorSeverity::Fatal,
+            SfcError::ScriptError { .. } => ErrorSeverity::Fatal,
+        }
+    }
+    
+    /// 获取文件名
+    pub fn file(&self) -> &str {
+        match self {
+            SfcError::IoError { file, .. } => file,
+            SfcError::ParseError { file, .. } => file,
+            SfcError::TemplateError { file, .. } => file,
+            SfcError::ScriptError { file, .. } => file,
+        }
+    }
+    
+    /// 格式化为人类可读的错误信息（带颜色支持）
+    pub fn format_pretty(&self, use_color: bool) -> String {
+        let reset = if use_color { "\x1b[0m" } else { "" };
+        let red = if use_color { "\x1b[31m" } else { "" };
+        let yellow = if use_color { "\x1b[33m" } else { "" };
+        let cyan = if use_color { "\x1b[36m" } else { "" };
+        
+        format!(
+            "{}error{}: {}\n{}help{}: {}",
+            red, reset,
+            self,
+            cyan, reset,
+            self.help_message()
+        )
+    }
+    
+    /// 获取帮助信息
+    fn help_message(&self) -> String {
+        match self {
+            SfcError::IoError { source, file } => {
+                match source.kind() {
+                    std::io::ErrorKind::NotFound => {
+                        format!("File '{}' not found. Check the file path.", file)
+                    }
+                    std::io::ErrorKind::PermissionDenied => {
+                        format!("Permission denied when reading '{}'. Check file permissions.", file)
+                    }
+                    _ => {
+                        format!("IO error occurred while reading '{}': {}", file, source)
+                    }
+                }
+            }
+            SfcError::ParseError { message, .. } => {
+                if message.contains("must have at least") {
+                    "A .vue file must contain either a <template> or <script> tag.".to_string()
+                } else {
+                    format!("Parse error: {}", message)
+                }
+            }
+            SfcError::TemplateError { message, .. } => {
+                if message.contains("v-") {
+                    format!("Invalid Vue directive in template: {}", message)
+                } else {
+                    format!("Template syntax error: {}", message)
+                }
+            }
+            SfcError::ScriptError { message, .. } => {
+                if message.contains("TypeScript") {
+                    format!("TypeScript compilation failed: {}\nConsider running 'tsc --noEmit' for detailed type checking.", message)
+                } else if message.contains("Script setup") {
+                    format!("Script setup transformation failed: {}\nCheck defineProps and defineEmits syntax.", message)
+                } else {
+                    format!("Script error: {}", message)
+                }
+            }
+        }
+    }
 }
 
 impl From<std::io::Error> for SfcError {

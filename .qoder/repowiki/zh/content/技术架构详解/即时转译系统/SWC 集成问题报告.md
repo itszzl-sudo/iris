@@ -17,14 +17,18 @@
 - [crates/iris-gpu/src/batch_renderer.rs](file://crates/iris-gpu/src/batch_renderer.rs)
 - [crates/iris-app/src/main.rs](file://crates/iris-app/src/main.rs)
 - [crates/iris-js/src/lib.rs](file://crates/iris-js/src/lib.rs)
+- [crates/iris-sfc/tests/integration_test.rs](file://crates/iris-sfc/tests/integration_test.rs)
+- [crates/iris-sfc/src/cache.rs](file://crates/iris-sfc/src/cache.rs)
+- [crates/iris-sfc/src/script_setup.rs](file://crates/iris-sfc/src/script_setup.rs)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 更新以反映TypeScript编译器从简化的占位实现到完整的SWC 62集成的重大架构变更
-- 新增详细的TsCompiler实现、配置系统、性能优化等内容
-- 更新架构图以反映当前基于swc 62的完整实现
-- 修正对TypeScript编译器实现的描述，从简化版正则表达式改为完整的swc 62实现
+- 更新以反映从简化的正则表达式实现到完整的 SWC 62 集成的重大架构变更
+- TypeScript 编译器已从占位实现升级为完整的 SWC 62 实现，解决了版本兼容性问题和 API 变更问题
+- 新增详细的 TsCompiler 实现、配置系统、性能优化等内容
+- 更新架构图以反映当前基于 swc 62 的完整实现
+- 修正对 TypeScript 编译器实现的描述，从简化版正则表达式改为完整的 swc 62 实现
 
 ## 目录
 1. [简介](#简介)
@@ -84,11 +88,11 @@ GPU --> CORE
 
 **图表来源**
 - [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
-- [crates/iris-sfc/Cargo.toml:1-32](file://crates/iris-sfc/Cargo.toml#L1-L32)
+- [crates/iris-sfc/Cargo.toml:1-38](file://crates/iris-sfc/Cargo.toml#L1-L38)
 
 **章节来源**
 - [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
-- [crates/iris-sfc/Cargo.toml:1-32](file://crates/iris-sfc/Cargo.toml#L1-L32)
+- [crates/iris-sfc/Cargo.toml:1-38](file://crates/iris-sfc/Cargo.toml#L1-L38)
 
 ## 核心组件
 
@@ -130,7 +134,7 @@ SfcCompiler --> SfcError : returns
 ```
 
 **图表来源**
-- [crates/iris-sfc/src/lib.rs:37-132](file://crates/iris-sfc/src/lib.rs#L37-L132)
+- [crates/iris-sfc/src/lib.rs:86-132](file://crates/iris-sfc/src/lib.rs#L86-L132)
 
 ### TypeScript编译器
 
@@ -175,12 +179,12 @@ TsCompilerConfig --> EsVersion : uses
 ```
 
 **图表来源**
-- [crates/iris-sfc/src/ts_compiler.rs:27-74](file://crates/iris-sfc/src/ts_compiler.rs#L27-L74)
-- [crates/iris-sfc/src/ts_compiler.rs:76-205](file://crates/iris-sfc/src/ts_compiler.rs#L76-L205)
+- [crates/iris-sfc/src/ts_compiler.rs:35-72](file://crates/iris-sfc/src/ts_compiler.rs#L35-L72)
+- [crates/iris-sfc/src/ts_compiler.rs:140-157](file://crates/iris-sfc/src/ts_compiler.rs#L140-L157)
 
 **章节来源**
-- [crates/iris-sfc/src/lib.rs:143-210](file://crates/iris-sfc/src/lib.rs#L143-L210)
-- [crates/iris-sfc/src/ts_compiler.rs:76-205](file://crates/iris-sfc/src/ts_compiler.rs#L76-L205)
+- [crates/iris-sfc/src/lib.rs:612-668](file://crates/iris-sfc/src/lib.rs#L612-L668)
+- [crates/iris-sfc/src/ts_compiler.rs:140-285](file://crates/iris-sfc/src/ts_compiler.rs#L140-L285)
 
 ## 架构概览
 
@@ -256,7 +260,7 @@ M --> N[无版本冲突]
 ```
 
 **图表来源**
-- [SWC62-INTEGRATION-COMPLETE.md:17-28](file://SWC62-INTEGRATION-COMPLETE.md#L17-L28)
+- [SWC62-INTEGRATION-COMPLETE.md:19-28](file://SWC62-INTEGRATION-COMPLETE.md#L19-L28)
 
 #### 2. API变更问题的处理
 
@@ -294,12 +298,12 @@ SFC-->>App : 返回 JavaScript 代码
 ```
 
 **图表来源**
-- [crates/iris-sfc/src/lib.rs:393-421](file://crates/iris-sfc/src/lib.rs#L393-L421)
-- [crates/iris-sfc/src/ts_compiler.rs:104-176](file://crates/iris-sfc/src/ts_compiler.rs#L104-L176)
+- [crates/iris-sfc/src/lib.rs:633-668](file://crates/iris-sfc/src/lib.rs#L633-L668)
+- [crates/iris-sfc/src/ts_compiler.rs:169-257](file://crates/iris-sfc/src/ts_compiler.rs#L169-L257)
 
 **章节来源**
-- [crates/iris-sfc/src/lib.rs:393-421](file://crates/iris-sfc/src/lib.rs#L393-L421)
-- [crates/iris-sfc/src/ts_compiler.rs:104-205](file://crates/iris-sfc/src/ts_compiler.rs#L104-L205)
+- [crates/iris-sfc/src/lib.rs:633-668](file://crates/iris-sfc/src/lib.rs#L633-L668)
+- [crates/iris-sfc/src/ts_compiler.rs:169-285](file://crates/iris-sfc/src/ts_compiler.rs#L169-L285)
 
 ### 性能优化实现
 
@@ -321,9 +325,31 @@ SWC 62编译器实现了极高的编译性能：
 4. **内存管理**: 使用AtomicUsize进行编译计数，定期清理SourceMap缓存
 
 **章节来源**
-- [crates/iris-sfc/src/lib.rs:19-35](file://crates/iris-sfc/src/lib.rs#L19-L35)
-- [crates/iris-sfc/src/ts_compiler.rs:304-342](file://crates/iris-sfc/src/ts_compiler.rs#L304-L342)
+- [crates/iris-sfc/src/lib.rs:24-36](file://crates/iris-sfc/src/lib.rs#L24-L36)
+- [crates/iris-sfc/src/ts_compiler.rs:142-157](file://crates/iris-sfc/src/ts_compiler.rs#L142-L157)
 - [SWC62-INTEGRATION-COMPLETE.md:75-78](file://SWC62-INTEGRATION-COMPLETE.md#L75-L78)
+
+### 缓存系统优化
+
+Iris实现了高效的SFC缓存系统，支持基于源码哈希的LRU缓存策略：
+
+```mermaid
+flowchart LR
+A[源码字符串] --> B[XXH3 哈希计算]
+B --> C[缓存键生成]
+C --> D{缓存查找}
+D --> |命中| E[直接返回缓存结果]
+D --> |未命中| F[编译执行]
+F --> G[存储到缓存]
+E --> H[返回结果]
+G --> H
+```
+
+**图表来源**
+- [crates/iris-sfc/src/cache.rs:34-51](file://crates/iris-sfc/src/cache.rs#L34-L51)
+
+**章节来源**
+- [crates/iris-sfc/src/cache.rs:136-259](file://crates/iris-sfc/src/cache.rs#L136-L259)
 
 ## 依赖关系分析
 
@@ -367,7 +393,7 @@ JS --> ESM[ESM解析器]
 
 **图表来源**
 - [Cargo.toml:23-29](file://Cargo.toml#L23-L29)
-- [crates/iris-sfc/Cargo.toml:13-32](file://crates/iris-sfc/Cargo.toml#L13-L32)
+- [crates/iris-sfc/Cargo.toml:20-27](file://crates/iris-sfc/Cargo.toml#L20-L27)
 
 ### 版本兼容性矩阵
 
@@ -381,7 +407,7 @@ JS --> ESM[ESM解析器]
 
 **章节来源**
 - [SWC-INTEGRATION-ISSUES.md:172-180](file://SWC-INTEGRATION-ISSUES.md#L172-L180)
-- [SWC62-INTEGRATION-COMPLETE.md:17-28](file://SWC62-INTEGRATION-COMPLETE.md#L17-L28)
+- [SWC62-INTEGRATION-COMPLETE.md:19-28](file://SWC62-INTEGRATION-COMPLETE.md#L19-L28)
 
 ## 性能考量
 
@@ -413,8 +439,27 @@ G --> H[避免内存溢出]
 - [crates/iris-gpu/src/batch_renderer.rs:87-202](file://crates/iris-gpu/src/batch_renderer.rs#L87-L202)
 
 **章节来源**
-- [crates/iris-sfc/src/lib.rs:19-35](file://crates/iris-sfc/src/lib.rs#L19-L35)
+- [crates/iris-sfc/src/lib.rs:24-36](file://crates/iris-sfc/src/lib.rs#L24-L36)
 - [crates/iris-gpu/src/batch_renderer.rs:87-375](file://crates/iris-gpu/src/batch_renderer.rs#L87-L375)
+
+### 缓存性能优化
+
+SFC缓存系统实现了显著的性能提升：
+
+```mermaid
+flowchart TD
+A[首次编译] --> B[5-10 ms]
+C[缓存命中] --> D[<0.01 ms]
+E[性能提升] --> F[500-1000倍]
+G[LRU策略] --> H[自动淘汰最久未使用项]
+I[XXH3哈希] --> J[内容一致性保证]
+```
+
+**图表来源**
+- [crates/iris-sfc/src/cache.rs:12-18](file://crates/iris-sfc/src/cache.rs#L12-L18)
+
+**章节来源**
+- [crates/iris-sfc/src/cache.rs:136-259](file://crates/iris-sfc/src/cache.rs#L136-L259)
 
 ## 故障排除指南
 
@@ -452,10 +497,10 @@ J --> K[更新代码实现]
 ```
 
 **图表来源**
-- [crates/iris-sfc/src/ts_compiler.rs:123-147](file://crates/iris-sfc/src/ts_compiler.rs#L123-L147)
+- [crates/iris-sfc/src/ts_compiler.rs:202-227](file://crates/iris-sfc/src/ts_compiler.rs#L202-L227)
 
 **章节来源**
-- [crates/iris-sfc/src/ts_compiler.rs:123-205](file://crates/iris-sfc/src/ts_compiler.rs#L123-L205)
+- [crates/iris-sfc/src/ts_compiler.rs:202-285](file://crates/iris-sfc/src/ts_compiler.rs#L202-L285)
 
 ## 结论
 
@@ -468,6 +513,7 @@ Iris项目已成功解决SWC集成的所有技术挑战，实现了完整的Type
 3. **性能卓越**: 平均编译时间仅 ~0.13ms，满足实时编译需求
 4. **功能完整**: 支持泛型、接口、装饰器、TSX等高级TypeScript特性
 5. **内存管理优化**: 实现了编译计数和SourceMap缓存清理机制
+6. **缓存系统完善**: 实现了基于XXH3哈希的LRU缓存，提供500-1000倍性能提升
 
 ### 技术突破
 
@@ -475,6 +521,7 @@ Iris项目已成功解决SWC集成的所有技术挑战，实现了完整的Type
 2. **API兼容性**: 采用当前版本的API，避免了历史版本的API变更问题
 3. **性能优化**: 实现了预编译正则表达式和SWC编译器的双重性能优化
 4. **错误处理**: 实现了完整的错误收集和报告机制
+5. **缓存优化**: 实现了高效的LRU缓存系统，支持毫秒级热重载
 
 ### 未来发展方向
 
@@ -483,5 +530,6 @@ Iris项目已成功解决SWC集成的所有技术挑战，实现了完整的Type
 3. **错误处理**: 增强编译错误的详细报告和诊断能力
 4. **测试覆盖**: 扩展单元测试和集成测试的覆盖范围
 5. **配置系统**: 增加更多编译配置选项和自定义转换插件支持
+6. **类型检查**: 完善内置的TypeScript类型检查功能
 
 通过这些措施，Iris项目已成功建立了稳定、高性能的TypeScript编译基础设施，为开发者提供了卓越的开发体验。
