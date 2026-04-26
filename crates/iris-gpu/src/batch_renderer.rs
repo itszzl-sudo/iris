@@ -98,6 +98,21 @@ pub enum DrawCommand {
         /// 边框颜色。
         border_color: [f32; 4],
     },
+    /// 纹理矩形。
+    TextureRect {
+        /// X 坐标（像素）。
+        x: f32,
+        /// Y 坐标（像素）。
+        y: f32,
+        /// 宽度（像素）。
+        width: f32,
+        /// 高度（像素）。
+        height: f32,
+        /// 纹理 ID。
+        texture_id: u32,
+        /// UV 坐标 (u1, v1, u2, v2)。
+        uv: [f32; 4],
+    },
 }
 
 /// 2D 批渲染器。
@@ -117,6 +132,13 @@ pub struct BatchRenderer {
     // 字体渲染
     font: Option<Font>,
     font_size: f32,
+    
+    // 纹理管理
+    textures: Vec<wgpu::Texture>,
+    texture_views: Vec<wgpu::TextureView>,
+    texture_bind_group_layout: wgpu::BindGroupLayout,
+    texture_bind_group: Option<wgpu::BindGroup>,
+    texture_sampler: wgpu::Sampler,
 }
 
 impl BatchRenderer {
@@ -206,6 +228,42 @@ impl BatchRenderer {
             mapped_at_creation: false,
         });
 
+        // 创建采样器（用于纹理过滤）
+        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Texture Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        // 创建纹理绑定组布局
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         Self {
             queue: queue.clone(),
             render_pipeline,
@@ -218,6 +276,11 @@ impl BatchRenderer {
             screen_height,
             font: None,
             font_size: 16.0,
+            textures: Vec::new(),
+            texture_views: Vec::new(),
+            texture_bind_group_layout,
+            texture_bind_group: None,
+            texture_sampler,
         }
     }
 
@@ -294,6 +357,16 @@ impl BatchRenderer {
                 if right > 0.0 {
                     self.add_rect(x + width - right, y, right, height, border_color, border_color);
                 }
+            }
+            DrawCommand::TextureRect {
+                x,
+                y,
+                width,
+                height,
+                texture_id,
+                uv,
+            } => {
+                self.submit_texture_rect(x, y, width, height, texture_id, uv);
             }
         }
     }
@@ -436,6 +509,93 @@ impl BatchRenderer {
     pub fn set_font(&mut self, font: Font, size: f32) {
         self.font = Some(font);
         self.font_size = size;
+    }
+
+    /// 从字节数据加载纹理。
+    pub fn load_texture_from_bytes(
+        &mut self,
+        device: &wgpu::Device,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<u32, String> {
+        // 创建纹理
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Loaded Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        // 上传数据到 GPU
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            data,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        // 创建纹理视图
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        
+        let texture_id = self.textures.len() as u32;
+        self.textures.push(texture);
+        self.texture_views.push(view);
+
+        Ok(texture_id)
+    }
+
+    /// 添加纹理到批渲染器（简化实现，当前使用纯色占位符）。
+    pub fn submit_texture_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        texture_id: u32,
+        uv: [f32; 4],
+    ) {
+        if texture_id >= self.textures.len() as u32 {
+            tracing::warn!("Texture ID {} not found, using placeholder", texture_id);
+            // 使用粉色占位符表示纹理缺失
+            self.add_rect(x, y, width, height, [1.0, 0.0, 1.0, 0.5], [1.0, 0.0, 1.0, 0.5]);
+            return;
+        }
+
+        // 当前实现：使用半透明占位符
+        // 完整实现需要更新 shader 支持纹理采样和 bind group
+        let placeholder_color = [0.5, 0.5, 1.0, 0.3]; // 半透明蓝色
+        self.add_rect(x, y, width, height, placeholder_color, placeholder_color);
+        
+        tracing::debug!(
+            texture_id = texture_id,
+            x = x,
+            y = y,
+            width = width,
+            height = height,
+            "Submitted texture rectangle (placeholder mode)"
+        );
     }
 
     /// 渲染文本。
