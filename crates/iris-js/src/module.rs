@@ -2,9 +2,10 @@
 //!
 //! 实现 ES Module 的解析、加载和执行。
 
-use crate::vm::{JsRuntime, JsValue};
-use rquickjs::Result;
+use crate::vm::JsRuntime;
+use boa_engine::JsValue;
 use std::collections::HashMap;
+use std::error::Error;
 
 /// 模块状态
 #[derive(Debug, Clone, PartialEq)]
@@ -108,10 +109,10 @@ impl ModuleRegistry {
         &mut self,
         runtime: &mut JsRuntime,
         specifier: &str,
-    ) -> Result<HashMap<String, JsValue>> {
+    ) -> std::result::Result<HashMap<String, JsValue>, Box<dyn Error>> {
         // 检查模块是否存在
         if !self.modules.contains_key(specifier) {
-            return Err(rquickjs::Error::new_loading(specifier));
+            return Err(format!("Module not found: {}", specifier).into());
         }
 
         // 执行模块代码
@@ -125,7 +126,7 @@ impl ModuleRegistry {
             }
             Err(e) => {
                 module.status = ModuleStatus::Error(e.to_string());
-                Err(e)
+                Err(e.into())
             }
         }
     }

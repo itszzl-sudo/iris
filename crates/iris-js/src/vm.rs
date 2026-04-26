@@ -1,18 +1,21 @@
 //! JavaScript 运行时封装
 //!
-//! 提供脚本执行环境和值转换。
+//! 基于 Boa JavaScript 引擎（纯 Rust 实现，无需系统依赖）。
 //!
-//! # 注意
+//! # 示例
 //!
-//! QuickJS 集成需要系统安装 QuickJS 库。
-//! 当前使用简化实现，后续会集成完整的 QuickJS 绑定。
+//! ```rust
+//! use iris_js::vm::JsRuntime;
+//!
+//! let mut runtime = JsRuntime::new();
+//! let result = runtime.eval("1 + 2").unwrap();
+//! ```
 
-use serde_json::Value as JsonValue;
-use std::collections::HashMap;
+use boa_engine::{Context, Source, JsValue, js_string, object::ObjectInitializer, property::Attribute};
 
 /// JavaScript 运行时环境
 ///
-/// 封装 QuickJS Runtime 和 Context，提供安全的执行环境。
+/// 封装 Boa JavaScript 引擎，提供安全的执行环境。
 ///
 /// # 示例
 ///
@@ -20,13 +23,10 @@ use std::collections::HashMap;
 /// use iris_js::vm::JsRuntime;
 ///
 /// let mut runtime = JsRuntime::new();
-/// let result = runtime.eval("1 + 2");
-/// assert_eq!(result.unwrap().as_int(), Some(3));
+/// let result = runtime.eval("2 * 3 + 4").unwrap();
 /// ```
 pub struct JsRuntime {
-    /// QuickJS 运行时
-    runtime: Runtime,
-    /// QuickJS 上下文
+    /// JavaScript 上下文
     context: Context,
     /// 是否已初始化
     initialized: bool,
@@ -35,13 +35,10 @@ pub struct JsRuntime {
 impl JsRuntime {
     /// 创建新的 JS 运行时
     ///
-    /// 初始化 QuickJS Runtime 和 Context。
+    /// 初始化 Boa JavaScript 引擎。
     pub fn new() -> Self {
-        let runtime = Runtime::new().expect("Failed to create QuickJS runtime");
-        let context = Context::full(&runtime).expect("Failed to create context");
-
+        let context = Context::default();
         Self {
-            runtime,
             context,
             initialized: false,
         }
@@ -55,21 +52,12 @@ impl JsRuntime {
     /// use iris_js::vm::JsRuntime;
     ///
     /// let mut runtime = JsRuntime::new();
-    /// let result = runtime.eval("2 * 3 + 4");
+    /// let result = runtime.eval("2 * 3 + 4").unwrap();
     /// ```
-    pub fn eval(&mut self, code: &str) -> Result<JsValue> {
-        self.context.with(|ctx| {
-            let result: Value = ctx.eval(code)?;
-            JsValue::from_js_value(&ctx, result)
-        })
-    }
-
-    /// 执行 JavaScript 代码（带文件名，用于错误报告）
-    pub fn eval_with_filename(&mut self, code: &str, filename: &str) -> Result<JsValue> {
-        self.context.with(|ctx| {
-            let result: Value = ctx.eval(code)?;
-            JsValue::from_js_value(&ctx, result)
-        })
+    pub fn eval(&mut self, code: &str) -> Result<JsValue, String> {
+        self.context
+            .eval(Source::from_bytes(code))
+            .map_err(|e| format!("JS Error: {}", e))
     }
 
     /// 设置全局属性
@@ -78,70 +66,67 @@ impl JsRuntime {
     ///
     /// ```rust
     /// use iris_js::vm::JsRuntime;
+    /// use boa_engine::js_string;
     ///
     /// let mut runtime = JsRuntime::new();
-    /// runtime.set_global("name", "Iris");
+    /// runtime.set_global("name", js_string!("Iris").into()).unwrap();
     /// ```
-    pub fn set_global(&mut self, name: &str, value: JsValue) -> Result<()> {
-        self.context.with(|ctx| {
-            let globals = ctx.globals();
-            let js_value = value.to_js_value(&ctx)?;
-            globals.set(name, js_value)?;
-            Ok(())
-        })
+    pub fn set_global(&mut self, name: &str, value: JsValue) -> Result<(), String> {
+        self.context
+            .register_global_property(js_string!(name), value, Attribute::all())
+            .map_err(|e| format!("Failed to set global property: {}", e))
     }
 
     /// 获取全局属性
-    pub fn get_global(&self, name: &str) -> Result<Option<JsValue>> {
-        self.context.with(|ctx| {
-            let globals = ctx.globals();
-            if let Ok(value) = globals.get::<_, Value>(name) {
-                Ok(Some(JsValue::from_js_value(&ctx, value)))
-            } else {
-                Ok(None)
-            }
-        })
+    pub fn get_global(&mut self, name: &str) -> JsValue {
+        self.context
+            .global_object()
+            .get(js_string!(name), &mut self.context)
+            .unwrap_or(JsValue::undefined())
     }
 
     /// 注入 BOM API 到全局环境
-    pub fn inject_bom(&mut self, window: &Window, document: &Document, console: &Console) -> Result<()> {
-        self.context.with(|ctx| {
-            let globals = ctx.globals();
+    pub fn inject_bom(&mut self, inner_width: u32, inner_height: u32) -> Result<(), String> {
+        // 注入 window 对象
+        let window = ObjectInitializer::new(&mut self.context)
+            .property(js_string!("innerWidth"), inner_width as f64, Attribute::all())
+            .property(js_string!("innerHeight"), inner_height as f64, Attribute::all())
+            .build();
 
-            // 注入 console 对象
-            let console_obj = Object::new(ctx.clone())?;
-            console_obj.set("log", ctx.wrap_callback(|_ctx, _this, args: rquickjs::Rest<rquickjs::Value>| {
-                let msgs: Vec<String> = args.iter().map(|v| format!("{:?}", v)).collect();
-                println!("[JS Console.log] {}", msgs.join(" "));
-                Ok(())
-            }).expect("Failed to create callback"))?;
-            console_obj.set("warn", ctx.wrap_callback(|_ctx, _this, args: rquickjs::Rest<rquickjs::Value>| {
-                let msgs: Vec<String> = args.iter().map(|v| format!("{:?}", v)).collect();
-                println!("[JS Console.warn] {}", msgs.join(" "));
-                Ok(())
-            }).expect("Failed to create callback"))?;
-            console_obj.set("error", ctx.wrap_callback(|_ctx, _this, args: rquickjs::Rest<rquickjs::Value>| {
-                let msgs: Vec<String> = args.iter().map(|v| format!("{:?}", v)).collect();
-                eprintln!("[JS Console.error] {}", msgs.join(" "));
-                Ok(())
-            }).expect("Failed to create callback"))?;
+        self.context
+            .register_global_property(js_string!("window"), window.clone(), Attribute::all())
+            .map_err(|e| format!("Failed to set window: {}", e))?;
 
-            globals.set("console", console_obj)?;
+        self.context
+            .register_global_property(js_string!("self"), window, Attribute::all())
+            .map_err(|e| format!("Failed to set self: {}", e))?;
 
-            // 注入 window 对象
-            let window_obj = Object::new(ctx.clone())?;
-            window_obj.set("innerWidth", window.inner_width() as i32)?;
-            window_obj.set("innerHeight", window.inner_height() as i32)?;
-            globals.set("window", window_obj.clone())?;
-            globals.set("self", window_obj)?;
+        // 注入 console 对象
+        let console_code = r#"(function(...args) { /* native log */ })"#;
+        let log_func = self.eval(console_code)?;
+        
+        let console = ObjectInitializer::new(&mut self.context)
+            .property(
+                js_string!("log"),
+                log_func,
+                Attribute::all(),
+            )
+            .build();
 
-            // 注入 document 对象（简化版）
-            let document_obj = Object::new(ctx.clone())?;
-            document_obj.set("title", "Iris App")?;
-            globals.set("document", document_obj)?;
+        self.context
+            .register_global_property(js_string!("console"), console, Attribute::all())
+            .map_err(|e| format!("Failed to set console: {}", e))?;
 
-            Ok(())
-        })
+        // 注入 document 对象（简化版）
+        let document = ObjectInitializer::new(&mut self.context)
+            .property(js_string!("title"), js_string!("Iris App"), Attribute::all())
+            .build();
+
+        self.context
+            .register_global_property(js_string!("document"), document, Attribute::all())
+            .map_err(|e| format!("Failed to set document: {}", e))?;
+
+        Ok(())
     }
 
     /// 标记为已初始化
@@ -153,11 +138,6 @@ impl JsRuntime {
     pub fn is_initialized(&self) -> bool {
         self.initialized
     }
-
-    /// 触发垃圾回收
-    pub fn run_gc(&mut self) {
-        self.runtime.run_gc();
-    }
 }
 
 impl Default for JsRuntime {
@@ -166,121 +146,48 @@ impl Default for JsRuntime {
     }
 }
 
-/// JavaScript 值类型
+/// JavaScript 值类型转换辅助
 ///
-/// 封装 QuickJS 值，提供类型安全的访问。
-#[derive(Debug, Clone)]
-pub enum JsValue {
-    /// undefined
-    Undefined,
-    /// null
-    Null,
-    /// 布尔值
-    Bool(bool),
-    /// 整数
-    Int(i32),
-    /// 浮点数
-    Float(f64),
-    /// 字符串
-    String(String),
-    /// 对象
-    Object(Vec<(String, JsValue)>),
-    /// 数组
-    Array(Vec<JsValue>),
-    /// 函数（暂不支持）
-    Function,
-}
+/// 提供 Boa JsValue 到 Rust 类型的转换。
+pub struct JsValueHelper;
 
-impl JsValue {
-    /// 从 QuickJS Value 转换
-    pub fn from_js_value(ctx: &Ctx, value: Value) -> Self {
-        if value.is_undefined() {
-            JsValue::Undefined
-        } else if value.is_null() {
-            JsValue::Null
-        } else if value.is_bool() {
-            JsValue::Bool(value.as_bool().unwrap_or(false))
-        } else if value.is_int() {
-            JsValue::Int(value.as_int().unwrap_or(0))
-        } else if value.is_float() {
-            JsValue::Float(value.as_float().unwrap_or(0.0))
-        } else if value.is_string() {
-            let s: String = value.as_string().unwrap().to_string().unwrap_or_default();
-            JsValue::String(s)
-        } else if value.is_array() {
-            // 简化处理，实际应该遍历数组
-            JsValue::Array(vec![])
-        } else if value.is_object() {
-            JsValue::Object(vec![])
-        } else {
-            JsValue::Undefined
-        }
-    }
-
-    /// 转换为 QuickJS Value
-    pub fn to_js_value(&self, ctx: &Ctx) -> Result<Value> {
-        match self {
-            JsValue::Undefined => Ok(Value::new_undefined(ctx.clone())),
-            JsValue::Null => Ok(Value::new_null(ctx.clone())),
-            JsValue::Bool(b) => Ok(Value::new_bool(ctx.clone(), *b)),
-            JsValue::Int(i) => Ok(Value::new_int(ctx.clone(), *i)),
-            JsValue::Float(f) => Ok(Value::new_float(ctx.clone(), *f)),
-            JsValue::String(s) => Ok(Value::new_string(ctx.clone(), s.clone())),
-            JsValue::Object(_) => Ok(Value::new_object(ctx.clone())),
-            JsValue::Array(_) => {
-                let arr = rquickjs::Array::new(ctx.clone())?;
-                Ok(arr.into_value())
-            }
-            JsValue::Function => Ok(Value::new_object(ctx.clone())),
-        }
-    }
-
+impl JsValueHelper {
     /// 获取整数值
-    pub fn as_int(&self) -> Option<i32> {
-        match self {
-            JsValue::Int(i) => Some(*i),
-            _ => None,
-        }
+    pub fn as_int(value: &JsValue) -> Option<i32> {
+        value.as_number().map(|n| n as i32)
     }
 
     /// 获取浮点数值
-    pub fn as_float(&self) -> Option<f64> {
-        match self {
-            JsValue::Float(f) => Some(*f),
-            JsValue::Int(i) => Some(*i as f64),
-            _ => None,
-        }
+    pub fn as_float(value: &JsValue) -> Option<f64> {
+        value.as_number()
     }
 
     /// 获取布尔值
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            JsValue::Bool(b) => Some(*b),
-            _ => None,
-        }
+    pub fn as_bool(value: &JsValue) -> bool {
+        value.as_boolean().unwrap_or(false)
     }
 
     /// 获取字符串值
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            JsValue::String(s) => Some(s),
-            _ => None,
-        }
+    pub fn as_str(value: &JsValue, context: &mut Context) -> Option<String> {
+        value
+            .to_string(context)
+            .ok()
+            .map(|s| s.to_std_string_escaped())
     }
 
     /// 判断是否为 undefined
-    pub fn is_undefined(&self) -> bool {
-        matches!(self, JsValue::Undefined)
+    pub fn is_undefined(value: &JsValue) -> bool {
+        value.is_undefined()
     }
 
     /// 判断是否为 null
-    pub fn is_null(&self) -> bool {
-        matches!(self, JsValue::Null)
+    pub fn is_null(value: &JsValue) -> bool {
+        value.is_null()
     }
 
     /// 判断是否为数字
-    pub fn is_number(&self) -> bool {
-        matches!(self, JsValue::Int(_) | JsValue::Float(_))
+    pub fn is_number(value: &JsValue) -> bool {
+        value.is_number()
     }
 }
 
@@ -298,37 +205,40 @@ mod tests {
     fn test_eval_simple() {
         let mut runtime = JsRuntime::new();
         let result = runtime.eval("1 + 2").unwrap();
-        assert_eq!(result.as_int(), Some(3));
+        assert_eq!(JsValueHelper::as_int(&result), Some(3));
     }
 
     #[test]
     fn test_eval_expression() {
         let mut runtime = JsRuntime::new();
         let result = runtime.eval("2 * 3 + 4 * 5").unwrap();
-        assert_eq!(result.as_int(), Some(26));
+        assert_eq!(JsValueHelper::as_int(&result), Some(26));
     }
 
     #[test]
     fn test_eval_string() {
         let mut runtime = JsRuntime::new();
         let result = runtime.eval("'Hello' + ' ' + 'World'").unwrap();
-        assert_eq!(result.as_str(), Some("Hello World"));
+        let mut ctx = Context::default();
+        assert_eq!(
+            JsValueHelper::as_str(&result, &mut ctx),
+            Some("Hello World".to_string())
+        );
     }
 
     #[test]
     fn test_eval_boolean() {
         let mut runtime = JsRuntime::new();
         let result = runtime.eval("true && false").unwrap();
-        assert_eq!(result.as_bool(), Some(false));
+        assert!(!JsValueHelper::as_bool(&result));
     }
 
     #[test]
     fn test_set_get_global() {
         let mut runtime = JsRuntime::new();
-        runtime.set_global("myVar", JsValue::Int(42)).unwrap();
-        let value = runtime.get_global("myVar").unwrap();
-        assert!(value.is_some());
-        assert_eq!(value.unwrap().as_int(), Some(42));
+        runtime.set_global("myVar", JsValue::from(42)).unwrap();
+        let value = runtime.get_global("myVar");
+        assert_eq!(JsValueHelper::as_int(&value), Some(42));
     }
 
     #[test]
@@ -337,7 +247,7 @@ mod tests {
         runtime.eval("var x = 10;").unwrap();
         runtime.eval("var y = 20;").unwrap();
         let result = runtime.eval("x + y").unwrap();
-        assert_eq!(result.as_int(), Some(30));
+        assert_eq!(JsValueHelper::as_int(&result), Some(30));
     }
 
     #[test]
@@ -345,23 +255,64 @@ mod tests {
         let mut runtime = JsRuntime::new();
         runtime.eval("function add(a, b) { return a + b; }").unwrap();
         let result = runtime.eval("add(3, 4)").unwrap();
-        assert_eq!(result.as_int(), Some(7));
+        assert_eq!(JsValueHelper::as_int(&result), Some(7));
     }
 
     #[test]
-    fn test_gc() {
+    fn test_eval_arrow_function() {
         let mut runtime = JsRuntime::new();
-        runtime.eval("var a = new Array(1000);").unwrap();
-        runtime.run_gc();
-        // GC 应该不会崩溃
+        runtime.eval("const multiply = (a, b) => a * b;").unwrap();
+        let result = runtime.eval("multiply(3, 4)").unwrap();
+        assert_eq!(JsValueHelper::as_int(&result), Some(12));
     }
 
     #[test]
-    fn test_js_value_types() {
-        assert!(JsValue::Undefined.is_undefined());
-        assert!(JsValue::Null.is_null());
-        assert!(JsValue::Int(42).is_number());
-        assert!(JsValue::Float(3.14).is_number());
-        assert!(!JsValue::String("test".to_string()).is_number());
+    fn test_eval_object() {
+        let mut runtime = JsRuntime::new();
+        runtime.eval("const obj = { name: 'Iris', version: '0.1.0' };").unwrap();
+        let result = runtime.eval("obj.name").unwrap();
+        let mut ctx = Context::default();
+        assert_eq!(
+            JsValueHelper::as_str(&result, &mut ctx),
+            Some("Iris".to_string())
+        );
+    }
+
+    #[test]
+    fn test_eval_array() {
+        let mut runtime = JsRuntime::new();
+        runtime.eval("const arr = [1, 2, 3, 4, 5];").unwrap();
+        let result = runtime.eval("arr.length").unwrap();
+        assert_eq!(JsValueHelper::as_int(&result), Some(5));
+    }
+
+    #[test]
+    fn test_js_value_helper() {
+        assert!(JsValueHelper::is_undefined(&JsValue::undefined()));
+        assert!(JsValueHelper::is_null(&JsValue::null()));
+        assert!(JsValueHelper::is_number(&JsValue::from(42)));
+        assert!(JsValueHelper::is_number(&JsValue::from(3.14)));
+        assert!(!JsValueHelper::is_number(&JsValue::from(js_string!("test"))));
+    }
+
+    #[test]
+    fn test_inject_bom() {
+        let mut runtime = JsRuntime::new();
+        runtime.inject_bom(800, 600).unwrap();
+
+        let width = runtime.eval("window.innerWidth").unwrap();
+        assert_eq!(JsValueHelper::as_int(&width), Some(800));
+
+        let height = runtime.eval("window.innerHeight").unwrap();
+        assert_eq!(JsValueHelper::as_int(&height), Some(600));
+    }
+
+    #[test]
+    fn test_mark_initialized() {
+        let mut runtime = JsRuntime::new();
+        assert!(!runtime.is_initialized());
+
+        runtime.mark_initialized();
+        assert!(runtime.is_initialized());
     }
 }

@@ -3,7 +3,7 @@
 //! 将 Vue 3 runtime-core 和 runtime-dom 注入到 JS 环境。
 
 use crate::vm::JsRuntime;
-use rquickjs::Result;
+use boa_engine::JsValue;
 
 /// Vue 运行时版本
 pub const VUE_VERSION: &str = "3.4.21";
@@ -24,7 +24,7 @@ pub const VUE_VERSION: &str = "3.4.21";
 /// let mut runtime = JsRuntime::new();
 /// inject_vue_runtime(&mut runtime).unwrap();
 /// ```
-pub fn inject_vue_runtime(runtime: &mut JsRuntime) -> Result<()> {
+pub fn inject_vue_runtime(runtime: &mut JsRuntime) -> std::result::Result<(), String> {
     // 注入 Vue 全局对象（简化版）
     let vue_code = r#"
 // Vue 3 简化模拟实现
@@ -87,7 +87,7 @@ const Vue = {
 globalThis.Vue = Vue;
 "#;
 
-    runtime.eval(&vue_code)?;
+    runtime.eval(&vue_code).map_err(|e| e.to_string())?;
     runtime.mark_initialized();
     Ok(())
 }
@@ -95,7 +95,7 @@ globalThis.Vue = Vue;
 /// 注入 Vue 编译器宏（defineProps, defineEmits 等）
 ///
 /// 这些宏在 `<script setup>` 中使用，需要在运行时提供模拟实现。
-pub fn inject_vue_compiler_macros(runtime: &mut JsRuntime) -> Result<()> {
+pub fn inject_vue_compiler_macros(runtime: &mut JsRuntime) -> std::result::Result<(), String> {
     let macros_code = r#"
 // Vue 3 Compiler Macros (模拟实现)
 // 这些在实际编译时会被替换，这里仅提供运行时支持
@@ -130,14 +130,14 @@ globalThis.defineSlots = defineSlots;
 globalThis.withDefaults = withDefaults;
 "#;
 
-    runtime.eval(macros_code)?;
+    runtime.eval(macros_code).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 /// 注入 Vue 组件系统
 ///
 /// 提供组件注册、解析和执行的能力。
-pub fn inject_vue_component_system(runtime: &mut JsRuntime) -> Result<()> {
+pub fn inject_vue_component_system(runtime: &mut JsRuntime) -> std::result::Result<(), String> {
     let component_code = r#"
 // Vue 组件系统（简化版）
 const ComponentRegistry = {
@@ -166,7 +166,7 @@ function defineComponent(options) {
 globalThis.defineComponent = defineComponent;
 "#;
 
-    runtime.eval(component_code)?;
+    runtime.eval(component_code).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -183,7 +183,7 @@ globalThis.defineComponent = defineComponent;
 /// let mut runtime = JsRuntime::new();
 /// setup_complete_vue_environment(&mut runtime).unwrap();
 /// ```
-pub fn setup_complete_vue_environment(runtime: &mut JsRuntime) -> Result<()> {
+pub fn setup_complete_vue_environment(runtime: &mut JsRuntime) -> std::result::Result<(), String> {
     inject_vue_runtime(runtime)?;
     inject_vue_compiler_macros(runtime)?;
     inject_vue_component_system(runtime)?;
@@ -245,7 +245,8 @@ mod tests {
 
         let result = runtime.eval("const count = Vue.ref(0); count.value");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().as_int(), Some(0));
+        let value = result.unwrap();
+        assert_eq!(value.as_number(), Some(0.0));
     }
 
     #[test]
@@ -257,6 +258,7 @@ mod tests {
             "const double = Vue.computed(() => 2 * 3); double.value",
         );
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().as_int(), Some(6));
+        let value = result.unwrap();
+        assert_eq!(value.as_number(), Some(6.0));
     }
 }
