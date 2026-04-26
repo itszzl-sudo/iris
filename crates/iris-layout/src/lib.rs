@@ -2,8 +2,31 @@
 //!
 //! 复刻标准浏览器 CSS 体系，对标 Chromium 基础能力。
 //! 包含 HTML 解析、CSS 解析、选择器匹配、样式继承、Flex/流式布局计算。
+//!
+//! # 架构设计
+//!
+//! ```text
+//! HTML 字符串 → html5ever → DOM 树 → 样式计算 → 布局计算 → LayoutBox
+//! ```
+//!
+//! # 示例
+//!
+//! ```rust
+//! use iris_layout::html::parse_html;
+//! use iris_layout::css::parse_stylesheet;
+//! use iris_layout::layout::compute_layout;
+//!
+//! let html = r#"<div class="container"><p>Hello</p></div>"#;
+//! let dom = parse_html(html);
+//! ```
 
 #![warn(missing_docs)]
+
+pub mod dom;
+pub mod html;
+pub mod css;
+pub mod style;
+pub mod layout;
 
 use iris_core;
 
@@ -11,30 +34,4 @@ use iris_core;
 pub fn init() {
     iris_core::init();
     println!("iris-layout initialized");
-}
-
-/// HTML 解析与 DOM 树构建。
-pub mod html {
-    /// 解析 HTML 字符串，生成标准 DOM 节点树。
-    pub fn parse(html: &str) {
-        let _ = html;
-        // TODO: use html5ever
-    }
-}
-
-/// CSS 解析与样式计算。
-pub mod css {
-    /// 解析 CSS 样式表。
-    pub fn parse_stylesheet(css: &str) {
-        let _ = css;
-        // TODO: use cssparser
-    }
-}
-
-/// 布局计算系统。
-pub mod layout {
-    /// 执行盒模型与 Flex 布局计算。
-    pub fn compute_layout() {
-        // TODO: implement
-    }
 }
