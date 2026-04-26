@@ -66,6 +66,14 @@ pub mod vnode_renderer;
 pub mod dirty_rect_manager;
 pub use dirty_rect_manager::{DirtyRect, DirtyRectManager, DirtyRectStats};
 
+/// 动画引擎（CSS Transitions & Animations）
+///
+/// 实现 CSS 过渡动画和关键帧动画，支持缓动函数和时间轴控制。
+pub mod animation_engine;
+pub use animation_engine::{
+    EasingFunction, TransitionConfig, ElementAnimationState, TransitionAnimation, AnimatedValue,
+};
+
 /// Iris 引擎版本号。
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
