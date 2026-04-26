@@ -157,10 +157,47 @@ impl BatchRenderer {
             source: wgpu::ShaderSource::Wgsl(include_str!("batch_shader.wgsl").into()),
         });
 
+        // 创建采样器（用于纹理过滤）
+        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Texture Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        // 创建纹理绑定组布局（必须在 pipeline_layout 之前）
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
         // ========== 创建渲染管线 ==========
+        // 步骤 1: 更新渲染管线布局使用纹理绑定组
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Batch Pipeline Layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&texture_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -229,43 +266,8 @@ impl BatchRenderer {
             mapped_at_creation: false,
         });
 
-        // 创建采样器（用于纹理过滤）
-        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Texture Sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        // 创建纹理绑定组布局
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Texture Bind Group Layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
-        Self {
+        // 步骤 2 & 3: 创建实例并初始化默认纹理和绑定组
+        let mut renderer = Self {
             queue: queue.clone(),
             render_pipeline,
             vertex_buffer,
@@ -282,7 +284,68 @@ impl BatchRenderer {
             texture_bind_group_layout,
             texture_bind_group: None,
             texture_sampler,
-        }
+        };
+
+        // 创建默认的 1x1 白色纹理（用于纯色渲染）
+        let white_pixel = [255u8, 255, 255, 255];
+        let default_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Default White Texture"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        renderer.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &default_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &white_pixel,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        let default_view = default_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        renderer.textures.push(default_texture);
+        renderer.texture_views.push(default_view);
+
+        // 创建默认绑定组（使用索引 0 的白色纹理）
+        renderer.texture_bind_group = Some(
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Default Texture Bind Group"),
+                layout: &renderer.texture_bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&renderer.texture_views[0]),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&renderer.texture_sampler),
+                    },
+                ],
+            })
+        );
+
+        renderer
     }
 
     /// 提交绘制命令（不立即渲染，累积到顶点池）。
@@ -494,6 +557,11 @@ impl BatchRenderer {
         self.queue
             .write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&self.indices));
 
+        // 步骤 4: 在 flush() 中绑定纹理组（在 draw_indexed 之前）
+        if let Some(bind_group) = &self.texture_bind_group {
+            render_pass.set_bind_group(0, bind_group, &[]);
+        }
+
         // 执行绘制
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -573,6 +641,7 @@ impl BatchRenderer {
     }
 
     /// 添加纹理到批渲染器（简化实现，当前使用纯色占位符）。
+    /// 提交纹理矩形（步骤 5: 完整实现纹理渲染）
     pub fn submit_texture_rect(
         &mut self,
         x: f32,
@@ -589,18 +658,59 @@ impl BatchRenderer {
             return;
         }
 
-        // 当前实现：使用半透明占位符
-        // 完整实现需要更新 shader 支持纹理采样和 bind group
-        let placeholder_color = [0.5, 0.5, 1.0, 0.3]; // 半透明蓝色
-        self.add_rect(x, y, width, height, placeholder_color, placeholder_color);
-        
+        // 检查 u16 索引溢出风险
+        if self.vertices.len() + 4 > 65536 {
+            panic!("Vertex count exceeds u16 indexing limit (65535). Current: {}", self.vertices.len());
+        }
+
+        // 转换为 NDC 坐标
+        let (x1, y1) = self.to_ndc(x, y);
+        let (x2, y2) = self.to_ndc(x + width, y + height);
+
+        let base_index = self.vertices.len() as u16;
+
+        // 4 个顶点，带 UV 坐标
+        // 左上角 (uv[0], uv[1])
+        self.vertices.push(BatchVertex {
+            position: [x1, y1],
+            color: [1.0, 1.0, 1.0, 1.0], // 白色，让纹理颜色完全显示
+            uv: [uv[0], uv[1]],
+        });
+        // 右上角 (uv[2], uv[1])
+        self.vertices.push(BatchVertex {
+            position: [x2, y1],
+            color: [1.0, 1.0, 1.0, 1.0],
+            uv: [uv[2], uv[1]],
+        });
+        // 右下角 (uv[2], uv[3])
+        self.vertices.push(BatchVertex {
+            position: [x2, y2],
+            color: [1.0, 1.0, 1.0, 1.0],
+            uv: [uv[2], uv[3]],
+        });
+        // 左下角 (uv[0], uv[3])
+        self.vertices.push(BatchVertex {
+            position: [x1, y2],
+            color: [1.0, 1.0, 1.0, 1.0],
+            uv: [uv[0], uv[3]],
+        });
+
+        // 6 个索引（两个三角形）
+        self.indices.push(base_index);
+        self.indices.push(base_index + 1);
+        self.indices.push(base_index + 2);
+        self.indices.push(base_index);
+        self.indices.push(base_index + 2);
+        self.indices.push(base_index + 3);
+
         tracing::debug!(
             texture_id = texture_id,
             x = x,
             y = y,
             width = width,
             height = height,
-            "Submitted texture rectangle (placeholder mode)"
+            uv = ?uv,
+            "Submitted texture rectangle with UV coordinates"
         );
     }
 
