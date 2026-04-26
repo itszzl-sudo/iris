@@ -6,12 +6,13 @@
 # ============================================
 
 # 使用清华大学 crates.io 镜像
-[source.crates-io]
-replace-with = 'tuna'
+# 注意：发布到 crates.io 时需要临时注释掉此配置
+# [source.crates-io]
+# replace-with = 'tuna'
 
 # 清华大学镜像源（git 协议，稳定可靠）
-[source.tuna]
-registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"
+# [source.tuna]
+# registry = "https://mirrors.tuna.tsinghua.edu.cn/git/crates.io-index.git"
 
 # 备选：字节跳动镜像（sparse 协议，速度更快）
 # [source.crates-io]
