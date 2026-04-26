@@ -81,6 +81,21 @@ pub enum DrawCommand {
         /// true = 水平渐变，false = 垂直渐变。
         horizontal: bool,
     },
+    /// 边框。
+    Border {
+        /// X 坐标（像素）。
+        x: f32,
+        /// Y 坐标（像素）。
+        y: f32,
+        /// 宽度（像素）。
+        width: f32,
+        /// 高度（像素）。
+        height: f32,
+        /// 边框宽度 (上, 右, 下, 左)。
+        border_width: (f32, f32, f32, f32),
+        /// 边框颜色。
+        border_color: [f32; 4],
+    },
 }
 
 /// 2D 批渲染器。
@@ -240,6 +255,36 @@ impl BatchRenderer {
                 } else {
                     // 垂直渐变：左上/右上 = start, 左下/右下 = end
                     self.add_rect_vertical(x, y, width, height, start_color, end_color);
+                }
+            }
+            DrawCommand::Border {
+                x,
+                y,
+                width,
+                height,
+                border_width,
+                border_color,
+            } => {
+                let (top, right, bottom, left) = border_width;
+                
+                // 上边框
+                if top > 0.0 {
+                    self.add_rect(x, y, width, top, border_color, border_color);
+                }
+                
+                // 下边框
+                if bottom > 0.0 {
+                    self.add_rect(x, y + height - bottom, width, bottom, border_color, border_color);
+                }
+                
+                // 左边框
+                if left > 0.0 {
+                    self.add_rect(x, y, left, height, border_color, border_color);
+                }
+                
+                // 右边框
+                if right > 0.0 {
+                    self.add_rect(x + width - right, y, right, height, border_color, border_color);
                 }
             }
         }

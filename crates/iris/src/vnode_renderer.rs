@@ -32,6 +32,13 @@ enum Background {
     },
 }
 
+/// 边框信息
+#[derive(Debug, Clone)]
+struct BorderInfo {
+    width: (f32, f32, f32, f32), // 上, 右, 下, 左
+    color: [f32; 4],
+}
+
 /// VNode 渲染器
 ///
 /// 负责将虚拟 DOM 树转换为 GPU 绘制命令。
@@ -97,6 +104,9 @@ impl VNodeRenderer {
                     } else {
                         // 渲染背景（支持纯色和渐变）
                         Self::render_background(styles, x, y, width, height, renderer)?;
+                        
+                        // 渲染边框
+                        Self::render_border(styles, x, y, width, height, renderer)?;
                     }
                 }
 
@@ -237,6 +247,95 @@ impl VNodeRenderer {
             "to bottom" | "to top" => (false, 1),  // 垂直渐变
             _ => (false, 0), // 默认垂直，第一个参数是颜色
         }
+    }
+
+    /// 渲染边框
+    fn render_border(
+        styles: &iris_layout::style::ComputedStyles,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        renderer: &mut BatchRenderer,
+    ) -> Result<(), String> {
+        if let Some(border) = Self::parse_border(styles) {
+            renderer.submit(DrawCommand::Border {
+                x,
+                y,
+                width,
+                height,
+                border_width: border.width,
+                border_color: border.color,
+            });
+        }
+        
+        Ok(())
+    }
+
+    /// 解析 CSS border 属性
+    fn parse_border(styles: &iris_layout::style::ComputedStyles) -> Option<BorderInfo> {
+        // 获取 border-width
+        let width_str = styles.get("border-width")?;
+        let width = Self::parse_border_width(width_str);
+        
+        // 检查是否有任何边框宽度 > 0
+        if width.0 == 0.0 && width.1 == 0.0 && width.2 == 0.0 && width.3 == 0.0 {
+            return None;
+        }
+        
+        // 获取 border-color
+        let color_str = styles.get("border-color")
+            .or_else(|| styles.get("border")); //  fallback to border shorthand
+        
+        let color = if let Some(color_css) = color_str {
+            Self::parse_css_color(color_css).unwrap_or([0.0, 0.0, 0.0, 1.0]) // 默认黑色
+        } else {
+            [0.0, 0.0, 0.0, 1.0] // 默认黑色
+        };
+        
+        Some(BorderInfo { width, color })
+    }
+
+    /// 解析边框宽度 (支持 "1px 2px 1px 2px" 或 "2px")
+    fn parse_border_width(css: &str) -> (f32, f32, f32, f32) {
+        let parts: Vec<&str> = css.split_whitespace().collect();
+        
+        match parts.len() {
+            1 => {
+                // 1 个值: 所有边相同
+                let val = Self::parse_css_unit(parts[0]);
+                (val, val, val, val)
+            }
+            2 => {
+                // 2 个值: 上下, 左右
+                let top_bottom = Self::parse_css_unit(parts[0]);
+                let left_right = Self::parse_css_unit(parts[1]);
+                (top_bottom, left_right, top_bottom, left_right)
+            }
+            3 => {
+                // 3 个值: 上, 左右, 下
+                let top = Self::parse_css_unit(parts[0]);
+                let left_right = Self::parse_css_unit(parts[1]);
+                let bottom = Self::parse_css_unit(parts[2]);
+                (top, left_right, bottom, left_right)
+            }
+            4 => {
+                // 4 个值: 上, 右, 下, 左
+                let top = Self::parse_css_unit(parts[0]);
+                let right = Self::parse_css_unit(parts[1]);
+                let bottom = Self::parse_css_unit(parts[2]);
+                let left = Self::parse_css_unit(parts[3]);
+                (top, right, bottom, left)
+            }
+            _ => (0.0, 0.0, 0.0, 0.0),
+        }
+    }
+
+    /// 解析 CSS 单位值 (如 "2px" -> 2.0)
+    fn parse_css_unit(css: &str) -> f32 {
+        // 移除 "px" 后缀并解析为 f32
+        let num_str = css.trim_end_matches("px").trim();
+        num_str.parse::<f32>().unwrap_or(0.0)
     }
     fn parse_background_color(styles: &iris_layout::style::ComputedStyles) -> [f32; 4] {
         // 尝试解析 background-color 属性
@@ -562,5 +661,69 @@ mod tests {
     fn test_parse_invalid_gradient() {
         let bg = VNodeRenderer::parse_background("linear-gradient(red)");
         assert!(bg.is_none()); // 至少需要2个颜色
+    }
+
+    #[test]
+    fn test_parse_border_single() {
+        let mut styles = ComputedStyles::new();
+        styles.set("border-width", "2px");
+        styles.set("border-color", "red");
+        
+        let border = VNodeRenderer::parse_border(&styles);
+        assert!(border.is_some());
+        let border = border.unwrap();
+        assert_eq!(border.width, (2.0, 2.0, 2.0, 2.0));
+        assert!((border.color[0] - 1.0).abs() < 0.01); // red
+    }
+
+    #[test]
+    fn test_parse_border_four_values() {
+        let mut styles = ComputedStyles::new();
+        styles.set("border-width", "1px 2px 3px 4px");
+        styles.set("border-color", "blue");
+        
+        let border = VNodeRenderer::parse_border(&styles);
+        assert!(border.is_some());
+        let border = border.unwrap();
+        assert_eq!(border.width, (1.0, 2.0, 3.0, 4.0));
+        assert!((border.color[2] - 1.0).abs() < 0.01); // blue
+    }
+
+    #[test]
+    fn test_parse_border_two_values() {
+        let mut styles = ComputedStyles::new();
+        styles.set("border-width", "5px 10px");
+        
+        let border = VNodeRenderer::parse_border(&styles);
+        assert!(border.is_some());
+        let border = border.unwrap();
+        assert_eq!(border.width, (5.0, 10.0, 5.0, 10.0));
+    }
+
+    #[test]
+    fn test_parse_border_three_values() {
+        let mut styles = ComputedStyles::new();
+        styles.set("border-width", "1px 2px 3px");
+        
+        let border = VNodeRenderer::parse_border(&styles);
+        assert!(border.is_some());
+        let border = border.unwrap();
+        assert_eq!(border.width, (1.0, 2.0, 3.0, 2.0));
+    }
+
+    #[test]
+    fn test_parse_border_no_width() {
+        let styles = ComputedStyles::new();
+        let border = VNodeRenderer::parse_border(&styles);
+        assert!(border.is_none());
+    }
+
+    #[test]
+    fn test_parse_border_zero_width() {
+        let mut styles = ComputedStyles::new();
+        styles.set("border-width", "0px");
+        
+        let border = VNodeRenderer::parse_border(&styles);
+        assert!(border.is_none());
     }
 }
