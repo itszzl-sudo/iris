@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Iris Engine —— Rust+WebGPU next-gen buildless frontend runtime (meta crate)"
+description = "Iris Engine —— Rust+WebGPU next-gen buildless frontend runtime with Vue 3 support and runtime orchestration"
 keywords = ["gui", "webgpu", "vue", "runtime", "renderer"]
 categories = ["gui", "rendering", "wasm", "development-tools"]
 
@@ -17,3 +17,4 @@ iris-layout.workspace = true
 iris-dom.workspace = true
 iris-js.workspace = true
 iris-sfc.workspace = true
+tracing = "0.1"

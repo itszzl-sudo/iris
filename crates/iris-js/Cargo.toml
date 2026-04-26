@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Iris JS sandbox runtime: QuickJS bindings, ESM module system, Vue3 runtime preloaded"
+description = "Iris JavaScript runtime: Boa Engine integration, ESM module system, Vue 3 runtime injection"
 
 [dependencies]
 iris-core.workspace = true
