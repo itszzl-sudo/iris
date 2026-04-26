@@ -55,7 +55,7 @@ DOM[iris-dom<br/>虚拟DOM]
 LAYOUT[iris-layout<br/>布局引擎]
 JS[iris-js<br/>JS运行时]
 SFC[iris-sfc<br/>SFC编译器]
-end
+END
 subgraph "渲染器模块"
 VNDR[VNodeRenderer<br/>VNode渲染器]
 BATCH[BatchRenderer<br/>批渲染器]
