@@ -244,4 +244,133 @@ mod tests {
         assert_eq!(stats.elements_drawn, 0); // 没有布局信息
         assert_eq!(stats.elements_skipped, 2);
     }
+
+    #[test]
+    fn test_parse_css_color_rgba() {
+        let color = VNodeRenderer::parse_css_color("rgba(255, 128, 64, 0.5)");
+        assert!((color[0] - 1.0).abs() < 0.01); // 255/255 = 1.0
+        assert!((color[1] - 0.502).abs() < 0.01); // 128/255 ≈ 0.502
+        assert!((color[2] - 0.251).abs() < 0.01); // 64/255 ≈ 0.251
+        assert!((color[3] - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_css_color_invalid() {
+        let color = VNodeRenderer::parse_css_color("invalid");
+        assert_eq!(color, [0.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_parse_css_color_partial() {
+        let color = VNodeRenderer::parse_css_color("rgba(255, 0, 0");
+        assert_eq!(color, [0.0, 0.0, 0.0, 0.0]); // 不完整，返回透明
+    }
+
+    #[test]
+    fn test_element_with_layout() {
+        let mut vnode = VNode::element("div");
+        
+        // 设置样式和布局信息（模拟）
+        if let VNode::Element { ref mut styles, ref mut layout, .. } = vnode {
+            styles.set("background-color", "rgba(255, 0, 0, 1)");
+            *layout = Some(LayoutBox::with_position(0.0, 0.0, 100.0, 50.0));
+        }
+
+        let stats = RenderStats::collect(&vnode);
+        assert_eq!(stats.elements_drawn, 1);
+        assert_eq!(stats.elements_skipped, 0);
+    }
+
+    #[test]
+    fn test_zero_size_element() {
+        let mut vnode = VNode::element("div");
+        
+        if let VNode::Element { ref mut layout, .. } = vnode {
+            *layout = Some(LayoutBox::with_position(0.0, 0.0, 0.0, 0.0));
+        }
+
+        let stats = RenderStats::collect(&vnode);
+        assert_eq!(stats.elements_drawn, 1); // 有布局信息就算 drawn
+    }
+
+    #[test]
+    fn test_nested_elements() {
+        let mut parent = VNode::element("div");
+        if let VNode::Element { ref mut layout, .. } = parent {
+            *layout = Some(LayoutBox::with_position(0.0, 0.0, 200.0, 100.0));
+        }
+
+        let mut child = VNode::element("span");
+        if let VNode::Element { ref mut layout, .. } = child {
+            *layout = Some(LayoutBox::with_position(10.0, 10.0, 50.0, 30.0));
+        }
+
+        parent.append_child(child);
+
+        let stats = RenderStats::collect(&parent);
+        assert_eq!(stats.total_nodes, 2);
+        assert_eq!(stats.elements_drawn, 2);
+    }
+
+    #[test]
+    fn test_comment_not_counted() {
+        let mut vnode = VNode::element("div");
+        vnode.append_child(VNode::comment("This is a comment"));
+
+        let stats = RenderStats::collect(&vnode);
+        // div + comment (注释计入 total_nodes 但不计入其他统计)
+        assert_eq!(stats.total_nodes, 2);
+    }
+
+    #[test]
+    fn test_mixed_content() {
+        let mut div = VNode::element("div");
+        div.append_child(VNode::text("Hello"));
+        div.append_child(VNode::element("span"));
+        div.append_child(VNode::comment("comment"));
+
+        let stats = RenderStats::collect(&div);
+        // div + text + span + comment = 4
+        assert_eq!(stats.total_nodes, 4);
+        assert_eq!(stats.text_nodes, 1);
+        assert_eq!(stats.elements_skipped, 2); // div 和 span 都没有布局
+    }
+
+    #[test]
+    fn test_deep_nesting() {
+        fn create_nested(depth: u32) -> VNode {
+            if depth == 0 {
+                VNode::element("leaf")
+            } else {
+                let mut parent = VNode::element("parent");
+                parent.append_child(create_nested(depth - 1));
+                parent
+            }
+        }
+
+        let vnode = create_nested(5);
+        let stats = RenderStats::collect(&vnode);
+        assert_eq!(stats.total_nodes, 6); // 5 parents + 1 leaf
+        assert_eq!(stats.elements_skipped, 6);
+    }
+
+    #[test]
+    fn test_is_visible_display_none() {
+        let mut styles = ComputedStyles::new();
+        styles.set("display", "none");
+        assert!(!VNodeRenderer::is_visible(&styles));
+    }
+
+    #[test]
+    fn test_is_visible_hidden() {
+        let mut styles = ComputedStyles::new();
+        styles.set("visibility", "hidden");
+        assert!(!VNodeRenderer::is_visible(&styles));
+    }
+
+    #[test]
+    fn test_is_visible_normal() {
+        let styles = ComputedStyles::new();
+        assert!(VNodeRenderer::is_visible(&styles));
+    }
 }

@@ -10,18 +10,21 @@
 - [lib.rs](file://crates/iris-core/src/lib.rs)
 - [lib.rs](file://crates/iris-dom/src/lib.rs)
 - [bom.rs](file://crates/iris-dom/src/bom.rs)
+- [orchestrator.rs](file://crates/iris/src/orchestrator.rs)
+- [minimal_demo.rs](file://crates/iris-app/examples/demo/minimal_demo.rs)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 替换了基于QuickJS的实现为基于Boa Engine 0.20的全新实现
+- 完成了Boa JavaScript引擎0.20的集成，替代了原有的QuickJS实现
 - VM实现完全重写使用Boa Engine的Context、JsValue和ObjectInitializer API
-- BOM API注入简化为直接属性注册
-- 移除了自定义JsValue枚举和手动类型转换
-- 更新错误处理模型从rquickjs::Result到标准Result类型
-- 修正了Vue3运行时集成的实现细节
-- 更新了ESM模块系统的架构描述
-- 重新设计了沙箱隔离机制的实现方式
+- BOM API注入通过ObjectInitializer简化为直接属性注册
+- 移除了自定义JsValue枚举和手动类型转换层
+- 更新了错误处理模型从rquickjs::Result到标准Result类型
+- 修正了Vue3运行时集成的实现细节，现在使用Boa引擎原生支持
+- 更新了ESM模块系统的架构描述，与Boa引擎的原生支持更好地集成
+- 重新设计了沙箱隔离机制的实现方式，通过Boa引擎提供更好的性能
+- 演示程序验证了Boa引擎作为JS沙箱运行时的完整功能
 
 ## 目录
 1. [引言](#引言)
@@ -38,9 +41,9 @@
 
 Leivue Runtime是一个革命性的前端运行时引擎，专为在Rust+WebGPU环境中提供高性能、零编译的Vue3应用执行能力。该项目的核心目标是消除前端工程化复杂性，突破浏览器沙箱限制，为Vue生态系统提供一个高性能的跨端执行底座。
 
-该JS沙箱运行时层位于整个七层架构的中间位置，承担着独立隔离执行环境的关键职责。**更新**：系统现已采用Boa JavaScript引擎实现，这是一个纯Rust实现的高性能JavaScript引擎，完全替代了原有的QuickJS实现。Boa引擎提供了更好的Rust集成性和更完善的ESM模块系统支持，同时确保与宿主环境的完全隔离，为Vue3应用提供安全可靠的运行环境。
+该JS沙箱运行时层位于整个七层架构的中间位置，承担着独立隔离执行环境的关键职责。**更新**：系统现已采用Boa JavaScript引擎0.20实现，这是一个纯Rust实现的高性能JavaScript引擎，完全替代了原有的QuickJS实现。Boa引擎提供了更好的Rust集成性和更完善的ESM模块系统支持，同时确保与宿主环境的完全隔离，为Vue3应用提供安全可靠的运行环境。
 
-**更新**：Boa Engine 0.20版本带来了显著的性能提升和类型安全性改进，消除了系统级QuickJS库依赖，提供了更简洁的API接口和更好的内存管理机制。
+**更新**：Boa Engine 0.20版本带来了显著的性能提升和类型安全性改进，消除了系统级QuickJS库依赖，提供了更简洁的API接口和更好的内存管理机制。演示程序验证了Boa引擎作为JS沙箱运行时的完整功能，包括Vue全局对象注入、BOM API可用性和基础JavaScript执行能力。
 
 ## 项目结构
 
@@ -474,5 +477,7 @@ Vue3运行时相关的常见问题包括：
 **更新**：Boa引擎0.20的引入带来了更好的Rust集成性和更完善的ESM模块系统支持，使得JavaScript代码能够更自然地与Rust生态系统融合。新的API设计和错误处理机制提供了更好的开发体验和运行时稳定性。
 
 **更新**：随着技术的不断演进，JS沙箱运行时将成为下一代前端应用执行的重要基础设施。Boa引擎的持续改进和Rust生态系统的完善将为该系统提供更强大的功能和更好的性能表现。
+
+**更新**：演示程序验证了Boa引擎作为JS沙箱运行时的完整功能，包括Vue全局对象注入、BOM API可用性和基础JavaScript执行能力。这标志着Boa引擎集成的最终完成，为后续的功能扩展和性能优化奠定了坚实的基础。
 
 **更新**：未来的发展方向包括进一步优化性能、增强安全性、扩展对更多JavaScript特性的支持，以及完善对第三方库的兼容性。随着Boa引擎的持续改进和Rust生态系统的完善，JS沙箱运行时将能够支持更复杂的JavaScript应用和更丰富的功能特性。

@@ -12,10 +12,19 @@
 - [crates/iris-sfc/src/script_setup.rs](file://crates/iris-sfc/src/script_setup.rs)
 - [crates/iris-sfc/examples/sfc_demo.rs](file://crates/iris-sfc/examples/sfc_demo.rs)
 - [crates/iris-app/examples/sfc_integration.rs](file://crates/iris-app/examples/sfc_integration.rs)
+- [crates/iris-app/examples/demo/minimal_demo.rs](file://crates/iris-app/examples/demo/minimal_demo.rs)
+- [crates/iris-app/examples/demo/App.vue](file://crates/iris-app/examples/demo/App.vue)
 - [crates/iris-app/src/main.rs](file://crates/iris-app/src/main.rs)
 - [crates/iris-sfc/tests/integration_test.rs](file://crates/iris-sfc/tests/integration_test.rs)
 - [crates/iris-sfc/README.md](file://crates/iris-sfc/README.md)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增最小可行演示程序，提供完整的端到端SFC编译和运行时集成示例
+- 增强了应用集成示例，更好地展示实际使用场景
+- 完善了测试覆盖，新增了全面的集成测试套件
+- 更新了文档结构，增加了更多实用的示例和最佳实践
 
 ## 目录
 1. [简介](#简介)
@@ -33,12 +42,15 @@
 
 Iris SFC集成示例展示了一个完整的Vue 3单文件组件（SFC）编译器系统，使用Rust编写，提供毫秒级的编译速度和完整的Vue 3特性支持。该项目的核心目标是实现"零编译直接运行源码"的理念，通过即时转译技术让开发者能够直接运行.vue、.ts、.tsx等原始源码文件。
 
+**更新** 本次更新完成了SFC编译器集成的最终阶段，新增了最小可行演示程序，验证了所有之前开发阶段的集成效果。
+
 该系统集成了多种先进技术：
 - **高性能编译器**：基于swc 62的TypeScript编译器
 - **智能缓存系统**：基于XXH3哈希和LRU的热重载缓存
 - **完整Vue支持**：13+个Vue指令的模板编译器
 - **CSS Modules**：完整的样式作用域化支持
 - **热重载**：文件变更检测和自动重编译
+- **运行时集成**：完整的Boa引擎JavaScript运行时
 
 ## 项目结构
 
@@ -52,7 +64,6 @@ WS --> SFC[Iris SFC 编译器]
 WS --> APP[Iris 应用框架]
 WS --> CORE[Iris 核心库]
 WS --> GPU[Iris GPU渲染]
-WS --> DOM[Iris DOM]
 WS --> JS[Iris JS引擎]
 WS --> LAYOUT[Iris 布局]
 end
@@ -67,6 +78,7 @@ end
 subgraph "应用集成"
 APP --> MAIN[应用入口]
 APP --> DEMO[SFC集成示例]
+APP --> MINIMAL[最小可行演示]
 APP --> WATCH[文件监听器]
 end
 ```
@@ -186,6 +198,7 @@ graph TB
 subgraph "应用层"
 APP[Iris 应用]
 DEMO[SFC集成示例]
+MINIMAL[最小可行演示]
 end
 subgraph "编译层"
 SFC[Iris SFC编译器]
@@ -203,9 +216,12 @@ SWC[SWC 62]
 HTML5EVER[HTML5Ever]
 LRU[LRU Cache]
 XXHASH[XXH3哈希]
+BOA[Boa Engine]
+ENDERTER[Windows Terminal]
 end
 APP --> SFC
 DEMO --> SFC
+MINIMAL --> SFC
 SFC --> CACHE
 SFC --> COMPILER
 COMPILER --> SWC
@@ -216,6 +232,8 @@ APP --> CORE
 APP --> GPU
 CORE --> DOM
 CORE --> JS
+JS --> BOA
+APP --> ENDERTER
 ```
 
 **图表来源**
@@ -407,6 +425,35 @@ COMPONENT --> OUTPUT[标准组件代码]
 **章节来源**
 - [crates/iris-sfc/src/script_setup.rs:141-535](file://crates/iris-sfc/src/script_setup.rs#L141-L535)
 
+### 最小可行演示程序
+
+**新增** 最小可行演示程序提供了完整的端到端集成示例：
+
+```mermaid
+flowchart TD
+MINIMAL[最小可行演示] --> STEP1[步骤1: 编译SFC组件]
+STEP1 --> STEP2[步骤2: 初始化运行时]
+STEP2 --> STEP3[步骤3: 注入Vue环境]
+STEP3 --> STEP4[步骤4: 执行JavaScript]
+STEP4 --> STEP5[步骤5: 验证虚拟DOM]
+STEP5 --> STEP6[步骤6: 测试JS运行时]
+STEP6 --> COMPLETE[演示完成]
+```
+
+**图表来源**
+- [crates/iris-app/examples/demo/minimal_demo.rs:14-157](file://crates/iris-app/examples/demo/minimal_demo.rs#L14-L157)
+
+演示程序包含6个关键步骤：
+1. **编译SFC组件**：使用`compile_from_string`编译Vue组件
+2. **初始化运行时**：创建并初始化`RuntimeOrchestrator`
+3. **注入Vue环境**：向Boa引擎注入Vue全局对象和BOM API
+4. **执行JavaScript**：测试基础JS执行功能
+5. **验证虚拟DOM**：检查根节点是否存在
+6. **测试运行时**：验证Vue和BOM API可用性
+
+**章节来源**
+- [crates/iris-app/examples/demo/minimal_demo.rs:1-239](file://crates/iris-app/examples/demo/minimal_demo.rs#L1-L239)
+
 ## 依赖关系分析
 
 ### 外部依赖图
@@ -419,6 +466,10 @@ SWC[SWC 62]
 HTML5EVER[HTML5Ever]
 LRU[LRU Cache]
 XXHASH[XXH3哈希]
+BOA[Boa Engine]
+ENDERTER[Windows Terminal]
+ENDERTER --> UTF8[UTF-8支持]
+ENDERTER --> ASCII[ASCII回退]
 end
 subgraph "Iris内部依赖"
 CORE[Iris Core]
@@ -444,6 +495,8 @@ APP --> TOKIO
 CORE --> DOM
 CORE --> JS
 CORE --> LAYOUT
+JS --> BOA
+APP --> ENDERTER
 ```
 
 **图表来源**
@@ -468,8 +521,9 @@ CSS --> REGEX[regex]
 CSS --> XXHASH
 SETUP --> REGEX
 APP[examples/sfc_integration.rs] --> LIB
-DEMO[examples/sfc_demo.rs] --> LIB
+MINIMAL[examples/demo/minimal_demo.rs] --> LIB
 MAIN[app/src/main.rs] --> LIB
+DEMO[examples/sfc_demo.rs] --> LIB
 ```
 
 **图表来源**
@@ -503,11 +557,14 @@ DISABLE[禁用Source Map<br/>减少30-50%内存]
 CACHE[缓存系统<br/>控制100-1000项]
 HASH[XXH3哈希<br/>快速内容校验]
 THREAD[线程安全<br/>Mutex保护]
+ENDERTER[终端字符集检测<br/>UTF-8/ASCII自动切换]
 end
 subgraph "内存占用"
 DEFAULT[默认: 中等]
 SM_ENABLED[Source Map: +30-50%]
 LARGE_CACHE[1000项缓存: ~5MB]
+ENDERTER --> UTF8[UTF-8: 支持emoji]
+ENDERTER --> ASCII[ASCII: 兼容性]
 end
 DISABLE --> DEFAULT
 CACHE --> DEFAULT
@@ -534,6 +591,11 @@ THREAD --> DEFAULT
    - 使用SSD存储提高I/O性能
    - 确保足够的RAM以支持大型缓存
    - 关闭不必要的后台应用程序
+
+4. **终端兼容性**：
+   - Windows Terminal默认支持UTF-8
+   - 自动检测终端编码并选择合适的字符集
+   - 提供ASCII回退方案
 
 **章节来源**
 - [crates/iris-sfc/README.md:599-624](file://crates/iris-sfc/README.md#L599-L624)
@@ -600,6 +662,11 @@ TsCompiler --> TypeCheckResult : "返回"
 3. **验证编译结果**：
    使用`sfc_demo.rs`示例程序进行手动测试
 
+4. **测试最小可行演示**：
+   ```bash
+   cargo run -p iris-app --example minimal_demo
+   ```
+
 **章节来源**
 - [crates/iris-sfc/src/lib.rs:195-276](file://crates/iris-sfc/src/lib.rs#L195-L276)
 - [crates/iris-sfc/src/ts_compiler.rs:295-406](file://crates/iris-sfc/src/ts_compiler.rs#L295-L406)
@@ -614,6 +681,7 @@ Iris SFC集成示例展示了现代前端开发工具链的先进理念和技术
 2. **完整功能**：支持Vue 3的所有核心特性和指令
 3. **开发友好**：零配置的即时运行体验
 4. **可扩展性**：模块化设计便于功能扩展
+5. **终端兼容**：自动检测和适配不同终端编码
 
 ### 技术亮点
 
@@ -621,6 +689,8 @@ Iris SFC集成示例展示了现代前端开发工具链的先进理念和技术
 - **高性能编译器**：基于SWC 62的TypeScript转译
 - **完整模板支持**：13种Vue指令的完整实现
 - **CSS Modules**：完整的样式作用域化解决方案
+- **Boa引擎集成**：完整的JavaScript运行时环境
+- **最小可行演示**：端到端的完整集成验证
 
 ### 应用前景
 
@@ -628,6 +698,7 @@ Iris SFC集成示例展示了现代前端开发工具链的先进理念和技术
 - **开发效率**：消除构建步骤，实现真正的即时反馈
 - **学习曲线**：降低前端开发门槛，专注于业务逻辑
 - **团队协作**：统一的开发工具链，减少环境差异
+- **跨平台支持**：桌面原生和WebAssembly双重部署
 
 ## 附录
 
@@ -644,6 +715,9 @@ cargo run -p iris-sfc --example sfc_demo
 # 运行应用集成示例
 cargo run -p iris-app --example sfc_integration
 
+# 运行最小可行演示
+cargo run -p iris-app --example minimal_demo
+
 # 运行所有测试
 cargo test -p iris-sfc
 ```
@@ -657,6 +731,8 @@ cargo test -p iris-sfc
 | `IRIS_CACHE_ENABLED` | bool | true | 是否启用缓存系统 |
 | `IRIS_TYPE_CHECK` | bool | false | 是否启用TypeScript类型检查 |
 | `IRIS_TYPE_CHECK_STRICT` | bool | false | 类型检查是否使用严格模式 |
+| `IRIS_DEMO_FORCE_ASCII` | bool | false | 强制使用ASCII字符集（测试用） |
+| `IRIS_CODE_PAGE` | string | 自动检测 | Windows代码页（65001=UTF-8） |
 
 ### 性能监控
 
@@ -665,5 +741,18 @@ cargo test -p iris-sfc
 - 缓存命中率分析
 - 内存使用监控
 - 错误处理统计
+- 终端字符集检测
+
+### 终端兼容性
+
+系统提供了智能的终端字符集检测：
+- **UTF-8支持**：Windows Terminal、现代Linux/MacOS终端
+- **ASCII回退**：传统Windows控制台、其他终端
+- **自动适配**：根据环境变量和系统设置自动选择字符集
 
 这些功能使得开发者能够深入了解系统的运行状况，并根据实际需求进行优化调整。
+
+**章节来源**
+- [crates/iris-app/examples/demo/minimal_demo.rs:11-55](file://crates/iris-app/examples/demo/minimal_demo.rs#L11-L55)
+- [crates/iris-sfc/examples/sfc_demo.rs:10-51](file://crates/iris-sfc/examples/sfc_demo.rs#L10-L51)
+- [crates/iris-sfc/tests/integration_test.rs:1-464](file://crates/iris-sfc/tests/integration_test.rs#L1-L464)

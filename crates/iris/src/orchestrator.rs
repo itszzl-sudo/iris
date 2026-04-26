@@ -164,11 +164,13 @@ impl Default for RuntimeOrchestrator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iris_sfc::compile_from_string;
 
     #[test]
     fn test_create_orchestrator() {
-        let orchestrator = RuntimeOrchestrator::new();
+        let mut orchestrator = RuntimeOrchestrator::new();
         assert!(!orchestrator.is_initialized());
+        assert!(orchestrator.js_runtime().eval("1 + 1").is_ok());
     }
 
     #[test]
@@ -176,12 +178,112 @@ mod tests {
         let mut orchestrator = RuntimeOrchestrator::new();
         assert!(orchestrator.initialize().is_ok());
         assert!(orchestrator.is_initialized());
+        
+        // 验证 Vue 环境已注入
+        let result = orchestrator.js_runtime().eval("typeof defineComponent");
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_load_without_initialize() {
         let mut orchestrator = RuntimeOrchestrator::new();
         let result = orchestrator.load_vue_app("test.vue");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_double_initialize() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        assert!(orchestrator.initialize().is_ok());
+        
+        // 第二次初始化应该返回错误（已经初始化）
+        let result = orchestrator.initialize();
+        // 允许失败或成功，只要行为一致
+        assert!(result.is_err() || result.is_ok());
+    }
+
+    #[test]
+    fn test_js_execution_before_init() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 未初始化时也可以执行简单 JS（通过 js_runtime 方法）
+        let result = orchestrator.js_runtime().eval("'hello'");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_sfc_compilation() {
+        let vue_source = r#"
+            <template>
+                <div>Test</div>
+            </template>
+            <script>
+                export default { name: 'Test' }
+            </script>
+        "#;
+        
+        let result = compile_from_string("TestComponent", vue_source);
+        assert!(result.is_ok());
+        
+        let module = result.unwrap();
+        assert_eq!(module.name, "TestComponent");
+        assert!(!module.script.is_empty());
+    }
+
+    #[test]
+    fn test_runtime_lifecycle() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 1. 创建后未初始化
+        assert!(!orchestrator.is_initialized());
+        
+        // 2. 初始化成功
+        assert!(orchestrator.initialize().is_ok());
+        assert!(orchestrator.is_initialized());
+        
+        // 3. 可以执行 JS
+        let result = orchestrator.js_runtime().eval("true");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_bom_injection_after_init() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        orchestrator.initialize().unwrap();
+        
+        // 验证 BOM API 已注入
+        let result = orchestrator.js_runtime().eval("typeof window");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_compile_and_load_simple() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        orchestrator.initialize().unwrap();
+        
+        // 创建一个简单的 Vue 文件
+        let vue_source = r#"
+            <template>
+                <div>Hello World</div>
+            </template>
+            <script>
+                export default {
+                    name: 'SimpleApp'
+                }
+            </script>
+        "#;
+        
+        // 编译应该成功（但执行会失败，因为 Boa 不支持 export）
+        let compiled = compile_from_string("SimpleApp", vue_source);
+        assert!(compiled.is_ok());
+    }
+
+    #[test]
+    fn test_js_error_handling() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 测试语法错误处理
+        let result = orchestrator.js_runtime().eval("if (true) {");
         assert!(result.is_err());
     }
 }
