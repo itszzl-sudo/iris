@@ -49,6 +49,44 @@ struct TextInfo {
     y: f32,
 }
 
+/// 动画类型
+#[derive(Debug, Clone)]
+enum AnimationType {
+    /// CSS Transition: 属性过渡动画
+    Transition {
+        property: String,
+        duration: f32,  // 秒
+        easing: EasingFunction,
+    },
+    /// CSS Animation: 关键帧动画 (预留)
+    Keyframes {
+        name: String,
+        duration: f32,
+        iteration_count: f32, // -1 表示无限
+    },
+}
+
+/// 缓动函数
+#[derive(Debug, Clone)]
+enum EasingFunction {
+    Linear,
+    Ease,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+}
+
+/// 动画状态
+#[derive(Debug, Clone)]
+struct AnimationState {
+    animation: AnimationType,
+    start_value: f32,
+    end_value: f32,
+    current_value: f32,
+    progress: f32, // 0.0 - 1.0
+    is_running: bool,
+}
+
 /// VNode 渲染器
 ///
 /// 负责将虚拟 DOM 树转换为 GPU 绘制命令。
@@ -346,6 +384,105 @@ impl VNodeRenderer {
         // 移除 "px" 后缀并解析为 f32
         let num_str = css.trim_end_matches("px").trim();
         num_str.parse::<f32>().unwrap_or(0.0)
+    }
+
+    /// 计算缓动值
+    fn ease(easing: &EasingFunction, t: f32) -> f32 {
+        match easing {
+            EasingFunction::Linear => t,
+            EasingFunction::Ease => {
+                // ease: cubic-bezier(0.25, 0.1, 0.25, 1.0)
+                let t2 = t * t;
+                let t3 = t2 * t;
+                3.0 * (1.0 - t) * (1.0 - t) * t * 0.25 + 3.0 * (1.0 - t) * t * t * 1.0 + t3
+            }
+            EasingFunction::EaseIn => t * t, // ease-in: quadratic
+            EasingFunction::EaseOut => t * (2.0 - t), // ease-out: quadratic
+            EasingFunction::EaseInOut => {
+                if t < 0.5 {
+                    2.0 * t * t
+                } else {
+                    -1.0 + (4.0 - 2.0 * t) * t
+                }
+            }
+        }
+    }
+
+    /// 解析 CSS transition 属性
+    fn parse_transition(styles: &iris_layout::style::ComputedStyles) -> Option<AnimationType> {
+        let transition = styles.get("transition")?;
+        
+        // 解析格式: "property duration easing"
+        // 例如: "opacity 0.3s ease"
+        let parts: Vec<&str> = transition.split_whitespace().collect();
+        if parts.len() < 2 {
+            return None;
+        }
+        
+        let property = parts[0].to_string();
+        let duration_str = parts[1].trim_end_matches('s');
+        let duration: f32 = duration_str.parse().unwrap_or(0.3);
+        
+        let easing = if parts.len() > 2 {
+            match parts[2] {
+                "ease" => EasingFunction::Ease,
+                "ease-in" => EasingFunction::EaseIn,
+                "ease-out" => EasingFunction::EaseOut,
+                "ease-in-out" => EasingFunction::EaseInOut,
+                "linear" | _ => EasingFunction::Linear,
+            }
+        } else {
+            EasingFunction::Ease
+        };
+        
+        Some(AnimationType::Transition {
+            property,
+            duration,
+            easing,
+        })
+    }
+
+    /// 更新动画状态
+    fn update_animation(
+        state: &mut AnimationState,
+        delta_time: f32, // 秒
+    ) {
+        if !state.is_running {
+            return;
+        }
+        
+        match &state.animation {
+            AnimationType::Transition { duration, easing, .. } => {
+                state.progress += delta_time / duration;
+                
+                if state.progress >= 1.0 {
+                    state.progress = 1.0;
+                    state.current_value = state.end_value;
+                    state.is_running = false;
+                } else {
+                    let eased_progress = Self::ease(easing, state.progress);
+                    state.current_value = state.start_value 
+                        + (state.end_value - state.start_value) * eased_progress;
+                }
+            }
+            AnimationType::Keyframes { duration, iteration_count, .. } => {
+                state.progress += delta_time / duration;
+                
+                if *iteration_count > 0.0 && state.progress >= *iteration_count {
+                    state.progress = 1.0;
+                    state.is_running = false;
+                } else if *iteration_count < 0.0 {
+                    // 无限循环，重置进度
+                    state.progress = state.progress % 1.0;
+                } else {
+                    state.progress = state.progress % *iteration_count;
+                }
+                
+                // 简化的关键帧插值 (实际需要解析 @keyframes)
+                state.current_value = state.start_value 
+                    + (state.end_value - state.start_value) * state.progress;
+            }
+        }
     }
 
     /// 渲染文本节点
@@ -792,6 +929,91 @@ mod tests {
         
         let border = VNodeRenderer::parse_border(&styles);
         assert!(border.is_none());
+    }
+
+    #[test]
+    fn test_ease_linear() {
+        assert!((VNodeRenderer::ease(&EasingFunction::Linear, 0.5) - 0.5).abs() < 0.01);
+        assert!((VNodeRenderer::ease(&EasingFunction::Linear, 0.0) - 0.0).abs() < 0.01);
+        assert!((VNodeRenderer::ease(&EasingFunction::Linear, 1.0) - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_ease_in() {
+        // ease-in 在 0.5 时应该 < 0.5 (慢开始)
+        let value = VNodeRenderer::ease(&EasingFunction::EaseIn, 0.5);
+        assert!(value < 0.5);
+        assert!((value - 0.25).abs() < 0.01); // t^2 = 0.25
+    }
+
+    #[test]
+    fn test_ease_out() {
+        // ease-out 在 0.5 时应该 > 0.5 (怏结束)
+        let value = VNodeRenderer::ease(&EasingFunction::EaseOut, 0.5);
+        assert!(value > 0.5);
+        assert!((value - 0.75).abs() < 0.01); // t(2-t) = 0.75
+    }
+
+    #[test]
+    fn test_parse_transition() {
+        let mut styles = ComputedStyles::new();
+        styles.set("transition", "opacity 0.3s ease");
+        
+        let animation = VNodeRenderer::parse_transition(&styles);
+        assert!(animation.is_some());
+        
+        if let Some(AnimationType::Transition { property, duration, easing }) = animation {
+            assert_eq!(property, "opacity");
+            assert!((duration - 0.3).abs() < 0.01);
+            assert!(matches!(easing, EasingFunction::Ease));
+        } else {
+            panic!("Expected Transition animation type");
+        }
+    }
+
+    #[test]
+    fn test_parse_transition_linear() {
+        let mut styles = ComputedStyles::new();
+        styles.set("transition", "width 0.5s linear");
+        
+        let animation = VNodeRenderer::parse_transition(&styles);
+        assert!(animation.is_some());
+        
+        if let Some(AnimationType::Transition { property, duration, easing }) = animation {
+            assert_eq!(property, "width");
+            assert!((duration - 0.5).abs() < 0.01);
+            assert!(matches!(easing, EasingFunction::Linear));
+        } else {
+            panic!("Expected Transition animation type");
+        }
+    }
+
+    #[test]
+    fn test_update_animation_transition() {
+        let mut state = AnimationState {
+            animation: AnimationType::Transition {
+                property: "opacity".to_string(),
+                duration: 1.0,
+                easing: EasingFunction::Linear,
+            },
+            start_value: 0.0,
+            end_value: 1.0,
+            current_value: 0.0,
+            progress: 0.0,
+            is_running: true,
+        };
+        
+        // 更新 0.5 秒
+        VNodeRenderer::update_animation(&mut state, 0.5);
+        assert!((state.progress - 0.5).abs() < 0.01);
+        assert!((state.current_value - 0.5).abs() < 0.01);
+        assert!(state.is_running);
+        
+        // 再更新 0.5 秒 (完成)
+        VNodeRenderer::update_animation(&mut state, 0.5);
+        assert!((state.progress - 1.0).abs() < 0.01);
+        assert!((state.current_value - 1.0).abs() < 0.01);
+        assert!(!state.is_running);
     }
 
     #[test]
