@@ -1,10 +1,36 @@
 //! VNode 到 GPU 渲染适配器
 //!
 //! 将虚拟 DOM 树转换为 GPU 绘制命令，实现高效的渲染管线。
+//! 支持纯色背景、渐变背景、边框等 CSS 特性。
 
 use iris_dom::vnode::VNode;
 use iris_gpu::{BatchRenderer, DrawCommand};
 use tracing::{debug, warn};
+
+/// 渐变停止点
+#[derive(Debug, Clone)]
+struct GradientStop {
+    position: f32,
+    color: [f32; 4],
+}
+
+/// 渐变类型
+#[derive(Debug, Clone)]
+enum GradientType {
+    Linear {
+        horizontal: bool, // true = 水平, false = 垂直
+    },
+}
+
+/// 背景类型
+#[derive(Debug, Clone)]
+enum Background {
+    Solid([f32; 4]),
+    Gradient {
+        gradient_type: GradientType,
+        stops: Vec<GradientStop>,
+    },
+}
 
 /// VNode 渲染器
 ///
@@ -69,21 +95,8 @@ impl VNodeRenderer {
                     if width <= 0.0 || height <= 0.0 {
                         debug!(tag = tag, "Skipping zero-size element");
                     } else {
-                        // 获取背景颜色
-                        let bg_color = Self::parse_background_color(styles);
-
-                        // 只在有背景色时绘制
-                        if bg_color[3] > 0.0 {
-                            let command = DrawCommand::Rect {
-                                x,
-                                y,
-                                width,
-                                height,
-                                color: bg_color,
-                            };
-                            
-                            renderer.submit(command);
-                        }
+                        // 渲染背景（支持纯色和渐变）
+                        Self::render_background(styles, x, y, width, height, renderer)?;
                     }
                 }
 
@@ -110,18 +123,132 @@ impl VNodeRenderer {
         Ok(())
     }
 
-    /// 解析背景颜色
+    /// 渲染背景（支持纯色和渐变）
+    fn render_background(
+        styles: &iris_layout::style::ComputedStyles,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        renderer: &mut BatchRenderer,
+    ) -> Result<(), String> {
+        // 尝试获取 background 或 background-color
+        let bg_css = styles.get("background")
+            .or_else(|| styles.get("background-color"));
+
+        if let Some(bg_value) = bg_css {
+            match Self::parse_background(bg_value) {
+                Some(Background::Solid(color)) => {
+                    if color[3] > 0.0 {
+                        renderer.submit(DrawCommand::Rect {
+                            x,
+                            y,
+                            width,
+                            height,
+                            color,
+                        });
+                    }
+                }
+                Some(Background::Gradient { gradient_type, stops }) => {
+                    if stops.len() >= 2 {
+                        match gradient_type {
+                            GradientType::Linear { horizontal } => {
+                                let start_color = stops[0].color;
+                                let end_color = stops[stops.len() - 1].color;
+                                
+                                renderer.submit(DrawCommand::GradientRect {
+                                    x,
+                                    y,
+                                    width,
+                                    height,
+                                    start_color,
+                                    end_color,
+                                    horizontal,
+                                });
+                            }
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 解析 CSS 背景值
+    fn parse_background(css: &str) -> Option<Background> {
+        let css = css.trim();
+        
+        // 检查是否是渐变
+        if css.starts_with("linear-gradient") {
+            return Self::parse_linear_gradient(css);
+        }
+        
+        // 否则尝试解析为纯色
+        Self::parse_css_color(css).map(Background::Solid)
+    }
+
+    /// 解析线性渐变
+    fn parse_linear_gradient(css: &str) -> Option<Background> {
+        // 提取括号内容: linear-gradient(to right, red, blue)
+        let start = css.find('(')? + 1;
+        let end = css.rfind(')')?;
+        let content = &css[start..end];
+        
+        // 分割参数
+        let parts: Vec<&str> = content.split(',').map(|s| s.trim()).collect();
+        if parts.len() < 2 {
+            return None;
+        }
+        
+        // 解析方向（第一个参数）
+        let (horizontal, color_start) = Self::parse_gradient_direction(parts[0]);
+        
+        // 解析颜色
+        let mut stops = Vec::new();
+        let color_parts = &parts[color_start..];
+        
+        for (i, color_css) in color_parts.iter().enumerate() {
+            if let Some(color) = Self::parse_css_color(color_css) {
+                let position = if color_parts.len() <= 1 {
+                    0.0
+                } else {
+                    i as f32 / (color_parts.len() - 1) as f32
+                };
+                stops.push(GradientStop { position, color });
+            }
+        }
+        
+        if stops.len() < 2 {
+            return None;
+        }
+        
+        Some(Background::Gradient {
+            gradient_type: GradientType::Linear { horizontal },
+            stops,
+        })
+    }
+
+    /// 解析渐变方向
+    fn parse_gradient_direction(dir: &str) -> (bool, usize) {
+        match dir.trim() {
+            "to right" | "to left" => (true, 1),   // 水平渐变
+            "to bottom" | "to top" => (false, 1),  // 垂直渐变
+            _ => (false, 0), // 默认垂直，第一个参数是颜色
+        }
+    }
     fn parse_background_color(styles: &iris_layout::style::ComputedStyles) -> [f32; 4] {
         // 尝试解析 background-color 属性
         if let Some(color_str) = styles.get("background-color") {
-            Self::parse_css_color(color_str)
+            Self::parse_css_color(color_str).unwrap_or([0.0, 0.0, 0.0, 0.0])
         } else {
             [0.0, 0.0, 0.0, 0.0] // 透明
         }
     }
 
     /// 解析 CSS 颜色字符串
-    fn parse_css_color(color: &str) -> [f32; 4] {
+    fn parse_css_color(color: &str) -> Option<[f32; 4]> {
         // 简化实现：支持 rgba(r, g, b, a) 格式
         if color.starts_with("rgba(") {
             let parts: Vec<&str> = color[5..color.len() - 1].split(',').collect();
@@ -130,12 +257,21 @@ impl VNodeRenderer {
                 let g: f32 = parts[1].trim().parse().unwrap_or(0.0) / 255.0;
                 let b: f32 = parts[2].trim().parse().unwrap_or(0.0) / 255.0;
                 let a: f32 = parts[3].trim().parse().unwrap_or(1.0);
-                return [r, g, b, a];
+                return Some([r, g, b, a]);
             }
         }
         
-        // 默认透明
-        [0.0, 0.0, 0.0, 0.0]
+        // 支持颜色名
+        match color.to_lowercase().as_str() {
+            "red" => Some([1.0, 0.0, 0.0, 1.0]),
+            "blue" => Some([0.0, 0.0, 1.0, 1.0]),
+            "green" => Some([0.0, 0.502, 0.0, 1.0]),
+            "yellow" => Some([1.0, 1.0, 0.0, 1.0]),
+            "white" => Some([1.0, 1.0, 1.0, 1.0]),
+            "black" => Some([0.0, 0.0, 0.0, 1.0]),
+            "transparent" => Some([0.0, 0.0, 0.0, 0.0]),
+            _ => None,
+        }
     }
 
     /// 获取元素的可见性
@@ -248,6 +384,8 @@ mod tests {
     #[test]
     fn test_parse_css_color_rgba() {
         let color = VNodeRenderer::parse_css_color("rgba(255, 128, 64, 0.5)");
+        assert!(color.is_some());
+        let color = color.unwrap();
         assert!((color[0] - 1.0).abs() < 0.01); // 255/255 = 1.0
         assert!((color[1] - 0.502).abs() < 0.01); // 128/255 ≈ 0.502
         assert!((color[2] - 0.251).abs() < 0.01); // 64/255 ≈ 0.251
@@ -257,13 +395,13 @@ mod tests {
     #[test]
     fn test_parse_css_color_invalid() {
         let color = VNodeRenderer::parse_css_color("invalid");
-        assert_eq!(color, [0.0, 0.0, 0.0, 0.0]);
+        assert!(color.is_none());
     }
 
     #[test]
     fn test_parse_css_color_partial() {
         let color = VNodeRenderer::parse_css_color("rgba(255, 0, 0");
-        assert_eq!(color, [0.0, 0.0, 0.0, 0.0]); // 不完整，返回透明
+        assert!(color.is_none()); // 不完整，返回 None
     }
 
     #[test]
@@ -372,5 +510,57 @@ mod tests {
     fn test_is_visible_normal() {
         let styles = ComputedStyles::new();
         assert!(VNodeRenderer::is_visible(&styles));
+    }
+
+    #[test]
+    fn test_parse_linear_gradient_horizontal() {
+        let bg = VNodeRenderer::parse_background("linear-gradient(to right, red, blue)");
+        assert!(bg.is_some());
+        match bg.unwrap() {
+            Background::Gradient { gradient_type, stops } => {
+                match gradient_type {
+                    GradientType::Linear { horizontal } => {
+                        assert!(horizontal); // to right = 水平
+                    }
+                }
+                assert_eq!(stops.len(), 2);
+            }
+            _ => panic!("Expected gradient"),
+        }
+    }
+
+    #[test]
+    fn test_parse_linear_gradient_vertical() {
+        let bg = VNodeRenderer::parse_background("linear-gradient(to bottom, red, blue)");
+        assert!(bg.is_some());
+        match bg.unwrap() {
+            Background::Gradient { gradient_type, stops } => {
+                match gradient_type {
+                    GradientType::Linear { horizontal } => {
+                        assert!(!horizontal); // to bottom = 垂直
+                    }
+                }
+                assert_eq!(stops.len(), 2);
+            }
+            _ => panic!("Expected gradient"),
+        }
+    }
+
+    #[test]
+    fn test_parse_solid_color() {
+        let bg = VNodeRenderer::parse_background("rgba(255, 0, 0, 1)");
+        assert!(bg.is_some());
+        match bg.unwrap() {
+            Background::Solid(color) => {
+                assert!((color[0] - 1.0).abs() < 0.01);
+            }
+            _ => panic!("Expected solid color"),
+        }
+    }
+
+    #[test]
+    fn test_parse_invalid_gradient() {
+        let bg = VNodeRenderer::parse_background("linear-gradient(red)");
+        assert!(bg.is_none()); // 至少需要2个颜色
     }
 }
