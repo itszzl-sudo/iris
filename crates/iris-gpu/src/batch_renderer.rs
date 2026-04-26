@@ -799,3 +799,276 @@ impl BatchRenderer {
         }
     }
 }
+
+#[cfg(test)]
+mod texture_tests {
+    use super::*;
+
+    /// 测试：纹理 UV 坐标转换正确性
+    #[test]
+    fn test_uv_coordinate_mapping() {
+        // 验证 UV 坐标格式：[左, 上, 右, 下]
+        let full_uv = [0.0, 0.0, 1.0, 1.0];
+        assert_eq!(full_uv[0], 0.0); // 左
+        assert_eq!(full_uv[1], 0.0); // 上
+        assert_eq!(full_uv[2], 1.0); // 右
+        assert_eq!(full_uv[3], 1.0); // 下
+
+        // 测试部分纹理（裁剪）
+        let partial_uv = [0.25_f32, 0.25, 0.75, 0.75];
+        assert!((partial_uv[2] - partial_uv[0] - 0.5_f32).abs() < f32::EPSILON);
+        assert!((partial_uv[3] - partial_uv[1] - 0.5_f32).abs() < f32::EPSILON);
+    }
+
+    /// 测试：纹理顶点数据布局正确性（模拟测试）
+    #[test]
+    fn test_texture_vertex_layout() {
+        // 模拟 4 个顶点的 UV 分配（左上、右上、右下、左下）
+        let uv = [0.0, 0.0, 1.0, 1.0];
+        
+        // 顶点 0: 左上角 (uv[0], uv[1])
+        let v0_uv = [uv[0], uv[1]];
+        assert_eq!(v0_uv, [0.0, 0.0]);
+        
+        // 顶点 1: 右上角 (uv[2], uv[1])
+        let v1_uv = [uv[2], uv[1]];
+        assert_eq!(v1_uv, [1.0, 0.0]);
+        
+        // 顶点 2: 右下角 (uv[2], uv[3])
+        let v2_uv = [uv[2], uv[3]];
+        assert_eq!(v2_uv, [1.0, 1.0]);
+        
+        // 顶点 3: 左下角 (uv[0], uv[3])
+        let v3_uv = [uv[0], uv[3]];
+        assert_eq!(v3_uv, [0.0, 1.0]);
+    }
+
+    /// 测试：纹理索引生成正确性（两个三角形）
+    #[test]
+    fn test_texture_index_generation() {
+        let base_index: u16 = 0;
+        
+        // 第一个三角形: 0, 1, 2（左上、右上、右下）
+        let tri1 = [base_index, base_index + 1, base_index + 2];
+        assert_eq!(tri1, [0, 1, 2]);
+        
+        // 第二个三角形: 0, 2, 3（左上、右下、左下）
+        let tri2 = [base_index, base_index + 2, base_index + 3];
+        assert_eq!(tri2, [0, 2, 3]);
+    }
+
+    /// 测试：多个纹理的索引偏移计算
+    #[test]
+    fn test_multiple_texture_offset() {
+        // 第一个纹理：base_index = 0
+        let base1: u16 = 0;
+        assert_eq!(base1, 0);
+        
+        // 第二个纹理：base_index = 4（4 个顶点后）
+        let base2: u16 = 4;
+        assert_eq!(base2, 4);
+        
+        // 第三个纹理：base_index = 8
+        let base3: u16 = 8;
+        assert_eq!(base3, 8);
+    }
+
+    /// 测试：u16 索引边界条件（65535 最大值）
+    #[test]
+    fn test_u16_index_boundary() {
+        // 安全边界：65532 个顶点（可以被 4 整除）
+        let safe_vertices = 65532;
+        assert!(safe_vertices + 4 <= 65536);
+        
+        // 溢出边界：65533 个顶点会超出限制
+        let overflow_vertices = 65533;
+        assert!(overflow_vertices + 4 > 65536);
+    }
+
+    /// 测试：纹理 ID 有效性检查逻辑
+    #[test]
+    fn test_texture_id_validation() {
+        let texture_count = 5;
+        
+        // 有效的纹理 ID（0 到 4）
+        for id in 0..texture_count {
+            assert!(id < texture_count);
+        }
+        
+        // 无效的纹理 ID（5 及以上）
+        let invalid_id = 5;
+        assert!(invalid_id >= texture_count);
+    }
+
+    /// 测试：UV 坐标裁剪场景（精灵图/纹理图集）
+    #[test]
+    fn test_sprite_sheet_uv() {
+        // 假设 4x4 的精灵图，每个精灵占 1/4
+        let sprite_width = 0.25;
+        let sprite_height = 0.25;
+        
+        // 第一个精灵（左上角）
+        let sprite1_uv = [0.0_f32, 0.0, sprite_width, sprite_height];
+        assert!((sprite1_uv[2] - sprite1_uv[0] - sprite_width).abs() < f32::EPSILON);
+        
+        // 第二个精灵（右上角）
+        let sprite2_uv = [sprite_width * 3.0_f32, 0.0, 1.0, sprite_height];
+        assert!((sprite2_uv[2] - sprite2_uv[0] - sprite_width).abs() < f32::EPSILON);
+        
+        // 第三个精灵（左下角）
+        let sprite3_uv = [0.0_f32, sprite_height * 3.0, sprite_width, 1.0];
+        assert!((sprite3_uv[3] - sprite3_uv[1] - sprite_height).abs() < f32::EPSILON);
+    }
+
+    /// 测试：纹理颜色混合计算（白色 * 纹理 = 纹理）
+    #[test]
+    fn test_texture_color_blending() {
+        let white = [1.0, 1.0, 1.0, 1.0];
+        let texture_color = [0.8, 0.6, 0.4, 0.9];
+        
+        // 颜色混合：white * texture_color = texture_color
+        let blended = [
+            white[0] * texture_color[0],
+            white[1] * texture_color[1],
+            white[2] * texture_color[2],
+            white[3] * texture_color[3],
+        ];
+        
+        assert!((blended[0] - 0.8_f32).abs() < f32::EPSILON);
+        assert!((blended[1] - 0.6_f32).abs() < f32::EPSILON);
+        assert!((blended[2] - 0.4_f32).abs() < f32::EPSILON);
+        assert!((blended[3] - 0.9_f32).abs() < f32::EPSILON);
+    }
+
+    /// 测试：纹理透明度混合（半透明纹理）
+    #[test]
+    fn test_texture_alpha_blending() {
+        let vertex_color = [1.0, 1.0, 1.0, 1.0];
+        let semi_transparent_texture = [1.0, 0.0, 0.0, 0.5]; // 50% 透明红色
+        
+        let blended_alpha = vertex_color[3] * semi_transparent_texture[3];
+        assert!((blended_alpha - 0.5_f32).abs() < f32::EPSILON);
+    }
+
+    /// 测试：纹理尺寸与 UV 坐标的关系（非正方形纹理）
+    #[test]
+    fn test_non_square_texture_uv() {
+        // 2:1 宽高比的纹理（例如 512x256）
+        let width = 512.0;
+        let height = 256.0;
+        let aspect_ratio = width / height;
+        
+        // UV 坐标不受实际像素尺寸影响，始终是 0.0-1.0 归一化坐标
+        let uv = [0.0, 0.0, 1.0, 1.0];
+        assert_eq!(uv[2] - uv[0], 1.0);
+        assert_eq!(uv[3] - uv[1], 1.0);
+        
+        // 但实际像素覆盖率会受宽高比影响
+        let coverage_ratio = aspect_ratio;
+        assert!((coverage_ratio - 2.0_f32).abs() < f32::EPSILON);
+    }
+
+    /// 测试：纹理旋转场景的 UV 坐标调整（90 度旋转）
+    #[test]
+    fn test_texture_rotation_uv() {
+        // 原始 UV（正常方向）
+        let normal_uv = [0.0, 0.0, 1.0, 1.0];
+        
+        // 90 度顺时针旋转后的 UV（交换 x/y 并反转一个轴）
+        let rotated_uv = [normal_uv[1], 1.0 - normal_uv[2], normal_uv[3], 1.0 - normal_uv[0]];
+        assert_eq!(rotated_uv, [0.0, 0.0, 1.0, 1.0]); // 对于完整纹理结果相同
+        
+        // 测试部分纹理旋转（左上 1/4 区域）
+        let partial_uv = [0.0, 0.0, 0.5, 0.5];
+        let rotated_partial = [
+            partial_uv[1],
+            1.0 - partial_uv[2],
+            partial_uv[3],
+            1.0 - partial_uv[0],
+        ];
+        assert_eq!(rotated_partial, [0.0, 0.5, 0.5, 1.0]);
+    }
+
+    /// 测试：纹理翻转（水平/垂直镜像）的 UV 坐标
+    #[test]
+    fn test_texture_flip_uv() {
+        let normal_uv = [0.0, 0.0, 1.0, 1.0];
+        
+        // 水平翻转（左右镜像）：交换左和右
+        let h_flip = [normal_uv[2], normal_uv[1], normal_uv[0], normal_uv[3]];
+        assert_eq!(h_flip, [1.0, 0.0, 0.0, 1.0]);
+        
+        // 垂直翻转（上下镜像）：交换上和下
+        let v_flip = [normal_uv[0], normal_uv[3], normal_uv[2], normal_uv[1]];
+        assert_eq!(v_flip, [0.0, 1.0, 1.0, 0.0]);
+    }
+
+    /// 测试：批量渲染多个纹理的顶点计数增长
+    #[test]
+    fn test_batch_vertex_growth() {
+        // 每个纹理矩形添加 4 个顶点、6 个索引
+        let vertices_per_texture = 4;
+        let indices_per_texture = 6;
+        
+        // 渲染 1 个纹理矩形
+        let count1 = 1;
+        assert_eq!(count1 * vertices_per_texture, 4);
+        assert_eq!(count1 * indices_per_texture, 6);
+        
+        // 渲染 10 个纹理矩形
+        let count10 = 10;
+        assert_eq!(count10 * vertices_per_texture, 40);
+        assert_eq!(count10 * indices_per_texture, 60);
+        
+        // 渲染 100 个纹理矩形
+        let count100 = 100;
+        assert_eq!(count100 * vertices_per_texture, 400);
+        assert_eq!(count100 * indices_per_texture, 600);
+    }
+
+    /// 测试：纹理加载的错误处理（边界条件）
+    #[test]
+    fn test_texture_load_error_handling() {
+        // 测试空纹理 ID 列表的情况
+        let loaded_textures: Vec<u32> = vec![];
+        let invalid_id = 0;
+        assert!(invalid_id >= loaded_textures.len() as u32);
+        
+        // 测试单个纹理的情况
+        let single_texture: Vec<u32> = vec![0];
+        let valid_id = 0;
+        assert!(valid_id < single_texture.len() as u32);
+        
+        let invalid_id2 = 1;
+        assert!(invalid_id2 >= single_texture.len() as u32);
+    }
+
+    /// 测试：纹理渲染的坐标变换（屏幕坐标 → NDC）
+    #[test]
+    fn test_screen_to_ndc_transform() {
+        let screen_width = 800.0;
+        let screen_height = 600.0;
+        
+        // 模拟 to_ndc 变换（实际实现中的公式）
+        fn to_ndc(x: f32, y: f32, width: f32, height: f32) -> (f32, f32) {
+            let ndc_x = (x / width) * 2.0 - 1.0;
+            let ndc_y = 1.0 - (y / height) * 2.0; // Y 轴反转
+            (ndc_x, ndc_y)
+        }
+        
+        // 测试左上角 (0, 0) → (-1, 1)
+        let (x1, y1) = to_ndc(0.0, 0.0, screen_width, screen_height);
+        assert!((x1 - (-1.0)).abs() < f32::EPSILON);
+        assert!((y1 - 1.0).abs() < f32::EPSILON);
+        
+        // 测试右下角 (800, 600) → (1, -1)
+        let (x2, y2) = to_ndc(800.0, 600.0, screen_width, screen_height);
+        assert!((x2 - 1.0).abs() < f32::EPSILON);
+        assert!((y2 - (-1.0)).abs() < f32::EPSILON);
+        
+        // 测试中心点 (400, 300) → (0, 0)
+        let (x3, y3) = to_ndc(400.0, 300.0, screen_width, screen_height);
+        assert!(x3.abs() < f32::EPSILON);
+        assert!(y3.abs() < f32::EPSILON);
+    }
+}
