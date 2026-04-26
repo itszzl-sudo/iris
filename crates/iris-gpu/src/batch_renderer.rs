@@ -128,6 +128,25 @@ pub enum DrawCommand {
         /// RGBA 颜色。
         color: [f32; 4],
     },
+    /// 阴影（简化的盒阴影）。
+    BoxShadow {
+        /// X 坐标（像素）。
+        x: f32,
+        /// Y 坐标（像素）。
+        y: f32,
+        /// 宽度（像素）。
+        width: f32,
+        /// 高度（像素）。
+        height: f32,
+        /// 阴影偏移 X（像素）。
+        offset_x: f32,
+        /// 阴影偏移 Y（像素）。
+        offset_y: f32,
+        /// 阴影模糊半径（像素）。
+        blur: f32,
+        /// 阴影颜色（通常半透明黑色）。
+        color: [f32; 4],
+    },
 }
 
 /// 2D 批渲染器。
@@ -457,6 +476,18 @@ impl BatchRenderer {
             } => {
                 self.add_rounded_rect(x, y, width, height, radius, color);
             }
+            DrawCommand::BoxShadow {
+                x,
+                y,
+                width,
+                height,
+                offset_x,
+                offset_y,
+                blur,
+                color,
+            } => {
+                self.add_box_shadow(x, y, width, height, offset_x, offset_y, blur, color);
+            }
         }
     }
 
@@ -707,6 +738,55 @@ impl BatchRenderer {
         let x_ndc = (x / self.screen_width) * 2.0 - 1.0;
         let y_ndc = 1.0 - (y / self.screen_height) * 2.0;
         [x_ndc, y_ndc]
+    }
+
+    /// 添加盒阴影到顶点池。
+    ///
+    /// 使用多层半透明矩形近似模糊效果，层数取决于模糊半径。
+    fn add_box_shadow(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        offset_x: f32,
+        offset_y: f32,
+        blur: f32,
+        color: [f32; 4],
+    ) {
+        // 阴影位置
+        let shadow_x = x + offset_x;
+        let shadow_y = y + offset_y;
+
+        // 根据模糊半径决定层数
+        let layers = if blur <= 0.0 {
+            1
+        } else {
+            (blur / 2.0).ceil().max(1.0) as usize
+        };
+
+        // 每层的透明度递减
+        for i in 0..layers {
+            let spread = i as f32 * 2.0;
+            let alpha_multiplier = 1.0 - (i as f32 / layers as f32);
+
+            let layer_color = [
+                color[0],
+                color[1],
+                color[2],
+                color[3] * alpha_multiplier,
+            ];
+
+            // 绘制扩散层
+            self.add_rect(
+                shadow_x - spread,
+                shadow_y - spread,
+                width + spread * 2.0,
+                height + spread * 2.0,
+                layer_color,
+                layer_color,
+            );
+        }
     }
 
     /// 将所有累积的绘制命令提交到 GPU 并渲染。
@@ -1319,5 +1399,103 @@ mod texture_tests {
         let br_y = y + height - radius;
         assert!((br_x - 280.0_f32).abs() < f32::EPSILON);
         assert!((br_y - 230.0_f32).abs() < f32::EPSILON);
+    }
+
+    /// 测试：盒阴影绘制命令创建
+    #[test]
+    fn test_box_shadow_command_creation() {
+        let cmd = DrawCommand::BoxShadow {
+            x: 100.0_f32,
+            y: 100.0_f32,
+            width: 200.0_f32,
+            height: 150.0_f32,
+            offset_x: 5.0_f32,
+            offset_y: 10.0_f32,
+            blur: 8.0_f32,
+            color: [0.0_f32, 0.0_f32, 0.0_f32, 0.5_f32],
+        };
+
+        match cmd {
+            DrawCommand::BoxShadow {
+                offset_x,
+                offset_y,
+                blur,
+                color,
+                ..
+            } => {
+                assert!((offset_x - 5.0_f32).abs() < f32::EPSILON);
+                assert!((offset_y - 10.0_f32).abs() < f32::EPSILON);
+                assert!((blur - 8.0_f32).abs() < f32::EPSILON);
+                assert!((color[3] - 0.5_f32).abs() < f32::EPSILON);
+            }
+            _ => panic!("Expected BoxShadow command"),
+        }
+    }
+
+    /// 测试：阴影层数计算
+    #[test]
+    fn test_shadow_layer_count() {
+        // 无模糊：1 层
+        let blur = 0.0_f32;
+        let layers = if blur <= 0.0 { 1 } else { (blur / 2.0).ceil().max(1.0) as usize };
+        assert_eq!(layers, 1);
+
+        // 小模糊：4 层
+        let blur = 8.0_f32;
+        let layers = if blur <= 0.0 { 1 } else { (blur / 2.0).ceil().max(1.0) as usize };
+        assert_eq!(layers, 4);
+
+        // 大模糊：10 层
+        let blur = 20.0_f32;
+        let layers = if blur <= 0.0 { 1 } else { (blur / 2.0).ceil().max(1.0) as usize };
+        assert_eq!(layers, 10);
+    }
+
+    /// 测试：阴影位置计算
+    #[test]
+    fn test_shadow_position() {
+        let x = 100.0_f32;
+        let y = 100.0_f32;
+        let offset_x = 5.0_f32;
+        let offset_y = 10.0_f32;
+
+        let shadow_x = x + offset_x;
+        let shadow_y = y + offset_y;
+
+        assert!((shadow_x - 105.0_f32).abs() < f32::EPSILON);
+        assert!((shadow_y - 110.0_f32).abs() < f32::EPSILON);
+    }
+
+    /// 测试：阴影扩散计算
+    #[test]
+    fn test_shadow_spread() {
+        let width = 200.0_f32;
+        let height = 150.0_f32;
+        let spread = 4.0_f32; // 第 2 层
+
+        let shadow_width = width + spread * 2.0;
+        let shadow_height = height + spread * 2.0;
+
+        assert!((shadow_width - 208.0_f32).abs() < f32::EPSILON);
+        assert!((shadow_height - 158.0_f32).abs() < f32::EPSILON);
+    }
+
+    /// 测试：阴影透明度衰减
+    #[test]
+    fn test_shadow_alpha_decay() {
+        let base_alpha = 0.5_f32;
+        let layers = 4;
+
+        // 第 0 层：100% 透明度
+        let alpha_0 = base_alpha * (1.0 - 0.0 / layers as f32);
+        assert!((alpha_0 - 0.5_f32).abs() < f32::EPSILON);
+
+        // 第 2 层：50% 透明度
+        let alpha_2 = base_alpha * (1.0 - 2.0 / layers as f32);
+        assert!((alpha_2 - 0.25_f32).abs() < f32::EPSILON);
+
+        // 最后层：接近 0 透明度
+        let alpha_last = base_alpha * (1.0 - (layers - 1) as f32 / layers as f32);
+        assert!(alpha_last < 0.15_f32);
     }
 }
