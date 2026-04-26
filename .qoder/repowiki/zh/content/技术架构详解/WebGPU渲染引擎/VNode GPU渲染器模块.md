@@ -19,11 +19,11 @@
 
 ## 更新摘要
 **变更内容**
-- 新增完整的渐变背景渲染支持，包括CSS线性渐变解析
-- 新增GradientStop结构体、GradientType枚举、Background枚举
-- 新增GradientRect绘制命令，支持水平和垂直线性渐变
-- 增强颜色解析系统，支持命名CSS颜色如red、blue、green等
-- 新增边框渲染功能，支持四边独立宽度和颜色
+- 实现完整的CSS边框属性解析系统（BorderInfo结构体）
+- 新增TextInfo结构体，为新的文本渲染基础做准备
+- 新增Border绘制命令，支持四边独立宽度和颜色
+- 更新文本渲染方法，从占位符方法过渡到新的TextInfo基础
+- 增强边框渲染功能，支持border-width、border-color、border简写属性
 
 ## 目录
 1. [简介](#简介)
@@ -40,7 +40,7 @@
 
 VNode GPU渲染器模块是Iris引擎中的关键组件，负责将虚拟DOM树转换为GPU绘制命令，实现高效的2D图形渲染。该模块采用批渲染技术，通过WebGPU硬件加速实现高性能的UI渲染。
 
-Iris引擎是一个基于Rust和WebGPU的下一代无构建前端运行时，支持Vue 3框架，无需传统构建工具即可运行现代Web应用。该渲染器模块作为引擎的第五阶段实现，提供了完整的虚拟DOM到GPU渲染的适配层，现已支持纯色背景、线性渐变背景和边框渲染。
+Iris引擎是一个基于Rust和WebGPU的下一代无构建前端运行时，支持Vue 3框架，无需传统构建工具即可运行现代Web应用。该渲染器模块作为引擎的第五阶段实现，提供了完整的虚拟DOM到GPU渲染的适配层，现已支持纯色背景、线性渐变背景、边框渲染和基础文本渲染。
 
 ## 项目结构
 
@@ -85,13 +85,14 @@ IRIS --> SFC
 
 VNodeRenderer是渲染器模块的核心组件，负责将虚拟DOM树转换为GPU绘制命令。它实现了递归遍历VNode树并将可见元素转换为DrawCommand的过程。
 
-**更新** 新增了完整的渐变背景渲染支持和增强的颜色解析系统
+**更新** 新增了完整的边框属性解析系统和新的文本渲染基础
 
 主要功能特性：
 - 递归遍历VNode树
 - 处理不同类型的VNode节点（元素、文本、注释、Fragment）
 - 解析CSS样式并提取背景颜色（支持纯色和线性渐变）
-- 解析命名CSS颜色如red、blue、green等
+- **新增** 解析CSS边框属性，支持四边独立宽度和颜色
+- **新增** TextInfo结构体，为未来的字体渲染做准备
 - 计算元素的绝对位置和尺寸
 - 跳过不可见元素的渲染
 - 支持边框渲染，包括四边独立宽度和颜色
@@ -100,35 +101,38 @@ VNodeRenderer是渲染器模块的核心组件，负责将虚拟DOM树转换为G
 
 BatchRenderer是GPU渲染器的核心，负责管理顶点缓冲区、索引缓冲区和渲染管线，实现高效的批处理渲染。
 
-**更新** 新增了GradientRect绘制命令支持
+**更新** 新增了Border绘制命令支持
 
 关键特性：
-- 支持纯色矩形和线性渐变矩形渲染
+- 支持纯色矩形、线性渐变矩形和边框渲染
 - 支持水平和垂直线性渐变
 - Alpha混合支持
 - 动态顶点缓冲区管理
 - 单次draw call提交多个矩形
+- **新增** 边框渲染功能，支持四边独立宽度
 
 ### DrawCommand - 绘制命令
 
-**更新** 新增了GradientRect和Border绘制命令
+**更新** 新增了Border绘制命令
 
 定义了渲染器支持的绘制命令类型：
 - Rect：纯色矩形绘制
 - GradientRect：线性渐变矩形绘制（支持水平和垂直渐变）
-- Border：边框绘制（支持四边独立宽度）
+- **新增** Border：边框绘制（支持四边独立宽度）
 
-### 渐变系统数据结构
+### 数据结构系统
 
-**新增** 渐变系统的核心数据结构
+**更新** 新增了边框和文本渲染的核心数据结构
 
+- **新增** BorderInfo：边框信息，包含四边宽度和颜色
+- **新增** TextInfo：文本信息，包含内容、字体大小、颜色和位置
 - GradientStop：渐变停止点，包含位置和颜色信息
 - GradientType：渐变类型枚举，目前支持Linear（线性渐变）
 - Background：背景类型枚举，支持Solid（纯色）和Gradient（渐变）
 
 **章节来源**
-- [vnode_renderer.rs:9-394](file://crates/iris/src/vnode_renderer.rs#L9-L394)
-- [batch_renderer.rs:51-99](file://crates/iris-gpu/src/batch_renderer.rs#L51-L99)
+- [vnode_renderer.rs:35-50](file://crates/iris/src/vnode_renderer.rs#L35-L50)
+- [batch_renderer.rs:86-101](file://crates/iris-gpu/src/batch_renderer.rs#L86-L101)
 
 ## 架构概览
 
@@ -172,8 +176,11 @@ class VNodeRenderer {
 -parse_background(css) Option~Background~
 -parse_linear_gradient(css) Option~Background~
 -parse_gradient_direction(dir) (bool, usize)
++render_border(styles, x, y, width, height, renderer) Result
 -parse_border(styles) Option~BorderInfo~
 -parse_border_width(css) (f32, f32, f32, f32)
++render_text(content, x, y, renderer) Result
+-parse_text(content, x, y) Option~TextInfo~
 -parse_css_unit(css) f32
 -is_visible(styles) bool
 }
@@ -184,6 +191,17 @@ class RenderStats {
 +total_nodes : usize
 +collect(vnode) RenderStats
 -collect_recursive(vnode, stats) void
+}
+class BorderInfo {
++width : (f32, f32, f32, f32)
++color : [f32; 4]
+}
+class TextInfo {
++content : String
++font_size : f32
++color : [f32; 4]
++x : f32
++y : f32
 }
 class GradientStop {
 +position : f32
@@ -196,20 +214,19 @@ class Background {
 +Solid([f32; 4])
 +Gradient(gradient_type, stops)
 }
-class BorderInfo {
-+width : (f32, f32, f32, f32)
-+color : [f32; 4]
-}
 VNodeRenderer --> VNode : "遍历"
 VNodeRenderer --> RenderStats : "统计"
 VNodeRenderer --> BatchRenderer : "提交命令"
+BorderInfo --> VNodeRenderer : "解析"
+TextInfo --> VNodeRenderer : "解析"
 GradientStop --> Background : "组成"
 GradientType --> Background : "类型"
-BorderInfo --> VNodeRenderer : "解析"
 ```
 
 **图表来源**
-- [vnode_renderer.rs:9-394](file://crates/iris/src/vnode_renderer.rs#L9-L394)
+- [vnode_renderer.rs:35-50](file://crates/iris/src/vnode_renderer.rs#L35-L50)
+- [vnode_renderer.rs:285-307](file://crates/iris/src/vnode_renderer.rs#L285-L307)
+- [vnode_renderer.rs:395-406](file://crates/iris/src/vnode_renderer.rs#L395-L406)
 
 #### 渲染流程分析
 
@@ -218,13 +235,14 @@ VNodeRenderer的渲染过程遵循以下步骤：
 1. **节点类型判断**：根据VNode枚举类型进行分支处理
 2. **布局信息检查**：只有具有布局信息的元素才会被渲染
 3. **样式解析**：提取背景颜色等渲染属性（支持纯色和线性渐变）
-4. **命令提交**：将绘制命令提交给批渲染器
-5. **递归处理**：对子节点进行同样的处理
+4. ****新增** 边框解析**：解析border-width、border-color等CSS属性
+5. **命令提交**：将绘制命令提交给批渲染器
+6. **递归处理**：对子节点进行同样的处理
 
-**更新** 新增了渐变背景解析和命名颜色支持
+**更新** 新增了边框解析和新的文本渲染基础
 
 **章节来源**
-- [vnode_renderer.rs:43-111](file://crates/iris/src/vnode_renderer.rs#L43-L111)
+- [vnode_renderer.rs:93-144](file://crates/iris/src/vnode_renderer.rs#L93-L144)
 
 ### BatchRenderer实现分析
 
@@ -343,36 +361,67 @@ VNode --> ComputedStyles : "样式"
 - [layout.rs:8-99](file://crates/iris-layout/src/layout.rs#L8-L99)
 - [style.rs:9-51](file://crates/iris-layout/src/style.rs#L9-L51)
 
-### 渐变系统详细分析
+### 边框系统详细分析
 
-**新增** 渐变系统提供了完整的CSS线性渐变支持
+**新增** 边框系统提供了完整的CSS边框属性解析支持
 
 ```mermaid
 flowchart TD
-ParseBackground[解析背景] --> CheckGradient{检查是否为渐变?}
-CheckGradient --> |是| ParseGradient[解析线性渐变]
-CheckGradient --> |否| ParseColor[解析颜色]
-ParseGradient --> ExtractDirection[提取渐变方向]
-ExtractDirection --> ParseColors[解析颜色停止点]
-ParseColors --> CreateGradient[创建渐变背景]
-ParseColor --> CreateSolid[创建纯色背景]
-CreateGradient --> SubmitCommand[提交GradientRect命令]
-CreateSolid --> SubmitCommand
+ParseBorder[解析边框] --> CheckWidth{检查border-width?}
+CheckWidth --> |是| ParseWidth[解析边框宽度]
+CheckWidth --> |否| NoBorder[无边框]
+ParseWidth --> CheckZero{检查宽度>0?}
+CheckZero --> |否| NoBorder
+CheckZero --> |是| ParseColor[解析边框颜色]
+ParseWidth --> ParseFourValues[解析四值语法]
+ParseFourValues --> ParseTwoValues[解析两值语法]
+ParseTwoValues --> ParseThreeValues[解析三值语法]
+ParseThreeValues --> ParseSingleValue[解析单值语法]
+ParseSingleValue --> ParseColor
+ParseColor --> CreateBorder[创建BorderInfo]
+CreateBorder --> SubmitCommand[提交Border命令]
 ```
 
 **图表来源**
-- [vnode_renderer.rs:189-241](file://crates/iris/src/vnode_renderer.rs#L189-L241)
+- [vnode_renderer.rs:285-307](file://crates/iris/src/vnode_renderer.rs#L285-L307)
 
-#### 渐变解析流程
+#### 边框解析流程
 
-1. **CSS背景解析**：支持background和background-color属性
-2. **渐变检测**：识别linear-gradient开头的CSS值
-3. **方向解析**：支持"to right"、"to left"、"to bottom"、"to top"
-4. **颜色解析**：支持rgba()格式和命名颜色
-5. **停止点计算**：自动计算颜色在渐变中的位置
+1. **CSS边框属性解析**：支持border-width、border-color、border简写
+2. **宽度解析**：支持"1px 2px 1px 2px"或"2px"等多种语法
+3. **颜色解析**：支持rgba()格式和常用CSS命名颜色
+4. **四边独立控制**：支持上、右、下、左四边独立宽度
+5. **边框渲染**：将边框转换为四个矩形区域
 
 **章节来源**
-- [vnode_renderer.rs:189-241](file://crates/iris/src/vnode_renderer.rs#L189-L241)
+- [vnode_renderer.rs:285-342](file://crates/iris/src/vnode_renderer.rs#L285-L342)
+
+### 文本渲染系统分析
+
+**更新** 文本渲染系统从占位符方法过渡到新的TextInfo基础
+
+```mermaid
+flowchart TD
+ParseText[解析文本] --> CreateTextInfo[创建TextInfo]
+CreateTextInfo --> Placeholder[占位符渲染]
+Placeholder --> FutureFont[未来字体渲染]
+FutureFont --> Fontdue[fontdue集成]
+Fontdue --> RealText[真实文本渲染]
+```
+
+**图表来源**
+- [vnode_renderer.rs:395-406](file://crates/iris/src/vnode_renderer.rs#L395-L406)
+
+#### 文本渲染流程
+
+1. **TextInfo创建**：解析文本内容、字体大小、颜色和位置
+2. **占位符渲染**：当前使用半透明矩形作为文本占位符
+3. **尺寸计算**：基于字符长度和字体大小计算占位符尺寸
+4. **颜色处理**：使用文本颜色的半透明版本
+5. **未来集成**：为fontdue字体渲染做准备
+
+**章节来源**
+- [vnode_renderer.rs:351-406](file://crates/iris/src/vnode_renderer.rs#L351-L406)
 
 ## 依赖关系分析
 
@@ -384,6 +433,7 @@ subgraph "外部依赖"
 WGPU[wgpu 24.x]
 WINIT[winit]
 BYTEMUCK[bytemuck]
+FONTDUE[fontdue]
 end
 subgraph "内部模块"
 IRIS_ENGINE[iris-engine]
@@ -401,6 +451,7 @@ IRIS_ENGINE --> IRIS_SFC
 IRIS_GPU --> WGPU
 IRIS_GPU --> WINIT
 IRIS_GPU --> BYTEMUCK
+IRIS_GPU --> FONTDUE
 IRIS_ENGINE -.-> IRIS_GPU
 IRIS_ENGINE -.-> IRIS_DOM
 IRIS_ENGINE -.-> IRIS_LAYOUT
@@ -419,6 +470,7 @@ VNode GPU渲染器模块的关键依赖包括：
 3. **iris-gpu**：提供GPU渲染基础设施
 4. **wgpu**：WebGPU图形API封装
 5. **bytemuck**：零拷贝数据转换
+6. **fontdue**：字体渲染库（未来集成）
 
 **章节来源**
 - [Cargo.toml:13-31](file://Cargo.toml#L13-L31)
@@ -434,6 +486,7 @@ VNode GPU渲染器模块采用了多项性能优化策略：
 2. **动态缓冲区管理**：根据渲染需求动态调整缓冲区大小
 3. **内存对齐优化**：使用bytemuck确保数据结构内存对齐
 4. **GPU原生数据格式**：直接使用GPU支持的数据格式减少转换开销
+5. ****新增** 边框优化**：边框渲染通过四个独立矩形实现，避免复杂的几何计算
 
 ### 内存管理策略
 
@@ -495,18 +548,31 @@ CLEAR --> CAP
 2. 检查CSS样式解析
 3. 调试坐标变换逻辑
 
-#### 渐变渲染问题
+#### 边框渲染问题
 
-**问题症状**：渐变效果不正确
+**问题症状**：边框显示不正确
 **可能原因**：
-- CSS渐变语法错误
-- 颜色解析失败
-- 方向参数不正确
+- CSS边框语法错误
+- 边框宽度解析失败
+- 边框颜色解析错误
 
 **解决方案**：
-1. 验证linear-gradient语法
-2. 检查颜色值格式
-3. 确认渐变方向参数
+1. 验证border-width语法（支持1-4个值）
+2. 检查border-color格式
+3. 确认边框简写属性的正确使用
+
+#### 文本渲染问题
+
+**问题症状**：文本显示为占位符而非实际文字
+**可能原因**：
+- fontdue库未正确集成
+- 文本样式解析不完整
+- 字体渲染配置问题
+
+**解决方案**：
+1. 确认fontdue依赖已正确添加
+2. 检查TextInfo结构体的完整实现
+3. 验证字体渲染管线的正确配置
 
 #### 性能问题
 
@@ -529,21 +595,24 @@ CLEAR --> CAP
 
 VNode GPU渲染器模块是Iris引擎中实现高性能2D渲染的关键组件。通过采用批渲染技术和WebGPU硬件加速，该模块实现了高效的虚拟DOM到GPU渲染的转换。
 
-**更新** 模块现已支持完整的渐变背景渲染和增强的颜色解析系统，显著提升了渲染能力。
+**更新** 模块现已支持完整的CSS边框属性解析系统和新的文本渲染基础，显著提升了渲染能力和扩展性。
 
 模块的主要优势包括：
 - **高性能渲染**：通过批处理和GPU加速实现流畅的UI渲染
 - **渐变支持**：完整的CSS线性渐变解析和渲染支持
+- **边框系统**：完整的CSS边框属性解析，支持四边独立控制
+- **文本基础**：为未来的字体渲染提供基础架构
 - **颜色丰富**：支持rgba()格式和常用CSS命名颜色
 - **模块化设计**：清晰的分层架构便于维护和扩展
 - **内存优化**：智能的缓冲区管理和数据对齐优化
 - **可扩展性**：支持多种绘制命令和渐变效果
 
 未来的发展方向包括：
-- 完善文本渲染支持
+- 完善字体渲染支持（fontdue集成）
 - 增强事件处理系统
 - 优化内存使用效率
 - 扩展图形效果支持
-- 支持更多CSS渐变类型
+- 支持更多CSS属性
+- 实现更精确的文本测量和布局
 
 该模块为Iris引擎提供了坚实的渲染基础，为构建现代Web应用提供了强大的技术支持。
