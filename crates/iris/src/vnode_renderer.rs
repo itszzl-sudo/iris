@@ -87,6 +87,65 @@ struct AnimationState {
     is_running: bool,
 }
 
+/// 渲染层级
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum RenderLayer {
+    Background = 0,   // 背景层
+    Border = 1,       // 边框层
+    Content = 2,      // 内容层（文本、图片）
+    Overlay = 3,      // 覆盖层（动画、特效）
+}
+
+/// 脏矩形管理器
+#[derive(Debug, Clone)]
+struct DirtyRectManager {
+    dirty_rects: Vec<(f32, f32, f32, f32)>, // (x, y, width, height)
+    full_redraw: bool,
+}
+
+impl DirtyRectManager {
+    fn new() -> Self {
+        Self {
+            dirty_rects: Vec::new(),
+            full_redraw: true, // 首次渲染需要全量重绘
+        }
+    }
+
+    /// 标记区域为脏矩形
+    fn mark_dirty(&mut self, x: f32, y: f32, width: f32, height: f32) {
+        self.dirty_rects.push((x, y, width, height));
+    }
+
+    /// 标记全部区域为脏（全量重绘）
+    fn mark_all_dirty(&mut self) {
+        self.full_redraw = true;
+    }
+
+    /// 检查是否需要全量重绘
+    fn needs_full_redraw(&self) -> bool {
+        self.full_redraw
+    }
+
+    /// 合并重叠的脏矩形（简化实现）
+    fn merge_dirty_rects(&mut self) {
+        if self.dirty_rects.len() <= 1 {
+            return;
+        }
+
+        // 简化：如果有太多脏矩形，直接全量重绘更高效
+        if self.dirty_rects.len() > 10 {
+            self.full_redraw = true;
+            self.dirty_rects.clear();
+        }
+    }
+
+    /// 清除脏矩形标记（渲染完成后调用）
+    fn clear(&mut self) {
+        self.dirty_rects.clear();
+        self.full_redraw = false;
+    }
+}
+
 /// VNode 渲染器
 ///
 /// 负责将虚拟 DOM 树转换为 GPU 绘制命令。
