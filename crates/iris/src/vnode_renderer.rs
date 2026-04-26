@@ -39,6 +39,16 @@ struct BorderInfo {
     color: [f32; 4],
 }
 
+/// 文本信息
+#[derive(Debug, Clone)]
+struct TextInfo {
+    content: String,
+    font_size: f32,
+    color: [f32; 4],
+    x: f32,
+    y: f32,
+}
+
 /// VNode 渲染器
 ///
 /// 负责将虚拟 DOM 树转换为 GPU 绘制命令。
@@ -116,8 +126,8 @@ impl VNodeRenderer {
                 }
             }
             VNode::Text { content } => {
-                // TODO: 文本渲染需要字体系统支持
-                debug!(text = content, "Text rendering requires font system");
+                // 渲染文本（当前使用占位符，后续集成 fontdue）
+                Self::render_text(content, parent_x, parent_y, renderer)?;
             }
             VNode::Comment { .. } => {
                 // 注释节点不渲染
@@ -336,6 +346,63 @@ impl VNodeRenderer {
         // 移除 "px" 后缀并解析为 f32
         let num_str = css.trim_end_matches("px").trim();
         num_str.parse::<f32>().unwrap_or(0.0)
+    }
+
+    /// 渲染文本节点
+    fn render_text(
+        content: &str,
+        x: f32,
+        y: f32,
+        renderer: &mut BatchRenderer,
+    ) -> Result<(), String> {
+        // 解析文本信息
+        if let Some(text_info) = Self::parse_text(content, x, y) {
+            // 当前实现：使用半透明矩形作为文本占位符
+            // 这样可以保留文本节点的位置和尺寸信息
+            // 后续集成 fontdue 后，将替换为真正的字体渲染
+            let width = text_info.content.len() as f32 * text_info.font_size * 0.6;
+            let height = text_info.font_size;
+            
+            // 使用文本颜色的半透明版本作为占位符
+            let placeholder_color = [
+                text_info.color[0] * 0.3,
+                text_info.color[1] * 0.3,
+                text_info.color[2] * 0.3,
+                0.2, // 低透明度
+            ];
+            
+            renderer.submit(DrawCommand::Rect {
+                x: text_info.x,
+                y: text_info.y,
+                width,
+                height,
+                color: placeholder_color,
+            });
+            
+            debug!(
+                content = text_info.content,
+                x = text_info.x,
+                y = text_info.y,
+                width = width,
+                height = height,
+                "Rendered text placeholder"
+            );
+        }
+        
+        Ok(())
+    }
+
+    /// 解析文本信息
+    fn parse_text(content: &str, x: f32, y: f32) -> Option<TextInfo> {
+        // 简化实现：使用默认字体大小和颜色
+        // 后续将从 VNode 的样式中提取这些信息
+        Some(TextInfo {
+            content: content.to_string(),
+            font_size: 16.0, // 默认 16px
+            color: [0.0, 0.0, 0.0, 1.0], // 默认黑色
+            x,
+            y,
+        })
     }
     fn parse_background_color(styles: &iris_layout::style::ComputedStyles) -> [f32; 4] {
         // 尝试解析 background-color 属性
@@ -725,5 +792,41 @@ mod tests {
         
         let border = VNodeRenderer::parse_border(&styles);
         assert!(border.is_none());
+    }
+
+    #[test]
+    fn test_parse_text_basic() {
+        let text_info = VNodeRenderer::parse_text("Hello", 10.0, 20.0);
+        assert!(text_info.is_some());
+        let text_info = text_info.unwrap();
+        assert_eq!(text_info.content, "Hello");
+        assert!((text_info.font_size - 16.0).abs() < 0.01);
+        assert!((text_info.x - 10.0).abs() < 0.01);
+        assert!((text_info.y - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_text_empty() {
+        let text_info = VNodeRenderer::parse_text("", 0.0, 0.0);
+        assert!(text_info.is_some());
+        assert_eq!(text_info.unwrap().content, "");
+    }
+
+    #[test]
+    fn test_parse_text_chinese() {
+        let text_info = VNodeRenderer::parse_text("你好世界", 0.0, 0.0);
+        assert!(text_info.is_some());
+        assert_eq!(text_info.unwrap().content, "你好世界");
+    }
+
+    #[test]
+    fn test_text_node_rendering() {
+        // 创建包含文本的 VNode
+        let mut div = VNode::element("div");
+        div.append_child(VNode::text("Hello World"));
+        
+        let stats = RenderStats::collect(&div);
+        assert_eq!(stats.total_nodes, 2);
+        assert_eq!(stats.text_nodes, 1);
     }
 }
