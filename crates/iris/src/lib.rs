@@ -60,6 +60,12 @@ pub mod orchestrator;
 /// 将虚拟 DOM 树转换为 GPU 绘制命令，实现高效的渲染管线。
 pub mod vnode_renderer;
 
+/// 脏矩形管理器（性能优化）
+///
+/// 用于优化渲染性能，只重绘发生变化的区域。
+pub mod dirty_rect_manager;
+pub use dirty_rect_manager::{DirtyRect, DirtyRectManager, DirtyRectStats};
+
 /// Iris 引擎版本号。
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
