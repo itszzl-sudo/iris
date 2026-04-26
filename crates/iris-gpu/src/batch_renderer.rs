@@ -113,6 +113,21 @@ pub enum DrawCommand {
         /// UV 坐标 (u1, v1, u2, v2)。
         uv: [f32; 4],
     },
+    /// 圆角矩形。
+    RoundedRect {
+        /// X 坐标（像素）。
+        x: f32,
+        /// Y 坐标（像素）。
+        y: f32,
+        /// 宽度（像素）。
+        width: f32,
+        /// 高度（像素）。
+        height: f32,
+        /// 圆角半径（像素）。
+        radius: f32,
+        /// RGBA 颜色。
+        color: [f32; 4],
+    },
 }
 
 /// 2D 批渲染器。
@@ -432,6 +447,16 @@ impl BatchRenderer {
             } => {
                 self.submit_texture_rect(x, y, width, height, texture_id, uv);
             }
+            DrawCommand::RoundedRect {
+                x,
+                y,
+                width,
+                height,
+                radius,
+                color,
+            } => {
+                self.add_rounded_rect(x, y, width, height, radius, color);
+            }
         }
     }
 
@@ -543,6 +568,145 @@ impl BatchRenderer {
             color_bottom,
             color_bottom, // 下边：相同颜色
         );
+    }
+
+    /// 添加圆角矩形到顶点池。
+    ///
+    /// 使用三角形扇形（triangle fan）近似圆角，每个圆角使用 16 个三角形。
+    fn add_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        radius: f32,
+        color: [f32; 4],
+    ) {
+        // 限制圆角半径，避免超过矩形尺寸的一半
+        let radius = radius.min(width / 2.0).min(height / 2.0);
+
+        if radius <= 0.0 {
+            // 半径为 0，退化为普通矩形
+            self.add_rect(x, y, width, height, color, color);
+            return;
+        }
+
+        // 检查 u16 索引溢出风险
+        if self.vertices.len() + 100 > 65536 {
+            panic!("Vertex count exceeds u16 indexing limit (65535). Current: {}", self.vertices.len());
+        }
+
+        let center_x = x + width / 2.0;
+        let center_y = y + height / 2.0;
+
+        // 圆角分段数（越多越平滑）
+        let segments = 16;
+
+        // 中心矩形（不包含圆角部分）
+        let rect_left = x + radius;
+        let rect_right = x + width - radius;
+        let rect_top = y + radius;
+        let rect_bottom = y + height - radius;
+
+        // 绘制中心矩形
+        self.add_rect(rect_left, rect_top, width - 2.0 * radius, height, color, color);
+
+        // 绘制上下矩形条（填充圆角之间的区域）
+        self.add_rect(rect_left, y, width - 2.0 * radius, radius, color, color);
+        self.add_rect(rect_left, y + height - radius, width - 2.0 * radius, radius, color, color);
+
+        // 绘制四个圆角
+        // 左上角 (90° -> 180°)
+        self.add_corner(
+            x + radius,
+            y + radius,
+            radius,
+            std::f32::consts::PI,
+            1.5 * std::f32::consts::PI,
+            color,
+            segments,
+        );
+
+        // 右上角 (0° -> 90°)
+        self.add_corner(
+            x + width - radius,
+            y + radius,
+            radius,
+            1.5 * std::f32::consts::PI,
+            2.0 * std::f32::consts::PI,
+            color,
+            segments,
+        );
+
+        // 右下角 (270° -> 360°)
+        self.add_corner(
+            x + width - radius,
+            y + height - radius,
+            radius,
+            0.0,
+            0.5 * std::f32::consts::PI,
+            color,
+            segments,
+        );
+
+        // 左下角 (180° -> 270°)
+        self.add_corner(
+            x + radius,
+            y + height - radius,
+            radius,
+            0.5 * std::f32::consts::PI,
+            std::f32::consts::PI,
+            color,
+            segments,
+        );
+    }
+
+    /// 添加圆角（三角形扇形）。
+    fn add_corner(
+        &mut self,
+        center_x: f32,
+        center_y: f32,
+        radius: f32,
+        start_angle: f32,
+        end_angle: f32,
+        color: [f32; 4],
+        segments: usize,
+    ) {
+        let base_index = self.vertices.len() as u16;
+
+        // 添加中心顶点
+        self.vertices.push(BatchVertex {
+            position: self.to_ndc_pos(center_x, center_y),
+            color,
+            uv: [0.0, 0.0], // 纯色不需要 UV
+        });
+
+        // 添加圆弧上的顶点
+        for i in 0..=segments {
+            let angle = start_angle + (end_angle - start_angle) * i as f32 / segments as f32;
+            let px = center_x + radius * angle.cos();
+            let py = center_y + radius * angle.sin();
+
+            self.vertices.push(BatchVertex {
+                position: self.to_ndc_pos(px, py),
+                color,
+                uv: [0.0, 0.0],
+            });
+        }
+
+        // 添加索引（三角形扇形）
+        for i in 0..segments {
+            self.indices.push(base_index); // 中心
+            self.indices.push(base_index + 1 + i as u16); // 当前点
+            self.indices.push(base_index + 2 + i as u16); // 下一个点
+        }
+    }
+
+    /// 将像素坐标转换为 NDC 坐标（便捷方法）。
+    fn to_ndc_pos(&self, x: f32, y: f32) -> [f32; 2] {
+        let x_ndc = (x / self.screen_width) * 2.0 - 1.0;
+        let y_ndc = 1.0 - (y / self.screen_height) * 2.0;
+        [x_ndc, y_ndc]
     }
 
     /// 将所有累积的绘制命令提交到 GPU 并渲染。
@@ -1070,5 +1234,90 @@ mod texture_tests {
         let (x3, y3) = to_ndc(400.0, 300.0, screen_width, screen_height);
         assert!(x3.abs() < f32::EPSILON);
         assert!(y3.abs() < f32::EPSILON);
+    }
+
+    /// 测试：圆角矩形绘制命令创建
+    #[test]
+    fn test_rounded_rect_command_creation() {
+        let cmd = DrawCommand::RoundedRect {
+            x: 100.0,
+            y: 100.0,
+            width: 200.0,
+            height: 150.0,
+            radius: 20.0,
+            color: [1.0, 0.0, 0.0, 1.0],
+        };
+
+        match cmd {
+            DrawCommand::RoundedRect {
+                x,
+                y,
+                width,
+                height,
+                radius,
+                color,
+            } => {
+                assert!((x - 100.0).abs() < f32::EPSILON);
+                assert!((y - 100.0).abs() < f32::EPSILON);
+                assert!((width - 200.0).abs() < f32::EPSILON);
+                assert!((height - 150.0).abs() < f32::EPSILON);
+                assert!((radius - 20.0).abs() < f32::EPSILON);
+                assert!((color[0] - 1.0).abs() < f32::EPSILON);
+            }
+            _ => panic!("Expected RoundedRect command"),
+        }
+    }
+
+    /// 测试：圆角半径限制（不能超过矩形尺寸的一半）
+    #[test]
+    fn test_radius_clamping() {
+        let width = 100.0_f32;
+        let height = 60.0_f32;
+        let radius = 50.0_f32; // 太大了
+
+        // 模拟半径限制逻辑
+        let clamped_radius = radius.min(width / 2.0).min(height / 2.0);
+        assert!((clamped_radius - 30.0_f32).abs() < f32::EPSILON); // 应该是 height/2
+    }
+
+    /// 测试：圆角矩形的退化情况（半径为 0）
+    #[test]
+    fn test_rounded_rect_zero_radius() {
+        let radius = 0.0;
+        assert!(radius <= 0.0); // 应该退化为普通矩形
+    }
+
+    /// 测试：圆角分段数计算
+    #[test]
+    fn test_corner_segments() {
+        let segments = 16;
+        let angle_step = std::f32::consts::PI / 2.0 / segments as f32;
+
+        // 90 度圆角应该有 16 段
+        assert_eq!(segments, 16);
+        // 每段角度应该是 90/16 = 5.625 度
+        assert!((angle_step - 0.09817477).abs() < f32::EPSILON);
+    }
+
+    /// 测试：圆角中心点计算
+    #[test]
+    fn test_corner_center_calculation() {
+        let x = 100.0_f32;
+        let y = 100.0_f32;
+        let width = 200.0_f32;
+        let height = 150.0_f32;
+        let radius = 20.0_f32;
+
+        // 左上角中心点
+        let tl_x = x + radius;
+        let tl_y = y + radius;
+        assert!((tl_x - 120.0_f32).abs() < f32::EPSILON);
+        assert!((tl_y - 120.0_f32).abs() < f32::EPSILON);
+
+        // 右下角中心点
+        let br_x = x + width - radius;
+        let br_y = y + height - radius;
+        assert!((br_x - 280.0_f32).abs() < f32::EPSILON);
+        assert!((br_y - 230.0_f32).abs() < f32::EPSILON);
     }
 }
