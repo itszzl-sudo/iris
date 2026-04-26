@@ -55,6 +55,11 @@ pub use iris_sfc as sfc;
 /// 形成完整的 Vue 3 运行时。
 pub mod orchestrator;
 
+/// VNode 到 GPU 渲染适配器（Phase 5）
+///
+/// 将虚拟 DOM 树转换为 GPU 绘制命令，实现高效的渲染管线。
+pub mod vnode_renderer;
+
 /// Iris 引擎版本号。
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
