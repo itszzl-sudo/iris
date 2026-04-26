@@ -8,6 +8,10 @@
 
 pub mod easing;
 pub mod applier;
+pub mod keyframes;
 
 pub use easing::{EasingFunction, ease_in_out, ease_in, ease_out, linear, ease_elastic, ease_bounce};
 pub use applier::{TransitionConfig, ElementAnimationState, TransitionAnimation, AnimatedValue};
+pub use keyframes::{
+    Keyframe, KeyframesDefinition, KeyframeAnimation, AnimationDirection, FillMode,
+};
