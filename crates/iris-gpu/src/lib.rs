@@ -8,8 +8,10 @@
 
 mod batch_renderer;
 mod file_watcher;
+mod font_atlas;
 
 pub use batch_renderer::{BatchRenderer, BatchVertex, DrawCommand};
+pub use font_atlas::{FontAtlas, GlyphInfo};
 use bytemuck::{Pod, Zeroable};
 pub use file_watcher::{deduplicate_changes, FileChange, FileWatcher, WatcherConfig};
 use wgpu::util::DeviceExt;
