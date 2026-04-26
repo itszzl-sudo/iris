@@ -214,9 +214,10 @@ impl BatchRenderer {
         });
 
         // 创建顶点/索引缓冲区（使用最大容量）
+        // 注意：每个矩形需要 4 个顶点，所以顶点缓冲区大小是 capacity * 4
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Batch Vertex Buffer"),
-            size: (capacity * std::mem::size_of::<BatchVertex>()) as u64,
+            size: (capacity * 4 * std::mem::size_of::<BatchVertex>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -338,24 +339,24 @@ impl BatchRenderer {
             } => {
                 let (top, right, bottom, left) = border_width;
                 
-                // 上边框
+                // 上边框（完整宽度）
                 if top > 0.0 {
                     self.add_rect(x, y, width, top, border_color, border_color);
                 }
                 
-                // 下边框
+                // 下边框（完整宽度）
                 if bottom > 0.0 {
                     self.add_rect(x, y + height - bottom, width, bottom, border_color, border_color);
                 }
                 
-                // 左边框
+                // 左边框（减去上下边框的高度，避免角落重叠）
                 if left > 0.0 {
-                    self.add_rect(x, y, left, height, border_color, border_color);
+                    self.add_rect(x, y + top, left, height - top - bottom, border_color, border_color);
                 }
                 
-                // 右边框
+                // 右边框（减去上下边框的高度，避免角落重叠）
                 if right > 0.0 {
-                    self.add_rect(x + width - right, y, right, height, border_color, border_color);
+                    self.add_rect(x + width - right, y + top, right, height - top - bottom, border_color, border_color);
                 }
             }
             DrawCommand::TextureRect {
@@ -392,6 +393,11 @@ impl BatchRenderer {
         color_bl: [f32; 4], // 左下
         color_br: [f32; 4], // 右下
     ) {
+        // 检查 u16 索引溢出风险
+        if self.vertices.len() + 4 > 65536 {
+            panic!("Vertex count exceeds u16 indexing limit (65535). Current: {}", self.vertices.len());
+        }
+        
         let (x1, y1) = self.to_ndc(x, y);
         let (x2, y2) = self.to_ndc(x + width, y + height);
 
