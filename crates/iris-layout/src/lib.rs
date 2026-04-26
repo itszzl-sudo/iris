@@ -6,12 +6,10 @@
 #![warn(missing_docs)]
 
 use iris_core;
-use iris_gpu;
 
 /// 初始化布局引擎。
 pub fn init() {
     iris_core::init();
-    iris_gpu::init();
     println!("iris-layout initialized");
 }
 

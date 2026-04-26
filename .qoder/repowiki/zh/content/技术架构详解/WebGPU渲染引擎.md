@@ -14,12 +14,11 @@
 
 ## 更新摘要
 **所做更改**
-- 完善了批渲染系统的详细实现说明
-- 新增了着色器管理系统的技术细节
-- 补充了资源生命周期管理的完整流程
-- 增加了文件热更新监听器的架构设计
-- 更新了异步渲染架构和性能优化策略
-- 完善了高级视觉效果的实现原理
+- 更新了批渲染器的顶点缓冲管理和绘制命令处理优化
+- 新增了基于bytemuck.cast_slice的性能优化说明
+- 补充了GPU资源利用率提升的技术细节
+- 完善了2D渲染性能提升的具体实现方案
+- 增加了内存拷贝优化和缓冲区管理改进
 
 ## 目录
 1. [引言](#引言)
@@ -326,7 +325,39 @@ BatchRenderer --> DrawCommand
 - [batch_renderer.rs:12-50](file://crates/iris-gpu/src/batch_renderer.rs#L12-L50)
 
 **章节来源**
-- [batch_renderer.rs:1-375](file://crates/iris-gpu/src/batch_renderer.rs#L1-L375)
+- [batch_renderer.rs:1-382](file://crates/iris-gpu/src/batch_renderer.rs#L1-L382)
+
+### 顶点缓冲管理和性能优化
+
+**更新** 批渲染器获得了显著的性能优化，主要体现在顶点缓冲管理和绘制命令处理方面
+
+#### 优化后的缓冲管理
+```mermaid
+flowchart TD
+A[DrawCommand] --> B[BatchRenderer.submit]
+B --> C[容量检查]
+C --> D[顶点池累积]
+D --> E[索引池累积]
+E --> F{flush触发?}
+F --> |是| G[bytemuck.cast_slice优化]
+G --> H[write_buffer批量上传]
+H --> I[单次draw call执行]
+I --> J[顶点池清空]
+F --> |否| K[继续累积]
+K --> B
+```
+
+**图表来源**
+- [batch_renderer.rs:206-246](file://crates/iris-gpu/src/batch_renderer.rs#L206-L246)
+
+#### 性能优化关键点
+- **内存拷贝优化**：使用`bytemuck.cast_slice`避免不必要的数据复制
+- **批量上传**：一次性上传所有顶点和索引数据
+- **缓冲区复用**：重用现有的顶点和索引缓冲区
+- **容量预分配**：预先分配足够的容量避免动态扩容
+
+**章节来源**
+- [batch_renderer.rs:354-374](file://crates/iris-gpu/src/batch_renderer.rs#L354-L374)
 
 ### 着色器管理系统
 
@@ -456,7 +487,7 @@ I --> |否| J[提交最后批次]
 - [batch_renderer.rs:209-249](file://crates/iris-gpu/src/batch_renderer.rs#L209-L249)
 
 **章节来源**
-- [batch_renderer.rs:209-375](file://crates/iris-gpu/src/batch_renderer.rs#L209-L375)
+- [batch_renderer.rs:209-382](file://crates/iris-gpu/src/batch_renderer.rs#L209-L382)
 
 ## 高级视觉效果实现
 
@@ -565,7 +596,9 @@ end
 
 ### 内存管理优化
 
-#### 内存池设计
+**更新** 批渲染器获得了显著的内存管理优化，特别是在顶点缓冲管理和数据传输方面
+
+#### 优化后的内存池设计
 ```mermaid
 classDiagram
 class MemoryPool {
@@ -622,6 +655,44 @@ note right of Destroyed : 资源销毁阶段
 
 **章节来源**
 - [lib.rs:78-105](file://crates/iris-gpu/src/lib.rs#L78-L105)
+
+### 批渲染性能优化详解
+
+**更新** 批渲染器获得了显著的性能提升，主要体现在以下方面：
+
+#### 优化前后的对比
+```mermaid
+flowchart TD
+A[优化前] --> B[逐个命令处理]
+B --> C[多次write_buffer调用]
+C --> D[频繁GPU状态切换]
+D --> E[低效内存拷贝]
+E --> F[性能瓶颈]
+A1[DrawCommand提交]
+A2[单次缓冲区上传]
+A3[批处理优化]
+A4[bytemuck.cast_slice]
+A5[GPU资源复用]
+A6[性能提升]
+F --> G[优化后]
+G --> A2
+A2 --> A3
+A3 --> A4
+A4 --> A5
+A5 --> A6
+```
+
+**图表来源**
+- [batch_renderer.rs:354-374](file://crates/iris-gpu/src/batch_renderer.rs#L354-L374)
+
+#### 关键优化技术
+- **bytemuck.cast_slice优化**：避免数据复制，直接使用内存切片
+- **批量缓冲区上传**：一次性上传所有顶点和索引数据
+- **GPU状态复用**：减少渲染状态切换次数
+- **内存预分配**：避免运行时动态扩容
+
+**章节来源**
+- [batch_renderer.rs:354-374](file://crates/iris-gpu/src/batch_renderer.rs#L354-L374)
 
 ## 60fps稳定渲染机制
 
@@ -725,7 +796,7 @@ G --> H[输出到渲染队列]
 - [batch_renderer.rs:209-249](file://crates/iris-gpu/src/batch_renderer.rs#L209-L249)
 
 **章节来源**
-- [batch_renderer.rs:209-375](file://crates/iris-gpu/src/batch_renderer.rs#L209-L375)
+- [batch_renderer.rs:209-382](file://crates/iris-gpu/src/batch_renderer.rs#L209-L382)
 
 ## 文件热更新监听器
 
@@ -775,7 +846,7 @@ Channel->>App : 处理文件变更
 - [file_watcher.rs:245-481](file://crates/iris-gpu/src/file_watcher.rs#L245-L481)
 
 **章节来源**
-- [file_watcher.rs:1-654](file://crates/iris-gpu/src/file_watcher.rs#L1-L654)
+- [file_watcher.rs:1-655](file://crates/iris-gpu/src/file_watcher.rs#L1-L655)
 
 ## 故障排除指南
 
@@ -815,6 +886,12 @@ Leivue Runtime的WebGPU渲染引擎代表了前端渲染技术的重大进步，
 3. **完善的资源管理**：确保GPU资源的正确生命周期管理
 4. **强大的文件监控**：提供实时文件变更检测和处理
 5. **异步渲染架构**：支持多线程渲染和事件驱动模式
+
+**最新优化亮点**：
+- **批渲染器性能大幅提升**：通过优化顶点缓冲管理和绘制命令处理，显著提升2D渲染性能
+- **GPU资源利用率优化**：改进的内存拷贝和缓冲区管理技术
+- **bytemuck.cast_slice优化**：避免不必要的数据复制，提高内存访问效率
+- **批量缓冲区上传**：一次性上传所有渲染数据，减少GPU状态切换
 
 随着WebGPU技术的不断发展和浏览器支持的完善，这种基于硬件加速的渲染方式将成为未来前端渲染的标准模式。该项目的七层架构设计、批渲染优化、高级视觉效果实现以及60fps稳定渲染机制，都为构建高性能的跨端应用奠定了坚实的基础。
 
