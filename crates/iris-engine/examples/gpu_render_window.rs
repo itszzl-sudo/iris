@@ -37,7 +37,6 @@ use winit::{
 struct App {
     window: Option<Window>,
     orchestrator: RuntimeOrchestrator,
-    renderer: Option<Renderer>,
     size: winit::dpi::PhysicalSize<u32>,
     suspended: bool,
     renderer_initialized: bool,
@@ -84,7 +83,6 @@ impl App {
         Self {
             window: None,
             orchestrator,
-            renderer: None,
             size: winit::dpi::PhysicalSize::new(800, 600),
             suspended: false,
             renderer_initialized: false,
@@ -104,9 +102,10 @@ impl App {
             // 使用 pollster 阻塞地等待异步初始化
             match pollster::block_on(Renderer::new(window)) {
                 Ok(renderer) => {
-                    self.renderer = Some(renderer);
+                    // 关键：将渲染器设置到 orchestrator 中！
+                    self.orchestrator.set_gpu_renderer(renderer);
                     self.renderer_initialized = true;
-                    info!("✅ GPU renderer initialized successfully");
+                    info!("✅ GPU renderer initialized and set to orchestrator");
                     
                     // 标记需要渲染
                     self.orchestrator.mark_dirty();
@@ -126,17 +125,15 @@ impl App {
         }
 
         // 使用 GPU 渲染器渲染
-        if self.renderer.is_some() {
-            let rendered = self.orchestrator.render_frame_gpu();
-            
-            if rendered {
-                info!("Frame rendered with GPU");
-            }
+        let rendered = self.orchestrator.render_frame_gpu();
+        
+        if rendered {
+            info!("Frame rendered with GPU");
         } else {
-            // 没有 GPU 渲染器时，仍然生成命令用于调试
+            // 没有 GPU 渲染器或未渲染时，生成命令用于调试
             let commands = self.orchestrator.generate_render_commands();
             if !commands.is_empty() {
-                info!("Generated {} render commands (no GPU renderer)", commands.len());
+                info!("Generated {} render commands (waiting for GPU renderer)", commands.len());
             }
         }
     }
@@ -211,8 +208,8 @@ impl ApplicationHandler for App {
                     warn!("Failed to recompute layout: {}", e);
                 }
 
-                // 更新渲染器大小
-                if let Some(ref mut renderer) = self.renderer {
+                // 更新渲染器大小（通过 orchestrator）
+                if let Some(renderer) = self.orchestrator.gpu_renderer_mut() {
                     renderer.resize(new_size);
                 }
             }
