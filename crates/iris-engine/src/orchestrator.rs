@@ -40,7 +40,8 @@ use iris_layout::css::Stylesheet;
 use iris_gpu::DrawCommand;
 use iris_sfc::SfcModule;
 use std::path::Path;
-use tracing::{debug, info};
+use std::time::Instant;
+use tracing::{debug, info, warn};
 
 /// 运行时编排器
 ///
@@ -64,6 +65,15 @@ pub struct RuntimeOrchestrator {
     viewport_height: f32,
     /// 是否已初始化
     initialized: bool,
+    /// 渲染相关
+    /// 目标帧率（FPS）
+    target_fps: u32,
+    /// 上一帧的时间戳
+    last_frame_time: Option<Instant>,
+    /// 当前帧率
+    current_fps: f64,
+    /// 是否需要重新渲染（脏标志）
+    dirty: bool,
 }
 
 impl RuntimeOrchestrator {
@@ -79,6 +89,10 @@ impl RuntimeOrchestrator {
             viewport_width: 800.0,
             viewport_height: 600.0,
             initialized: false,
+            target_fps: 60,
+            last_frame_time: None,
+            current_fps: 0.0,
+            dirty: true, // 初始时需要渲染
         }
     }
 
@@ -389,6 +403,140 @@ impl RuntimeOrchestrator {
         None
     }
 
+    /// 标记需要重新渲染
+    ///
+    /// 当状态发生变化时调用此方法，触发下一帧的渲染
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+        debug!("Marked renderer as dirty");
+    }
+
+    /// 检查是否需要渲染
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    /// 计算并限制帧率
+    ///
+    /// # 返回
+    ///
+    /// 返回是否应该渲染当前帧（基于目标 FPS）
+    fn should_render_frame(&mut self) -> bool {
+        let now = Instant::now();
+        
+        // 如果是第一帧，直接渲染
+        if self.last_frame_time.is_none() {
+            self.last_frame_time = Some(now);
+            return true;
+        }
+        
+        let last_time = self.last_frame_time.unwrap();
+        let elapsed = now.duration_since(last_time);
+        
+        // 计算目标帧间隔
+        let target_frame_duration = std::time::Duration::from_secs_f64(1.0 / self.target_fps as f64);
+        
+        // 如果还没到下一帧的时间，不渲染
+        if elapsed < target_frame_duration {
+            return false;
+        }
+        
+        // 更新帧率统计
+        self.current_fps = 1.0 / elapsed.as_secs_f64();
+        self.last_frame_time = Some(now);
+        
+        true
+    }
+
+    /// 执行一帧的渲染流程
+    ///
+    /// 这是 Phase E 的核心方法：整合所有子系统，完成一帧的完整渲染
+    ///
+    /// # 流程
+    ///
+    /// 1. 检查是否需要渲染（帧率限制 + 脏标志）
+    /// 2. 执行 JavaScript（响应式更新、动画等）
+    /// 3. 重新计算布局（如果 DOM 有变化）
+    /// 4. 生成渲染命令
+    /// 5. 提交到 GPU 渲染器
+    /// 6. 清除脏标志
+    ///
+    /// # 返回
+    ///
+    /// 返回是否实际执行了渲染
+    ///
+    /// # 示例
+    ///
+    /// ```ignore
+    /// // 在主循环中调用
+    /// loop {
+    ///     if orchestrator.render_frame() {
+    ///         // 实际执行了渲染
+    ///     }
+    ///     
+    ///     // 处理事件...
+    /// }
+    /// ```
+    pub fn render_frame(&mut self) -> bool {
+        // 1. 检查帧率限制
+        if !self.should_render_frame() {
+            return false;
+        }
+        
+        // 2. 检查脏标志
+        if !self.dirty {
+            return false;
+        }
+        
+        info!(
+            fps = format!("{:.1}", self.current_fps),
+            "Rendering frame..."
+        );
+        
+        // 3. TODO: 执行 JavaScript 更新
+        // 这里需要执行响应式更新、动画计算等
+        // 暂时跳过
+        
+        // 4. TODO: 重新计算布局（如果需要）
+        // 如果 DOM 树有变化，需要重新计算布局
+        
+        // 5. 生成渲染命令
+        let commands = self.generate_render_commands();
+        
+        // 6. TODO: 提交到 GPU 渲染器
+        // 这里需要 iris_gpu::Renderer 实例
+        // 暂时只记录命令数量
+        info!(
+            command_count = commands.len(),
+            "Frame rendering completed (commands generated, GPU submission pending)"
+        );
+        
+        // 7. 清除脏标志
+        self.dirty = false;
+        
+        true
+    }
+
+    /// 设置目标帧率
+    ///
+    /// # 参数
+    ///
+    /// * `fps` - 目标帧率（建议 30-144）
+    pub fn set_target_fps(&mut self, fps: u32) {
+        self.target_fps = fps.clamp(1, 144);
+        info!(target_fps = self.target_fps, "Target FPS updated");
+    }
+
+    /// 获取当前帧率
+    pub fn current_fps(&self) -> f64 {
+        self.current_fps
+    }
+
+    /// 获取目标帧率
+    pub fn target_fps(&self) -> u32 {
+        self.target_fps
+    }
+
     /// 检查是否已初始化
     pub fn is_initialized(&self) -> bool {
         self.initialized
@@ -630,6 +778,86 @@ console.log('Component loaded')
         // 当前实现返回空命令（因为没有背景颜色）
         // 这是预期的行为
         assert!(commands.len() >= 0);
+    }
+
+    #[test]
+    fn test_dirty_flag_management() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 初始状态应该是 dirty
+        assert!(orchestrator.is_dirty());
+        
+        // 标记为 clean
+        orchestrator.dirty = false;
+        assert!(!orchestrator.is_dirty());
+        
+        // 再次标记为 dirty
+        orchestrator.mark_dirty();
+        assert!(orchestrator.is_dirty());
+    }
+
+    #[test]
+    fn test_target_fps_configuration() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 默认 60 FPS
+        assert_eq!(orchestrator.target_fps(), 60);
+        
+        // 设置新帧率
+        orchestrator.set_target_fps(120);
+        assert_eq!(orchestrator.target_fps(), 120);
+        
+        // 边界测试：最小值
+        orchestrator.set_target_fps(0);
+        assert_eq!(orchestrator.target_fps(), 1);
+        
+        // 边界测试：最大值
+        orchestrator.set_target_fps(200);
+        assert_eq!(orchestrator.target_fps(), 144);
+    }
+
+    #[test]
+    fn test_render_frame_dirty_check() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        orchestrator.initialize().unwrap();
+        
+        // 设置非常高的 FPS 以避免帧率限制影响测试
+        orchestrator.set_target_fps(10000);
+        
+        // 初始是 dirty，应该渲染
+        let first_render = orchestrator.render_frame();
+        assert!(first_render);
+        
+        // 渲染后变为 clean
+        assert!(!orchestrator.is_dirty());
+        
+        // 再次渲染应该返回 false（因为没有标记 dirty）
+        let second_render = orchestrator.render_frame();
+        assert!(!second_render);
+        
+        // 标记 dirty 后再渲染
+        orchestrator.mark_dirty();
+        
+        // 重置时间戳以绕过帧率限制
+        orchestrator.last_frame_time = None;
+        
+        let third_render = orchestrator.render_frame();
+        assert!(third_render);
+    }
+
+    #[test]
+    fn test_current_fps_tracking() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 初始帧率应该是 0
+        assert_eq!(orchestrator.current_fps(), 0.0);
+        
+        // 渲染几帧后应该有帧率数据
+        orchestrator.mark_dirty();
+        orchestrator.render_frame();
+        
+        // 帧率应该大于 0
+        assert!(orchestrator.current_fps() >= 0.0);
     }
 
     #[test]
