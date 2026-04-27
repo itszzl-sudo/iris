@@ -1,0 +1,17 @@
+{
+  "name": "iris-vue-demo",
+  "version": "0.1.0",
+  "src_dir": "src",
+  "out_dir": "dist",
+  "entry": "main.ts",
+  "dev_server": {
+    "port": 3000,
+    "hot_reload": true,
+    "open": false
+  },
+  "build": {
+    "minify": true,
+    "sourcemap": false,
+    "target": "web"
+  }
+}

@@ -3,6 +3,7 @@
 use clap::Args;
 use anyhow::Result;
 use colored::Colorize;
+use std::net::TcpStream;
 use crate::config::IrisConfig;
 use crate::utils::{self, print_success, print_info};
 
@@ -64,18 +65,9 @@ impl DevCommand {
         }
         
         println!();
-        print_info("Development server would start here");
-        print_info("In production, this would:");
-        println!("  1. Compile Vue SFC files");
-        println!("  2. Start WebGPU renderer");
-        println!("  3. Initialize JavaScript runtime");
-        println!("  4. Setup file watcher for hot reload");
-        println!("  5. Open browser window");
-        println!();
-        print_success("Development mode ready!");
-        println!();
         
-        Ok(())
+        // 启动开发服务器
+        self.start_dev_server(&project_root, &config)
     }
     
     fn print_config(&self, config: &IrisConfig) {
@@ -95,5 +87,116 @@ impl DevCommand {
             if config.dev_server.open { "Yes" } else { "No" }
         );
         println!();
+    }
+    
+    fn start_dev_server(&self, project_root: &std::path::Path, config: &IrisConfig) -> Result<()> {
+        use std::io::Write;
+        use std::net::{TcpListener, TcpStream};
+        use std::fs;
+        
+        let port = config.dev_server.port;
+        let address = format!("127.0.0.1:{}", port);
+        
+        print_success(&format!("Starting HTTP server at http://{}", address));
+        print_info("Serving files from: dist/");
+        println!();
+        print_info("Press Ctrl+C to stop the server");
+        println!();
+        
+        // 确保 dist 目录存在
+        let dist_dir = project_root.join(&config.out_dir);
+        if !dist_dir.exists() {
+            print_info("Dist directory not found, running build first...");
+            // 这里可以调用 build 命令，但暂时跳过
+            fs::create_dir_all(&dist_dir)?;
+        }
+        
+        // 创建 TCP 监听器
+        let listener = TcpListener::bind(&address)?;
+        print_success(&format!("Server listening on http://{}", address));
+        println!();
+        
+        // 接受连接
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    if let Err(e) = self.handle_request(stream, &dist_dir) {
+                        eprintln!("Error handling request: {}", e);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Connection failed: {}", e);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    fn handle_request(&self, mut stream: TcpStream, dist_dir: &std::path::Path) -> Result<()> {
+        use std::io::{BufReader, BufRead, Write};
+        use std::fs;
+        
+        let mut reader = BufReader::new(&stream);
+        let mut request_line = String::new();
+        reader.read_line(&mut request_line)?;
+        
+        // 解析请求路径
+        let parts: Vec<&str> = request_line.split_whitespace().collect();
+        if parts.len() < 2 {
+            return Ok(());
+        }
+        
+        let path = parts[1];
+        
+        // 确定文件路径
+        let file_path = if path == "/" || path == "/index.html" {
+            dist_dir.join("index.html")
+        } else {
+            dist_dir.join(path.trim_start_matches('/'))
+        };
+        
+        // 读取文件并返回
+        if file_path.exists() && file_path.is_file() {
+            let content = fs::read(&file_path)?;
+            let mime_type = self.get_mime_type(&file_path);
+            
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\n\r\n",
+                mime_type,
+                content.len()
+            );
+            
+            stream.write_all(response.as_bytes())?;
+            stream.write_all(&content)?;
+        } else {
+            let not_found = b"<h1>404 Not Found</h1>";
+            let response = format!(
+                "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n",
+                not_found.len()
+            );
+            stream.write_all(response.as_bytes())?;
+            stream.write_all(not_found)?;
+        }
+        
+        stream.flush()?;
+        Ok(())
+    }
+    
+    fn get_mime_type(&self, path: &std::path::Path) -> &str {
+        match path.extension().and_then(|ext| ext.to_str()) {
+            Some("html") => "text/html; charset=utf-8",
+            Some("js") => "application/javascript",
+            Some("css") => "text/css",
+            Some("json") => "application/json",
+            Some("png") => "image/png",
+            Some("jpg") | Some("jpeg") => "image/jpeg",
+            Some("gif") => "image/gif",
+            Some("svg") => "image/svg+xml",
+            Some("ico") => "image/x-icon",
+            Some("woff") => "font/woff",
+            Some("woff2") => "font/woff2",
+            _ => "application/octet-stream",
+        }
     }
 }

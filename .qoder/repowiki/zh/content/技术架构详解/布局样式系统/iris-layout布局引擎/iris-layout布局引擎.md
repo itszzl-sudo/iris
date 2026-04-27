@@ -12,17 +12,18 @@
 - [grid.rs](file://crates/iris-layout/src/grid.rs)
 - [float_layout.rs](file://crates/iris-layout/src/float_layout.rs)
 - [table_layout.rs](file://crates/iris-layout/src/table_layout.rs)
+- [cache.rs](file://crates/iris-layout/src/cache.rs)
 - [Cargo.toml](file://crates/iris-layout/Cargo.toml)
 - [lib.rs](file://crates/iris-core/src/lib.rs)
+- [performance_benchmarks.rs](file://crates/iris-engine/tests/performance_benchmarks.rs)
 - [PROGRESSIVE_IMPLEMENTATION_PLAN.md](file://PROGRESSIVE_IMPLEMENTATION_PLAN.md)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增完整的CSS Float布局系统，支持float、clear属性和浮动元素流式布局
-- 新增完整的CSS Table布局系统，支持table-display、colspan/rowspan等功能
-- 扩展布局引擎功能，使布局系统达到浏览器级完整度
-- 新增570行Float布局代码和533行Table布局代码
+- 修正 LayoutBox 构造模式：从直接传递参数改为两步构造模式
+- 更新缓存测试和性能基准测试中的测试创建方式
+- 优化布局计算中的对象初始化流程
 
 ## 目录
 1. [简介](#简介)
@@ -441,18 +442,21 @@ LayoutBox --> BoxModel : "包含"
 
 #### 布局计算算法
 
+**更新** 布局计算中的对象构造模式已从直接参数传递改为两步构造模式：
+
 ```mermaid
 flowchart TD
 A[DOM节点] --> B[解析盒模型]
-B --> C[设置初始位置]
-C --> D{节点类型检查}
-D --> |元素节点| E[计算宽度]
-D --> |文本节点| F[跳过布局]
-E --> G[设置高度]
-G --> H[递归处理子节点]
-H --> I[更新偏移量]
-I --> J[返回布局框]
-F --> J
+B --> C[创建LayoutBox实例]
+C --> D[设置初始位置]
+D --> E{节点类型检查}
+E --> |元素节点| F[计算宽度]
+E --> |文本节点| G[跳过布局]
+F --> H[设置高度]
+H --> I[递归处理子节点]
+I --> J[更新偏移量]
+J --> K[返回布局框]
+G --> K
 ```
 
 **图表来源**
@@ -820,6 +824,15 @@ A --> N
 - 确认表格边框折叠和间距设置
 - 检查列宽计算和单元格绝对位置
 
+#### 8. 布局对象构造问题
+
+**症状**：LayoutBox对象初始化失败或字段设置异常
+**原因**：构造模式变化导致的代码不兼容
+**解决方案**：
+- 使用两步构造模式：先创建空的LayoutBox，再分别设置x、y、width、height字段
+- 或使用with_position方法一次性设置所有位置信息
+- 确保在设置字段前已完成盒模型的解析和计算
+
 **章节来源**
 - [html.rs:92-101](file://crates/iris-layout/src/html.rs#L92-L101)
 - [css.rs:188-205](file://crates/iris-layout/src/css.rs#L188-L205)
@@ -866,3 +879,5 @@ iris-layout布局引擎经过重大扩展，现已具备完整的浏览器级布
 - **表格布局**：完整的CSS Table系统
 
 该引擎为Iris项目的前端渲染提供了坚实的基础，支持后续的DOM抽象、JavaScript运行时和SFC编译器的开发。随着项目的演进，可以进一步增强布局引擎的性能和功能完整性。
+
+**更新** 布局引擎的构造模式已优化为更清晰的两步构造方式，提高了代码的可读性和维护性，同时保持了相同的性能特征。

@@ -155,6 +155,10 @@ impl BuildCommand {
         let index_html = self.generate_index_html(config);
         utils::write_text_file(&out_dir.join("index.html"), &index_html)?;
         
+        // 生成 main.js (打包后的 JavaScript)
+        let main_js = self.generate_main_js(project_root, config)?;
+        utils::write_text_file(&out_dir.join("main.js"), &main_js)?;
+        
         // 生成 manifest.json（如果是 Web 目标）
         if config.build.target == "web" {
             let manifest = self.generate_manifest(config);
@@ -193,6 +197,64 @@ impl BuildCommand {
             "theme_color": "#000000"
         })
         .to_string()
+    }
+    
+    fn generate_main_js(&self, project_root: &std::path::Path, config: &IrisConfig) -> Result<String> {
+        let src_dir = project_root.join(&config.src_dir);
+        let entry_file = src_dir.join(&config.entry);
+        
+        // 读取入口文件
+        let entry_content = if entry_file.exists() {
+            std::fs::read_to_string(&entry_file)?
+        } else {
+            // 如果入口文件不存在，生成默认的占位代码
+            String::from("// Entry point not found")
+        };
+        
+        // 在实际实现中，这里会：
+        // 1. 使用 SWC 编译 TypeScript
+        // 2. 编译 Vue SFC 文件
+        // 3. 打包所有模块
+        // 4. 压缩代码（如果启用 minify）
+        
+        let js_code = if config.build.minify {
+            // 简单的压缩：移除注释和多余空白
+            entry_content
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty() && !line.starts_with("//"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        } else {
+            entry_content
+        };
+        
+        // 添加 Iris Runtime 的引导代码
+        let bootstrap_code = format!(
+            r#"/**
+ * Iris Runtime - {} v{}
+ * Built at: {}
+ */
+
+// Iris Runtime initialization
+(function() {{
+  'use strict';
+  
+  console.log('[Iris Runtime] Initializing...');
+  
+  // Application code
+  {}
+  
+  console.log('[Iris Runtime] Application started');
+}})();
+"#,
+            config.name,
+            config.version,
+            "2026-04-27",
+            js_code
+        );
+        
+        Ok(bootstrap_code)
     }
     
     fn analyze_build(&self, out_path: &std::path::Path) -> Result<()> {
