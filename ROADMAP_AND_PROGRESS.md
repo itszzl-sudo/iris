@@ -2,8 +2,8 @@
 
 > **创建时间**: 2026-02-24  
 > **最后更新**: 2026-04-24  
-> **状态**: 🟡 进行中  
-> **总体进度**: 约 100%（核心 Phase 完成）+ 新功能开发中
+> **状态**: 🎉 核心功能全部完成 + 新功能开发中  
+> **总体进度**: 约 100%（核心 Phase 完成）+ 窗口示例已完成
 > **自动更新**: ✅ Phase 标题将根据子阶段完成状态自动更新（全部完成 = 100%）
 
 ---
@@ -560,17 +560,22 @@
 
 包括最新的 **Phase 8: SFC 编译与渲染集成**（Phase A-G）也已完全实现并通过测试验证。
 
+**最新更新**:
+- ✅ **GPU 渲染器实际集成** - 已完成（2026-04-24）
+- ✅ **完整窗口示例** - 已完成（2026-04-24）
+
 ### 下一步发展方向
 
 #### 🔴 核心功能完善（建议优先）
 
-1. **GPU 渲染器实际集成** ⭐ 最推荐
-   - 集成 iris-gpu::Renderer 到 RuntimeOrchestrator
-   - 创建 wgpu 窗口并初始化渲染管线
-   - 实现实际的 GPU 渲染（提交 DrawCommand）
-   - 验证第一帧渲染效果
-   - 预计工作量：8-10 小时
-   - **备注**: 这是让渲染管线真正运行的最后一步
+1. **加载真实 Vue SFC 文件** ⭐ 最推荐
+   - 在窗口示例中加载真实的 .vue 文件
+   - 使用 `orchestrator.load_sfc_with_vtree("App.vue")`
+   - 支持热重载（文件变化自动重新渲染）
+   - 验证完整的 SFC → GPU 渲染流程
+   - 预计工作量：2-3 小时
+   - **备注**: 这是让窗口示例真正实用的最后一步
+   - **参考**: `examples/gpu_render_window.rs`
 
 2. **JavaScript 响应式更新**
    - 实现 Vue 3 响应式系统（ref/reactive）
@@ -597,58 +602,72 @@
    - 支持中文/日文等多字节字符
    - 预计工作量：5-6 小时
 
-5. **动画和过渡效果**
+5. **用户交互支持**
+   - 实现鼠标点击事件处理
+   - 实现键盘事件处理
+   - 实现事件冒泡和捕获
+   - 支持 v-on:click 等指令
+   - 预计工作量：4-5 小时
+   - **参考**: `orchestrator.handle_mouse_click()`, `handle_keyboard_event()`
+
+6. **动画和过渡效果**
    - CSS transitions 运行时支持
    - CSS @keyframes 动画执行
    - transform 动画（rotate/scale/translate）
    - 动画性能优化（will-change）
    - 预计工作量：8-10 小时
 
-6. **虚拟 DOM Diff 优化**
+7. **虚拟 DOM Diff 优化**
    - 实现高效的 Diff 算法（O(n) 复杂度）
    - 最小化 DOM 操作
    - 支持 key 属性优化列表渲染
    - 支持 Fragment 和 Portal
    - 预计工作量：6-8 小时
 
+8. **性能监控和 DevTools**
+   - FPS 显示和性能分析
+   - 内存使用监控
+   - 渲染命令统计
+   - 组件树查看器
+   - 预计工作量：6-8 小时
+
 #### 🟢 低优先级（长期优化）
 
-7. **服务端渲染（SSR）**
+9. **服务端渲染（SSR）**
    - 支持 SFC 服务端渲染
    - 生成静态 HTML
    - 水合（hydration）支持
    - SEO 优化
    - 预计工作量：10-12 小时
 
-8. **WebAssembly 支持**
-   - 编译到 WASM 目标
-   - 在浏览器中运行 Iris Engine
-   - 性能优化和体积优化
-   - 与 JavaScript 互操作
-   - 预计工作量：8-10 小时
+10. **WebAssembly 支持**
+    - 编译到 WASM 目标
+    - 在浏览器中运行 Iris Engine
+    - 性能优化和体积优化
+    - 与 JavaScript 互操作
+    - 预计工作量：8-10 小时
 
-9. **开发者工具（DevTools）**
-   - 浏览器 DevTools 协议集成
-   - 组件树查看器
-   - 性能分析器（FPS/内存/CPU）
-   - 实时样式编辑
-   - 预计工作量：8-10 小时
+11. **多窗口支持**
+    - 支持同时打开多个窗口
+    - 每个窗口独立的渲染管线
+    - 窗口间通信
+    - 预计工作量：4-5 小时
 
-10. **插件系统**
+12. **插件系统**
     - 插件 API 设计
     - 生命周期钩子
     - 第三方插件支持
     - 插件市场
     - 预计工作量：6-8 小时
 
-11. **国际化（i18n）支持**
+13. **国际化（i18n）支持**
     - 多语言编译
     - 运行时语言切换
     - 语言包管理
     - RTL 布局支持
     - 预计工作量：4-5 小时
 
-12. **原生桌面应用打包**
+14. **原生桌面应用打包**
     - 使用 Tauri 或 WRY 打包
     - Windows .exe/.msi
     - macOS .app/.dmg
@@ -691,6 +710,38 @@
 ---
 
 ## 📝 决策记录
+
+### 2026-04-24: 完整窗口示例实现完成 🎉🎉🎉
+- **决策**: 创建完整的 winit 窗口示例，实现第一个 Vue 组件的 GPU 渲染
+- **原因**: 这是让 Iris Engine 真正运行起来的关键步骤，验证完整渲染管线
+- **影响**: 
+  - 新增 `examples/gpu_render_window.rs`（~310 行）
+  - 添加 `tracing-subscriber` 依赖
+  - 实现完整的 winit 事件循环
+  - 支持窗口大小调整、键盘/鼠标事件
+  - 异步 GPU 渲染器初始化（使用 pollster）
+- **技术亮点**:
+  - 异步初始化的同步处理（pollster::block_on）
+  - 窗口所有权管理（take 模式）
+  - 布局重计算触发
+  - 帧率控制和脏标志优化
+- **文档**: [GPU_RENDER_WINDOW_EXAMPLE.md](GPU_RENDER_WINDOW_EXAMPLE.md)（400 行）
+- **测试结果**: 编译成功，无错误
+- **下一步**: 加载真实 Vue SFC 文件，添加用户交互
+
+### 2026-04-24: GPU 渲染器实际集成完成 🎉🎉🎉
+- **决策**: 将 iris-gpu::Renderer 集成到 RuntimeOrchestrator
+- **原因**: 这是让渲染管线真正运行的关键步骤
+- **影响**: 
+  - RuntimeOrchestrator 添加 gpu_renderer 字段
+  - 新增 set_gpu_renderer(), render_frame_gpu() 方法
+  - iris-gpu::Renderer 添加 submit_command(), submit_commands() 方法
+  - 10 个集成测试 100% 通过
+  - 完整的示例和文档
+- **代码量**: ~581 行
+- **测试覆盖**: 10/10 通过
+- **文档**: [GPU_RENDER_INTEGRATION_SUMMARY.md](GPU_RENDER_INTEGRATION_SUMMARY.md)（382 行）
+- **下一步**: 创建完整窗口示例
 
 ### 2026-04-24: Phase 8 SFC 编译与渲染集成完成 🎉🎉🎉
 - **决策**: 完成从 Vue SFC 到 GPU 渲染的完整集成管线（Phase A-G）
