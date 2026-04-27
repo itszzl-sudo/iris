@@ -145,7 +145,11 @@ fn bench_cache_hit_performance() {
     // 预填充缓存
     for i in 0..50 {
         let key = LayoutCacheKey::new("div", i as u64, 0);
-        let layout = iris_layout::layout::LayoutBox::new(0.0, 0.0, 100.0, 50.0);
+        let mut layout = iris_layout::layout::LayoutBox::new();
+        layout.x = 0.0;
+        layout.y = 0.0;
+        layout.width = 100.0;
+        layout.height = 50.0;
         cache.insert(key, layout);
     }
 
@@ -312,7 +316,11 @@ fn bench_cache_integrated_pipeline() {
     let mut root1 = VNode::element("div");
     for i in 0..50 {
         let key = LayoutCacheKey::new("section", i as u64, 1);
-        let layout = iris_layout::layout::LayoutBox::new(0.0, 0.0, 100.0, 50.0);
+        let mut layout = iris_layout::layout::LayoutBox::new();
+        layout.x = 0.0;
+        layout.y = 0.0;
+        layout.width = 100.0;
+        layout.height = 50.0;
         cache.insert(key, layout);
 
         let mut section = VNode::element("section");

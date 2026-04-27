@@ -195,10 +195,9 @@ impl LayoutCache {
     pub fn get(&mut self, key: &LayoutCacheKey) -> Option<LayoutBox> {
         let start_time = Instant::now();
 
-        if let Some(entry) = self.cache.get_mut(key) {
+        let result = if let Some(entry) = self.cache.get_mut(key) {
             entry.access();
             self.stats.record_hit();
-            self.update_access_order(key);
 
             let elapsed = start_time.elapsed().as_secs_f64() * 1000.0;
             self.stats.total_access_time_ms += elapsed;
@@ -207,7 +206,14 @@ impl LayoutCache {
         } else {
             self.stats.record_miss();
             None
+        };
+
+        // 在借用结束后更新访问顺序
+        if result.is_some() {
+            self.update_access_order(key);
         }
+
+        result
     }
 
     /// 插入布局结果到缓存
@@ -310,7 +316,12 @@ mod tests {
     use crate::layout::LayoutBox;
 
     fn create_test_layout() -> LayoutBox {
-        LayoutBox::new(0.0, 0.0, 100.0, 50.0)
+        let mut layout = LayoutBox::new();
+        layout.x = 0.0;
+        layout.y = 0.0;
+        layout.width = 100.0;
+        layout.height = 50.0;
+        layout
     }
 
     #[test]

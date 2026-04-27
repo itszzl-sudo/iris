@@ -71,10 +71,23 @@ pub struct IrisError {
     pub severity: ErrorSeverity,
     /// 组件路径
     pub component_path: Option<String>,
-    /// 原始错误
-    pub source_error: Option<Box<dyn Error + Send + Sync>>,
+    /// 原始错误（不克隆）
+    pub source_error: Option<String>,
     /// 时间戳
     pub timestamp: std::time::SystemTime,
+}
+
+impl Clone for IrisError {
+    fn clone(&self) -> Self {
+        Self {
+            message: self.message.clone(),
+            source: self.source.clone(),
+            severity: self.severity,
+            component_path: self.component_path.clone(),
+            source_error: self.source_error.clone(),
+            timestamp: self.timestamp,
+        }
+    }
 }
 
 impl IrisError {
@@ -98,7 +111,7 @@ impl IrisError {
 
     /// 设置原始错误
     pub fn with_source_error(mut self, error: Box<dyn Error + Send + Sync>) -> Self {
-        self.source_error = Some(error);
+        self.source_error = Some(error.to_string());
         self
     }
 
@@ -131,7 +144,7 @@ impl fmt::Display for IrisError {
 impl Error for IrisError {}
 
 /// 错误边界状态
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum ErrorBoundaryState {
     /// 正常状态
     Normal,
@@ -186,6 +199,13 @@ impl ErrorBoundary {
 
     /// 捕获错误
     pub fn catch_error(&mut self, error: IrisError) {
+        // 根据严重级别决定是否继续渲染（在 move 之前）
+        let should_continue = match error.severity {
+            ErrorSeverity::Warning => true,
+            ErrorSeverity::Error => false,
+            ErrorSeverity::Fatal => false,
+        };
+
         // 添加到错误历史
         self.error_history.push(error.clone());
 
@@ -197,29 +217,19 @@ impl ErrorBoundary {
         // 更新状态
         self.state = ErrorBoundaryState::Errored(error);
 
-        // 根据严重级别决定是否继续渲染
-        match error.severity {
-            ErrorSeverity::Warning => {
-                self.continue_rendering = true;
-            }
-            ErrorSeverity::Error => {
-                self.continue_rendering = false;
-            }
-            ErrorSeverity::Fatal => {
-                self.continue_rendering = false;
-            }
-        }
+        // 设置是否继续渲染
+        self.continue_rendering = should_continue;
     }
 
     /// 尝试恢复
-    pub fn recover(&mut self) -> Result<(), &IrisError> {
+    pub fn recover(&mut self) -> Result<(), IrisError> {
         if let ErrorBoundaryState::Errored(ref error) = self.state {
             if error.severity == ErrorSeverity::Warning {
                 self.state = ErrorBoundaryState::Recovered;
                 self.continue_rendering = true;
                 Ok(())
             } else {
-                Err(error)
+                Err(error.clone())
             }
         } else {
             Ok(())
@@ -267,8 +277,8 @@ impl ErrorBoundary {
     }
 
     /// 获取最近的错误
-    pub fn latest_error(&self) -> Option<&IrisError> {
-        self.error_history.last()
+    pub fn latest_error(&self) -> Option<IrisError> {
+        self.error_history.last().cloned()
     }
 }
 
@@ -431,7 +441,7 @@ mod tests {
 
         // 可以从警告中恢复
         assert!(boundary.recover().is_ok());
-        assert_eq!(boundary.state(), &ErrorBoundaryState::Recovered);
+        assert!(matches!(boundary.state(), &ErrorBoundaryState::Recovered));
     }
 
     #[test]
@@ -442,7 +452,7 @@ mod tests {
         boundary.catch_error(error);
 
         boundary.reset();
-        assert_eq!(boundary.state(), &ErrorBoundaryState::Normal);
+        assert!(matches!(boundary.state(), &ErrorBoundaryState::Normal));
         assert!(boundary.should_continue_rendering());
     }
 
