@@ -30,6 +30,8 @@ pub mod layout;
 pub mod vdom;
 pub mod domtree;
 pub mod event;
+pub mod positioning;
+pub mod grid;
 
 // 重新导出常用类型
 pub use layout::{
@@ -43,6 +45,16 @@ pub use dom::{DOMNode, NodeType};
 pub use vdom::{VNode, VTree, VElement, Patch};
 pub use domtree::DOMTree;
 pub use event::{Event, EventPhase, EventListener, EventRegistry, EventTarget};
+pub use positioning::{
+    PositionType, PositionConfig, OffsetValue, AbsoluteLayout,
+    FloatType, ClearType, StickyState,
+    compute_absolute_position, compute_sticky_state,
+};
+pub use grid::{
+    GridTrackSize, GridPlacement, GridItemConfig, GridConfig,
+    GridCellLayout, GridLayout,
+    compute_grid_layout,
+};
 
 use iris_core;
 
