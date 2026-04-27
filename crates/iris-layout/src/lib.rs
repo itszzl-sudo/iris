@@ -29,6 +29,7 @@ pub mod style;
 pub mod layout;
 pub mod vdom;
 pub mod domtree;
+pub mod event;
 
 // 重新导出常用类型
 pub use layout::{
@@ -41,6 +42,7 @@ pub use css::{Selector, Stylesheet, CSSRule, SelectorType};
 pub use dom::{DOMNode, NodeType};
 pub use vdom::{VNode, VTree, VElement, Patch};
 pub use domtree::DOMTree;
+pub use event::{Event, EventPhase, EventListener, EventRegistry, EventTarget};
 
 use iris_core;
 

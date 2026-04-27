@@ -457,6 +457,59 @@ impl DOMNode {
         static COUNTER: AtomicU64 = AtomicU64::new(1);
         COUNTER.fetch_add(1, Ordering::SeqCst)
     }
+
+    /// 在当前节点后插入兄弟节点（需要 DOMTree 上下文）
+    ///
+    /// # 注意
+    ///
+    /// 此方法返回操作指令，实际的修改需要通过 DOMTree::insert_after() 来完成。
+    ///
+    /// # 返回
+    ///
+    /// 返回 (reference_id, new_node)，其中 reference_id 是当前节点的 ID
+    /// 如果当前节点没有父节点（根节点），返回 None
+    pub fn after(&self, new_node: DOMNode) -> Option<(u64, DOMNode)> {
+        if self.parent_id == 0 {
+            None
+        } else {
+            Some((self.id, new_node))
+        }
+    }
+
+    /// 在当前节点前插入兄弟节点（需要 DOMTree 上下文）
+    ///
+    /// # 注意
+    ///
+    /// 此方法返回操作指令，实际的修改需要通过 DOMTree::insert_before_node() 来完成。
+    ///
+    /// # 返回
+    ///
+    /// 返回 (reference_id, new_node)，其中 reference_id 是当前节点的 ID
+    /// 如果当前节点没有父节点（根节点），返回 None
+    pub fn before(&self, new_node: DOMNode) -> Option<(u64, DOMNode)> {
+        if self.parent_id == 0 {
+            None
+        } else {
+            Some((self.id, new_node))
+        }
+    }
+
+    /// 从父节点中移除当前节点（需要 DOMTree 上下文）
+    ///
+    /// # 注意
+    ///
+    /// 此方法返回操作指令，实际的修改需要通过 DOMTree::remove_node() 来完成。
+    ///
+    /// # 返回
+    ///
+    /// 返回当前节点的 ID，如果当前节点没有父节点（根节点），返回 None
+    pub fn remove(&self) -> Option<u64> {
+        if self.parent_id == 0 {
+            None
+        } else {
+            Some(self.id)
+        }
+    }
 }
 
 /// DOM 树
