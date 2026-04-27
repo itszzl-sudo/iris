@@ -74,6 +74,23 @@ pub use animation_engine::{
     EasingFunction, TransitionConfig, ElementAnimationState, TransitionAnimation, AnimatedValue,
 };
 
+/// 错误处理系统（Phase 7.3）
+///
+/// 提供组件级别的错误隔离、错误报告和调试工具。
+pub mod error_handling;
+pub use error_handling::{
+    ErrorBoundary, ErrorBoundaryState, ErrorReporter,
+    IrisError, ErrorSeverity, ErrorSource,
+};
+
+/// 调试工具系统（Phase 7.3）
+///
+/// 提供开发时的组件树检查、性能分析和错误诊断能力。
+pub mod dev_tools;
+pub use dev_tools::{
+    DevTools, ComponentInfo, PerformanceMetrics,
+};
+
 /// Iris 引擎版本号。
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
