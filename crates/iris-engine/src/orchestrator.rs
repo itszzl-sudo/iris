@@ -28,6 +28,7 @@
 //! ```
 
 use iris_dom::vnode::VNode;
+use iris_dom::event::{EventDispatcher, Event, EventType, EventListener, MouseEventData, KeyboardEventData};
 use iris_js::{
     module::ModuleRegistry,
     vue::{setup_complete_vue_environment, inject_render_helpers, execute_render_function},
@@ -59,6 +60,8 @@ pub struct RuntimeOrchestrator {
     dom_tree: Option<DOMNode>,
     /// CSS 样式表
     stylesheet: Stylesheet,
+    /// 事件分发器
+    event_dispatcher: EventDispatcher,
     /// 视口宽度
     viewport_width: f32,
     /// 视口高度
@@ -86,6 +89,7 @@ impl RuntimeOrchestrator {
             vtree: None,
             dom_tree: None,
             stylesheet: Stylesheet::new(),
+            event_dispatcher: EventDispatcher::new(),
             viewport_width: 800.0,
             viewport_height: 600.0,
             initialized: false,
@@ -537,6 +541,173 @@ impl RuntimeOrchestrator {
         self.target_fps
     }
 
+    // ==========================================
+    // Phase F: 事件系统与交互
+    // ==========================================
+
+    /// 添加事件监听器
+    ///
+    /// # 参数
+    ///
+    /// * `target_id` - 目标节点 ID
+    /// * `event_type` - 事件类型
+    /// * `listener` - 事件监听器回调函数
+    ///
+    /// # 示例
+    ///
+    /// ```ignore
+    /// orchestrator.add_event_listener(
+    ///     1,
+    ///     EventType::Click,
+    ///     Box::new(|event| {
+    ///         println!("Node {} clicked!", event.target_id);
+    ///     }),
+    /// );
+    /// ```
+    pub fn add_event_listener(
+        &mut self,
+        target_id: u64,
+        event_type: EventType,
+        listener: EventListener,
+    ) {
+        self.event_dispatcher.add_listener(target_id, event_type, listener);
+        debug!(
+            target_id,
+            event_type = ?event_type,
+            "Event listener added"
+        );
+    }
+
+    /// 移除事件监听器
+    ///
+    /// # 参数
+    ///
+    /// * `target_id` - 目标节点 ID
+    /// * `event_type` - 事件类型
+    pub fn remove_event_listener(&mut self, target_id: u64, event_type: EventType) {
+        self.event_dispatcher.remove_listener(target_id, event_type);
+        debug!(
+            target_id,
+            event_type = ?event_type,
+            "Event listener removed"
+        );
+    }
+
+    /// 分发事件
+    ///
+    /// 将事件分发到对应的监听器，支持事件冒泡和捕获
+    ///
+    /// # 参数
+    ///
+    /// * `event` - 要分发的事件
+    ///
+    /// # 示例
+    ///
+    /// ```ignore
+    /// let event = Event::new(EventType::Click, 1);
+    /// orchestrator.handle_event(event);
+    /// ```
+    pub fn handle_event(&self, event: Event) {
+        debug!(
+            event_type = ?event.event_type,
+            target_id = event.target_id,
+            "Handling event"
+        );
+        
+        self.event_dispatcher.dispatch(&event);
+        
+        // 事件处理后标记需要重新渲染（可能触发了状态变化）
+        // 注意：这里不能调用 self.mark_dirty()，因为它是 &self
+        // 需要在外部调用
+    }
+
+    /// 处理鼠标点击事件
+    ///
+    /// # 参数
+    ///
+    /// * `target_id` - 被点击的节点 ID
+    /// * `x` - 鼠标 X 坐标
+    /// * `y` - 鼠标 Y 坐标
+    /// * `button` - 鼠标按键（0=左键, 1=中键, 2=右键）
+    pub fn handle_mouse_click(&self, target_id: u64, x: f32, y: f32, button: u8) {
+        let event = Event::mouse(
+            EventType::Click,
+            target_id,
+            MouseEventData {
+                x,
+                y,
+                button,
+                ctrl_key: false,
+                shift_key: false,
+                alt_key: false,
+            },
+        );
+        
+        info!(
+            target_id,
+            x, y, button,
+            "Mouse click event"
+        );
+        
+        self.handle_event(event);
+    }
+
+    /// 处理键盘事件
+    ///
+    /// # 参数
+    ///
+    /// * `target_id` - 目标节点 ID
+    /// * `key` - 按键代码
+    /// * `ctrl` - Ctrl 键是否按下
+    /// * `shift` - Shift 键是否按下
+    /// * `alt` - Alt 键是否按下
+    pub fn handle_keyboard_event(
+        &self,
+        target_id: u64,
+        key: String,
+        ctrl: bool,
+        shift: bool,
+        alt: bool,
+    ) {
+        use iris_dom::event::KeyboardEventData;
+        
+        let event = Event::keyboard(
+            EventType::KeyDown,
+            target_id,
+            KeyboardEventData {
+                key_code: 0,
+                key,
+                ctrl_key: ctrl,
+                shift_key: shift,
+                alt_key: alt,
+            },
+        );
+        
+        let key_str = match &event.data {
+            iris_dom::event::EventData::Keyboard(k) => k.key.clone(),
+            _ => String::new(),
+        };
+        
+        info!(
+            target_id,
+            key = %key_str,
+            "Keyboard event"
+        );
+        
+        self.handle_event(event);
+    }
+
+    /// 获取事件监听器数量
+    pub fn event_listener_count(&self) -> usize {
+        self.event_dispatcher.listener_count()
+    }
+
+    /// 清除所有事件监听器
+    pub fn clear_event_listeners(&mut self) {
+        self.event_dispatcher.clear();
+        info!("All event listeners cleared");
+    }
+
     /// 检查是否已初始化
     pub fn is_initialized(&self) -> bool {
         self.initialized
@@ -858,6 +1029,119 @@ console.log('Component loaded')
         
         // 帧率应该大于 0
         assert!(orchestrator.current_fps() >= 0.0);
+    }
+
+    #[test]
+    fn test_event_listener_management() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 初始没有监听器
+        assert_eq!(orchestrator.event_listener_count(), 0);
+        
+        // 添加监听器
+        let clicked = Rc::new(RefCell::new(false));
+        let clicked_clone = clicked.clone();
+        
+        orchestrator.add_event_listener(
+            1,
+            EventType::Click,
+            Box::new(move |_event| {
+                *clicked_clone.borrow_mut() = true;
+            }),
+        );
+        
+        assert_eq!(orchestrator.event_listener_count(), 1);
+        
+        // 触发事件
+        let event = Event::new(EventType::Click, 1);
+        orchestrator.handle_event(event);
+        
+        assert!(*clicked.borrow());
+        
+        // 移除监听器
+        orchestrator.remove_event_listener(1, EventType::Click);
+        assert_eq!(orchestrator.event_listener_count(), 0);
+    }
+
+    #[test]
+    fn test_mouse_click_handling() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use iris_dom::event::EventData;
+        
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 添加点击监听器
+        let click_data = Rc::new(RefCell::new(None));
+        let click_data_clone = click_data.clone();
+        
+        orchestrator.add_event_listener(
+            1,
+            EventType::Click,
+            Box::new(move |event| {
+                if let EventData::Mouse(mouse_data) = &event.data {
+                    *click_data_clone.borrow_mut() = Some((mouse_data.x, mouse_data.y));
+                }
+            }),
+        );
+        
+        // 处理鼠标点击
+        orchestrator.handle_mouse_click(1, 100.0, 200.0, 0);
+        
+        // 验证事件数据
+        let data = click_data.borrow();
+        assert!(data.is_some());
+        let (x, y) = data.unwrap();
+        assert_eq!(x, 100.0);
+        assert_eq!(y, 200.0);
+    }
+
+    #[test]
+    fn test_keyboard_event_handling() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        use iris_dom::event::EventData;
+        
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 添加键盘监听器
+        let key_pressed = Rc::new(RefCell::new(String::new()));
+        let key_pressed_clone = key_pressed.clone();
+        
+        orchestrator.add_event_listener(
+            1,
+            EventType::KeyDown,
+            Box::new(move |event| {
+                if let EventData::Keyboard(key_data) = &event.data {
+                    *key_pressed_clone.borrow_mut() = key_data.key.clone();
+                }
+            }),
+        );
+        
+        // 处理键盘事件
+        orchestrator.handle_keyboard_event(1, "Enter".to_string(), false, false, false);
+        
+        // 验证按键数据
+        assert_eq!(*key_pressed.borrow(), "Enter");
+    }
+
+    #[test]
+    fn test_clear_event_listeners() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 添加多个监听器
+        orchestrator.add_event_listener(1, EventType::Click, Box::new(|_| {}));
+        orchestrator.add_event_listener(2, EventType::Click, Box::new(|_| {}));
+        orchestrator.add_event_listener(1, EventType::KeyDown, Box::new(|_| {}));
+        
+        assert_eq!(orchestrator.event_listener_count(), 3);
+        
+        // 清除所有监听器
+        orchestrator.clear_event_listeners();
+        assert_eq!(orchestrator.event_listener_count(), 0);
     }
 
     #[test]
