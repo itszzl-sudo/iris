@@ -3,15 +3,21 @@
 //! 实现 CSS Transitions 和 Animations，支持：
 //! - CSS Transition（属性过渡动画）
 //! - CSS @keyframes Animation（关键帧动画）
+//! - Transform 动画（2D/3D 变换）
 //! - 缓动函数（Easing Functions）
 //! - 动画状态管理和时间轴控制
+//! - will-change 性能优化
 
 pub mod easing;
 pub mod applier;
 pub mod keyframes;
+pub mod transform;
 
 pub use easing::{EasingFunction, ease_in_out, ease_in, ease_out, linear, ease_elastic, ease_bounce};
 pub use applier::{TransitionConfig, ElementAnimationState, TransitionAnimation, AnimatedValue};
 pub use keyframes::{
     Keyframe, KeyframesDefinition, KeyframeAnimation, AnimationDirection, FillMode,
+};
+pub use transform::{
+    TransformFunction, TransformChain, TransformAnimation, WillChange, TransformOrigin,
 };

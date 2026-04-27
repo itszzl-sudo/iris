@@ -6,6 +6,8 @@
 - [template_compiler.rs](file://crates/iris-sfc/src/template_compiler.rs)
 - [ts_compiler.rs](file://crates/iris-sfc/src/ts_compiler.rs)
 - [css_modules.rs](file://crates/iris-sfc/src/css_modules.rs)
+- [scoped_css.rs](file://crates/iris-sfc/src/scoped_css.rs)
+- [scss_processor.rs](file://crates/iris-sfc/src/scss_processor.rs)
 - [script_setup.rs](file://crates/iris-sfc/src/script_setup.rs)
 - [cache.rs](file://crates/iris-sfc/src/cache.rs)
 - [Cargo.toml](file://crates/iris-sfc/Cargo.toml)
@@ -18,14 +20,12 @@
 
 ## 更新摘要
 **变更内容**
-- **演示程序验证完成**：新增的演示程序完整验证了SFC编译器能够正确处理Vue 3单文件组件，包括模板编译、脚本转换和样式处理的完整流程
-- **初始化机制最终完善**：编译器已成功集成swc 62版本的TypeScript编译器，采用基于LazyLock的全局TsCompiler实例，实现了性能优化和内存管理的重大改进
-- **完整的集成测试框架**：验证所有功能协同工作，包括缓存效果和性能基准测试
-- **增强的错误处理系统**：支持类型检查失败的非致命处理，提供详细的错误位置信息
-- **缓存系统完整实现**：基于XXH3哈希的LRU智能缓存机制，支持热重载加速
-- **Script Setup转换器增强**：支持defineProps(['prop1', 'prop2'])和defineEmits(['event1', 'event2'])的数组形式
-- **性能优化和内存管理改进**：禁用Source Map以节省30-50%内存和提升10-15%编译速度
-- **依赖管理简化**：使用swc元包而非复杂的子包依赖，确保版本兼容性
+- **新增CSS作用域化处理器**：新增scoped_css.rs模块，实现Vue `<style scoped>` 功能，为每个组件生成唯一属性并添加到选择器
+- **增强SCSS编译支持**：新增scss_processor.rs模块，支持SCSS/Less样式预处理，包括变量、嵌套、mixin等功能
+- **样式处理流水线优化**：重构样式编译流程，支持SCSS/Less编译后与CSS Modules和Scoped CSS的协同处理
+- **增强的样式类型检测**：新增StyleType枚举，支持css、scss、sass、less等多种样式语言的自动识别
+- **SCSS编译配置系统**：新增ScssConfig和ScssOutputStyle，支持展开和压缩两种输出样式
+- **完整的样式处理测试**：新增针对新样式功能的集成测试，验证SCSS编译和作用域化处理
 
 ## 目录
 1. [简介](#简介)
@@ -37,18 +37,20 @@
 7. [演示程序验证](#演示程序验证)
 8. [TypeScript类型检查系统](#typescript类型检查系统)
 9. [CSS Modules支持功能](#css-modules支持功能)
-10. [Script Setup转换器](#script-setup-转换器)
-11. [缓存系统](#缓存系统)
-12. [依赖关系分析](#依赖关系分析)
-13. [性能考虑](#性能考虑)
-14. [故障排除指南](#故障排除指南)
-15. [结论](#结论)
+10. [CSS作用域化处理器](#css作用域化处理器)
+11. [SCSS编译处理器](#scss编译处理器)
+12. [Script Setup转换器](#script-setup-转换器)
+13. [缓存系统](#缓存系统)
+14. [依赖关系分析](#依赖关系分析)
+15. [性能考虑](#性能考虑)
+16. [故障排除指南](#故障排除指南)
+17. [结论](#结论)
 
 ## 简介
 
 Iris SFC（Single File Component）编译器是Iris引擎的核心组件之一，负责将Vue单文件组件（.vue文件）即时编译为可执行模块。该编译器采用零编译器设计，直接运行源码，支持模板编译、TypeScript转译、样式处理和CSS Modules作用域化，为开发者提供毫秒级的热重载体验。
 
-**重要变更**：编译器已成功集成swc 62版本的TypeScript编译器，采用基于LazyLock的全局TsCompiler实例，实现了性能优化和内存管理的重大改进。同时新增了完整的TypeScript类型检查系统、CSS Modules支持功能、缓存系统和集成测试框架，显著提升了开发体验和代码质量保障。
+**重要变更**：编译器已成功集成两个全新的样式处理模块——scoped_css.rs和scss_processor.rs，显著增强了CSS作用域化和SCSS编译支持能力。新增的CSS作用域化处理器实现了Vue `<style scoped>` 功能，而SCSS处理器支持SCSS/Less样式预处理，包括变量、嵌套、mixin等高级特性。这些增强功能为开发者提供了更完整的Vue 3单文件组件编译体验。
 
 本文件专注于分析SFC编译器的初始化机制，包括预编译正则表达式的懒加载策略、全局TypeScript编译器实例的懒加载初始化、编译器配置管理以及与其他组件的集成方式。
 
@@ -65,39 +67,45 @@ C[ts_compiler.rs<br/>TypeScript编译器]
 D[css_modules.rs<br/>CSS Modules处理器]
 E[cache.rs<br/>缓存管理]
 F[script_setup.rs<br/>脚本设置解析]
+G[scoped_css.rs<br/>CSS作用域化处理器]
+H[scss_processor.rs<br/>SCSS编译处理器]
 end
 subgraph "示例和测试"
-G[sfc_demo.rs<br/>演示程序]
-H[Cargo.toml<br/>依赖配置]
-I[integration_test.rs<br/>集成测试]
-J[README.md<br/>完整文档]
-K[TYPESCRIPT_ARCHITECTURE.md<br/>架构分析]
-L[SWC62-INTEGRATION-COMPLETE.md<br/>集成报告]
+I[sfc_demo.rs<br/>演示程序]
+J[Cargo.toml<br/>依赖配置]
+K[integration_test.rs<br/>集成测试]
+L[README.md<br/>完整文档]
+M[TYPESCRIPT_ARCHITECTURE.md<br/>架构分析]
+N[SWC62-INTEGRATION-COMPLETE.md<br/>集成报告]
 end
 A --> B
 A --> C
 A --> D
 A --> E
 A --> F
-G --> A
-H --> A
+A --> G
+A --> H
 I --> A
 J --> A
 K --> A
 L --> A
+M --> A
+N --> A
 ```
 
 **图表来源**
-- [lib.rs:1-836](file://crates/iris-sfc/src/lib.rs#L1-L836)
+- [lib.rs:1-987](file://crates/iris-sfc/src/lib.rs#L1-L987)
 - [template_compiler.rs:1-735](file://crates/iris-sfc/src/template_compiler.rs#L1-L735)
 - [ts_compiler.rs:1-707](file://crates/iris-sfc/src/ts_compiler.rs#L1-L707)
 - [css_modules.rs:1-283](file://crates/iris-sfc/src/css_modules.rs#L1-L283)
 - [cache.rs:1-485](file://crates/iris-sfc/src/cache.rs#L1-L485)
 - [script_setup.rs:1-509](file://crates/iris-sfc/src/script_setup.rs#L1-L509)
+- [scoped_css.rs:1-414](file://crates/iris-sfc/src/scoped_css.rs#L1-L414)
+- [scss_processor.rs:1-498](file://crates/iris-sfc/src/scss_processor.rs#L1-L498)
 
 **章节来源**
 - [lib.rs:1-50](file://crates/iris-sfc/src/lib.rs#L1-L50)
-- [Cargo.toml:1-38](file://crates/iris-sfc/Cargo.toml#L1-L38)
+- [Cargo.toml:1-41](file://crates/iris-sfc/Cargo.toml#L1-L41)
 
 ## 核心组件分析
 
@@ -108,7 +116,7 @@ L --> A
 - **SFC解析器**：使用预编译的正则表达式提取template、script、style块
 - **模板编译器**：基于html5ever的HTML解析和虚拟DOM生成，支持13+个Vue指令
 - **TypeScript编译器**：采用基于LazyLock的全局实例，支持完整的swc 62集成和类型检查
-- **样式处理器**：支持多种样式语言、作用域处理和CSS Modules类名作用域化
+- **样式处理器**：支持多种样式语言、作用域处理和CSS Modules类名作用域化，现已增强为支持SCSS/Less编译
 - **缓存系统**：基于XXH3哈希的LRU智能缓存机制，支持热重载加速
 - **Script Setup转换器**：支持defineProps、defineEmits、withDefaults等编译器宏
 
@@ -157,19 +165,32 @@ class CacheKey {
 +from_source(source) CacheKey
 +hash() u64
 }
+class ScssConfig {
++ScssOutputStyle output_style
++bool source_map
++Vec~PathBuf~ load_paths
+}
+class ScssOutputStyle {
+<<enumeration>>
+Expanded
+Compressed
+}
 SfcModule --> StyleBlock : "包含"
 SfcDescriptor --> StyleRaw : "包含"
+ScssConfig --> ScssOutputStyle : "使用"
 ```
 
 **图表来源**
 - [lib.rs:85-136](file://crates/iris-sfc/src/lib.rs#L85-L136)
 - [ts_compiler.rs:87-114](file://crates/iris-sfc/src/ts_compiler.rs#L87-L114)
 - [cache.rs:54-69](file://crates/iris-sfc/src/cache.rs#L54-L69)
+- [scss_processor.rs:48-75](file://crates/iris-sfc/src/scss_processor.rs#L48-L75)
 
 **章节来源**
 - [lib.rs:85-136](file://crates/iris-sfc/src/lib.rs#L85-L136)
 - [ts_compiler.rs:87-114](file://crates/iris-sfc/src/ts_compiler.rs#L87-L114)
 - [cache.rs:54-69](file://crates/iris-sfc/src/cache.rs#L54-L69)
+- [scss_processor.rs:48-75](file://crates/iris-sfc/src/scss_processor.rs#L48-L75)
 
 ## 架构概览
 
@@ -187,6 +208,8 @@ Template[模板编译器]
 Script[脚本编译器]
 GlobalTsCompiler[全局TsCompiler实例]
 CssModules[CSS Modules处理器]
+ScopedCss[CSS作用域化处理器]
+ScssProcessor[SCSS编译处理器]
 Cache[SFC缓存实例]
 ScriptSetup[Script Setup转换器]
 end
@@ -196,14 +219,16 @@ Logger[日志系统]
 Error[错误处理]
 TypeChecker[类型检查器]
 TempFiles[临时文件管理]
+Grass[grass SCSS编译器]
+Xxhash[xxhash-rust]
+Lru[lru]
+Endecode[serde]
 end
 subgraph "外部依赖"
 Html5ever[html5ever]
 Swc[swc 62]
 Tracing[Tracing]
 Tsc[tsc命令行]
-Xxhash[xxhash-rust]
-Lru[lru]
 Endecode[serde]
 end
 App --> Init
@@ -212,6 +237,8 @@ Init --> Template
 Init --> Script
 Init --> GlobalTsCompiler
 Init --> CssModules
+Init --> ScopedCss
+Init --> ScssProcessor
 Init --> Cache
 Init --> ScriptSetup
 Parser --> Regex
@@ -221,6 +248,8 @@ GlobalTsCompiler --> Swc
 GlobalTsCompiler --> TypeChecker
 TypeChecker --> Tsc
 CssModules --> Xxhash
+ScopedCss --> Xxhash
+ScssProcessor --> Grass
 Cache --> Lru
 Cache --> Xxhash
 ScriptSetup --> Regex
@@ -233,6 +262,8 @@ Init --> Endecode
 - [lib.rs:554-590](file://crates/iris-sfc/src/lib.rs#L554-L590)
 - [ts_compiler.rs:275-435](file://crates/iris-sfc/src/ts_compiler.rs#L275-L435)
 - [css_modules.rs:47-161](file://crates/iris-sfc/src/css_modules.rs#L47-L161)
+- [scoped_css.rs:29-46](file://crates/iris-sfc/src/scoped_css.rs#L29-L46)
+- [scss_processor.rs:45-41](file://crates/iris-sfc/src/scss_processor.rs#L45-L41)
 - [cache.rs:136-158](file://crates/iris-sfc/src/cache.rs#L136-L158)
 - [script_setup.rs:129-165](file://crates/iris-sfc/src/script_setup.rs#L129-L165)
 
@@ -347,11 +378,14 @@ SFC编译器采用了先进的懒加载机制来优化启动性能：
 
 #### 预编译正则表达式定义
 
-编译器在模块级别定义了三个静态的`LazyLock<Regex>`变量：
+编译器在模块级别定义了四个静态的`LazyLock<Regex>`变量：
 
 - `TEMPLATE_RE`：匹配Vue模板块
 - `SCRIPT_RE`：匹配脚本块
 - `STYLE_RE`：匹配样式块
+- **新增** `SELECTOR_BLOCK_RE`：匹配CSS选择器块（用于scoped_css.rs）
+- **新增** `SIMPLE_SELECTOR_RE`：匹配简单CSS选择器（用于scoped_css.rs）
+- **新增** `DEEP_SELECTOR_RE`：匹配深层选择器（用于scoped_css.rs）
 
 #### 性能优化原理
 
@@ -384,6 +418,7 @@ B4 --> B5
 **图表来源**
 - [lib.rs:24-83](file://crates/iris-sfc/src/lib.rs#L24-L83)
 - [lib.rs:377-454](file://crates/iris-sfc/src/lib.rs#L377-L454)
+- [scoped_css.rs:33-46](file://crates/iris-sfc/src/scoped_css.rs#L33-L46)
 
 #### 初始化流程
 
@@ -519,16 +554,18 @@ CallInit --> LogInit["记录初始化事件"]
 LogInit --> LazyRegex["LazyLock预编译正则"]
 LazyRegex --> GlobalTsCompiler["LazyLock全局TsCompiler"]
 GlobalTsCompiler --> CssModules["LazyLock CSS Modules处理器"]
-CssModules --> GlobalCache["LazyLock全局缓存实例"]
+CssModules --> ScopedCss["LazyLock CSS作用域化处理器"]
+ScopedCss --> ScssProcessor["LazyLock SCSS编译处理器"]
+ScssProcessor --> GlobalCache["LazyLock全局缓存实例"]
 GlobalCache --> Ready["编译器就绪"]
 Ready --> End([完成])
 ```
 
 **图表来源**
-- [lib.rs:794-811](file://crates/iris-sfc/src/lib.rs#L794-L811)
+- [lib.rs:969-987](file://crates/iris-sfc/src/lib.rs#L969-L987)
 
 **章节来源**
-- [lib.rs:794-811](file://crates/iris-sfc/src/lib.rs#L794-L811)
+- [lib.rs:969-987](file://crates/iris-sfc/src/lib.rs#L969-L987)
 - [ts_compiler.rs:134-145](file://crates/iris-sfc/src/ts_compiler.rs#L134-L145)
 
 ## 演示程序验证
@@ -591,9 +628,9 @@ SfcDemo --> TestResult : "返回"
 - **预期结果**：TypeScript代码成功转译为JavaScript
 
 #### 测试3：多样式块组件
-- **验证内容**：多种样式块类型处理
+- **验证内容**：多种样式块类型处理，包括SCSS编译
 - **测试组件**：包含scoped、global、module、SCSS样式
-- **预期结果**：正确识别和处理不同类型的样式块
+- **预期结果**：正确识别和处理不同类型的样式块，SCSS成功编译为CSS
 
 ### 演示程序输出验证
 
@@ -767,6 +804,177 @@ ReturnResult --> End
 - [lib.rs:554-590](file://crates/iris-sfc/src/lib.rs#L554-L590)
 - [css_modules.rs:47-161](file://crates/iris-sfc/src/css_modules.rs#L47-L161)
 - [lib.rs:724-791](file://crates/iris-sfc/src/lib.rs#L724-L791)
+
+## CSS作用域化处理器
+
+**新增功能**：CSS作用域化处理器实现了Vue `<style scoped>` 功能，为每个组件生成唯一属性并添加到选择器。
+
+### CSS作用域化处理器架构
+
+```mermaid
+classDiagram
+class ScopedCssProcessor {
++generate_scope_id(component_name, content_hash) String
++transform_css_scoped(css, scope_id) String
++scope_selector(selector, scope_id) String
++scope_single_selector(selector, scope_id) String
+}
+class SelectorBlockRegex {
+<<static>>
++SELECTOR_BLOCK_RE : LazyLock~Regex~
+}
+class SimpleSelectorRegex {
+<<static>>
++SIMPLE_SELECTOR_RE : LazyLock~Regex~
+}
+class DeepSelectorRegex {
+<<static>>
++DEEP_SELECTOR_RE : LazyLock~Regex~
+}
+ScopedCssProcessor --> SelectorBlockRegex : "使用"
+ScopedCssProcessor --> SimpleSelectorRegex : "使用"
+ScopedCssProcessor --> DeepSelectorRegex : "使用"
+```
+
+**图表来源**
+- [scoped_css.rs:29-46](file://crates/iris-sfc/src/scoped_css.rs#L29-L46)
+- [scoped_css.rs:149-258](file://crates/iris-sfc/src/scoped_css.rs#L149-L258)
+
+### CSS作用域化处理流程
+
+```mermaid
+flowchart TD
+Start([CSS作用域化处理开始]) --> CheckScoped{"样式块是否启用scoped?"}
+CheckScoped --> |否| ReturnOriginal["返回原始样式"]
+CheckScoped --> |是| GenerateScopeId["生成作用域ID"]
+GenerateScopeId --> HandleDeepSelectors["处理深层选择器"]
+HandleDeepSelectors --> ProcessSelectorBlocks["处理选择器块"]
+ProcessSelectorBlocks --> ScopeSimpleSelectors["作用域化简单选择器"]
+ScopeSimpleSelectors --> HandlePseudoClasses["处理伪类和伪元素"]
+HandlePseudoClasses --> ReturnResult["返回作用域化样式"]
+ReturnOriginal --> End([结束])
+ReturnResult --> End
+```
+
+**图表来源**
+- [lib.rs:730-744](file://crates/iris-sfc/src/lib.rs#L730-L744)
+- [scoped_css.rs:74-137](file://crates/iris-sfc/src/scoped_css.rs#L74-L137)
+
+### 支持的CSS作用域化特性
+
+1. **唯一属性添加**：`.button` → `.button[data-v-xxxxx]`
+2. **组合选择器处理**：`.button.active` → `.button[data-v-xxxxx].active[data-v-xxxxx]`
+3. **伪类和伪元素保持**：`:hover` → `:hover`（保持不变）
+4. **深层选择器支持**：`::v-deep` 或 `/deep/` 语法不被作用域化
+5. **根选择器保护**：`html`、`body` 等根选择器不被作用域化
+
+### CSS作用域化集成测试
+
+编译器包含了完整的CSS作用域化集成测试，验证以下功能：
+
+- 基础选择器作用域化
+- 组合选择器处理
+- 伪类和伪元素保持
+- 逗号分隔的选择器组
+- 深层选择器不作用域化
+- 根选择器保护
+- 作用域ID生成一致性
+
+**章节来源**
+- [lib.rs:730-744](file://crates/iris-sfc/src/lib.rs#L730-L744)
+- [scoped_css.rs:29-46](file://crates/iris-sfc/src/scoped_css.rs#L29-L46)
+- [scoped_css.rs:74-137](file://crates/iris-sfc/src/scoped_css.rs#L74-L137)
+
+## SCSS编译处理器
+
+**新增功能**：SCSS编译处理器支持将SCSS和Less编译为普通CSS，包括变量、嵌套、mixin等高级特性。
+
+### SCSS编译处理器架构
+
+```mermaid
+classDiagram
+class ScssProcessor {
++compile_scss(scss, config) Result~ScssCompileResult~
++compile_less(less) Result~ScssCompileResult~
++basic_less_transform(less) String
++compress_css(css) String
++remove_css_comments(css) String
++detect_style_type(lang) StyleType
+}
+class ScssConfig {
++ScssOutputStyle output_style
++bool source_map
++Vec~PathBuf~ load_paths
+}
+class ScssCompileResult {
++String css
++Option~String~ source_map
++f64 compile_time_ms
+}
+class StyleType {
+<<enumeration>>
+Css
+Scss
+Sass
+Less
+}
+ScssProcessor --> ScssConfig : "使用"
+ScssProcessor --> ScssCompileResult : "返回"
+ScssProcessor --> StyleType : "返回"
+```
+
+**图表来源**
+- [scss_processor.rs:48-75](file://crates/iris-sfc/src/scss_processor.rs#L48-L75)
+- [scss_processor.rs:77-86](file://crates/iris-sfc/src/scss_processor.rs#L77-L86)
+- [scss_processor.rs:255-283](file://crates/iris-sfc/src/scss_processor.rs#L255-L283)
+
+### SCSS编译处理流程
+
+```mermaid
+flowchart TD
+Start([SCSS编译处理开始]) --> DetectStyleType{"检测样式类型"}
+DetectStyleType --> |Scss/Sass| CompileScss["使用grass编译SCSS"]
+DetectStyleType --> |Less| CompileLess["基础Less编译"]
+DetectStyleType --> |Css| ReturnOriginal["返回原始CSS"]
+CompileScss --> HandleOutputStyle["处理输出样式"]
+HandleOutputStyle --> CompressCss["压缩CSS可选"]
+CompressCss --> ReturnResult["返回编译结果"]
+CompileLess --> BasicLessTransform["基础Less变量替换"]
+BasicLessTransform --> ReturnResult
+ReturnOriginal --> End([结束])
+ReturnResult --> End
+```
+
+**图表来源**
+- [lib.rs:682-694](file://crates/iris-sfc/src/lib.rs#L682-L694)
+- [scss_processor.rs:98-120](file://crates/iris-sfc/src/scss_processor.rs#L98-L120)
+
+### 支持的SCSS编译特性
+
+1. **变量编译**：`$primary-color: #3498db;` → `color: #3498db;`
+2. **嵌套支持**：`.container { .header { font-size: 24px; } }`
+3. **mixin支持**：`@mixin flex-center { ... }` → 展开为具体CSS
+4. **函数支持**：`lighten($color, 10%)` → 计算后的颜色值
+5. **输出样式**：支持展开（Expanded）和压缩（Compressed）两种输出
+6. **错误处理**：SCSS编译失败时回退到原始内容
+
+### SCSS编译集成测试
+
+编译器包含了完整的SCSS编译集成测试，验证以下功能：
+
+- 基础变量编译
+- 嵌套选择器展开
+- 变量计算（乘法运算）
+- 压缩输出样式
+- SCSS语法错误处理
+- Less基础变量替换
+- CSS压缩功能
+- 样式类型检测
+
+**章节来源**
+- [lib.rs:682-694](file://crates/iris-sfc/src/lib.rs#L682-L694)
+- [scss_processor.rs:48-75](file://crates/iris-sfc/src/scss_processor.rs#L48-L75)
+- [scss_processor.rs:98-120](file://crates/iris-sfc/src/scss_processor.rs#L98-L120)
 
 ## Script Setup转换器
 
@@ -1023,7 +1231,7 @@ ReturnResult --> End
 
 ### 外部依赖管理
 
-**重要变更**：SFC编译器已成功集成swc 62版本，简化了依赖管理：
+**重要变更**：SFC编译器已成功集成swc 62版本，简化了依赖管理，并新增了SCSS编译依赖：
 
 ```mermaid
 graph TB
@@ -1046,35 +1254,40 @@ M[swc_ecma_ast 23<br/>AST节点]
 N[swc_ecma_visit 23<br/>访问器]
 O[swc_ecma_transforms_typescript 46<br/>TS转换]
 end
-subgraph "内部依赖"
-P[iris-core<br/>核心引擎]
-Q[iris-js<br/>JS集成]
+subgraph "样式处理依赖"
+P[grass 0.13<br/>SCSS编译器]
 end
-R[lib.rs] --> A
-R --> B
-R --> C
-R --> D
-R --> E
-R --> F
-S[template_compiler.rs] --> G
-S --> H
-T[ts_compiler.rs] --> I
-T --> J
-T --> K
-T --> L
-T --> M
-T --> N
-T --> O
-U[css_modules.rs] --> F
-V[cache.rs] --> E
-V --> F
-W[script_setup.rs] --> A
-R --> P
-R --> Q
+subgraph "内部依赖"
+Q[iris-core<br/>核心引擎]
+R[iris-js<br/>JS集成]
+end
+S[lib.rs] --> A
+S --> B
+S --> C
+S --> D
+S --> E
+S --> F
+T[template_compiler.rs] --> G
+T --> H
+U[ts_compiler.rs] --> I
+U --> J
+U --> K
+U --> L
+U --> M
+U --> N
+U --> O
+V[css_modules.rs] --> F
+W[scoped_css.rs] --> F
+X[scss_processor.rs] --> P
+Y[cache.rs] --> E
+Y --> F
+Z[script_setup.rs] --> A
+S --> Q
+S --> R
 ```
 
 **图表来源**
-- [Cargo.toml:11-38](file://crates/iris-sfc/Cargo.toml#L11-L38)
+- [Cargo.toml:11-41](file://crates/iris-sfc/Cargo.toml#L11-L41)
 - [lib.rs:17-20](file://crates/iris-sfc/src/lib.rs#L17-L20)
 
 ### 内部模块依赖
@@ -1087,12 +1300,14 @@ A --> C[ts_compiler.rs]
 A --> D[css_modules.rs]
 A --> E[cache.rs]
 A --> F[script_setup.rs]
-G[sfc_demo.rs] --> A
-H[main.rs] --> A
-I[integration_test.rs] --> A
-J[README.md] --> A
-K[TYPESCRIPT_ARCHITECTURE.md] --> A
-L[SWC62-INTEGRATION-COMPLETE.md] --> A
+A --> G[scoped_css.rs]
+A --> H[scss_processor.rs]
+I[sfc_demo.rs] --> A
+J[main.rs] --> A
+K[integration_test.rs] --> A
+L[README.md] --> A
+M[TYPESCRIPT_ARCHITECTURE.md] --> A
+N[SWC62-INTEGRATION-COMPLETE.md] --> A
 end
 ```
 
@@ -1101,7 +1316,7 @@ end
 - [sfc_demo.rs:7](file://crates/iris-sfc/examples/sfc_demo.rs#L7)
 
 **章节来源**
-- [Cargo.toml:11-38](file://crates/iris-sfc/Cargo.toml#L11-L38)
+- [Cargo.toml:11-41](file://crates/iris-sfc/Cargo.toml#L11-L41)
 - [lib.rs:11-15](file://crates/iris-sfc/src/lib.rs#L11-L15)
 
 ## 性能考虑
@@ -1115,6 +1330,8 @@ SFC编译器在初始化阶段采用了多项性能优化策略：
 - **正则表达式懒加载**：使用`LazyLock`确保正则表达式只在首次使用时编译
 - **全局编译器实例懒加载**：使用`LazyLock`确保TsCompiler实例只在首次使用时创建
 - **CSS Modules处理器懒加载**：使用`LazyLock`确保正则表达式只在首次使用时编译
+- **CSS作用域化处理器懒加载**：使用`LazyLock`确保正则表达式只在首次使用时编译
+- **SCSS编译处理器懒加载**：使用`LazyLock`确保grass编译器只在首次使用时初始化
 - **全局缓存实例懒加载**：使用`LazyLock`确保缓存实例只在首次使用时创建
 - **Script Setup转换器懒加载**：使用`LazyLock`确保正则表达式只在首次使用时编译
 - **编译器实例复用**：TypeScript编译器实例可以重复使用，避免重复初始化
@@ -1128,6 +1345,7 @@ SFC编译器在初始化阶段采用了多项性能优化策略：
 - **SourceMap内存优化**：禁用Source Map以节省30-50%内存
 - **哈希算法优化**：使用xxhash-rust提供高性能哈希计算
 - **缓存内存优化**：LRU缓存自动管理内存使用
+- **SCSS编译内存优化**：grass编译器的内存使用优化
 
 ### 并发安全性
 
@@ -1140,8 +1358,10 @@ CheckCache --> |命中| ReturnCached["返回缓存结果"]
 CheckCache --> |未命中| AcquireLock["获取锁"]
 AcquireLock --> Compile["编译源码"]
 Compile --> TypeCheck["类型检查可选"]
-TypeCheck --> CssModules["CSS Modules处理可选"]
-CssModules --> UpdateCache["更新缓存"]
+TypeCheck --> ScssCompile["SCSS编译可选"]
+ScssCompile --> CssModules["CSS Modules处理可选"]
+CssModules --> ScopedCss["CSS作用域化处理可选"]
+ScopedCss --> UpdateCache["更新缓存"]
 UpdateCache --> ReleaseLock["释放锁"]
 ReleaseLock --> ReturnResult["返回结果"]
 ReturnCached --> End([结束])
@@ -1168,6 +1388,11 @@ class TsCompileResult {
 +source_map : Option~String~
 +compile_time_ms : f64
 }
+class ScssCompileResult {
++css : String
++source_map : Option~String~
++compile_time_ms : f64
+}
 class SfcModule {
 +name : String
 +render_fn : String
@@ -1176,15 +1401,18 @@ class SfcModule {
 +source_hash : u64
 }
 PerformanceMonitor --> TsCompileResult : "收集指标"
+PerformanceMonitor --> ScssCompileResult : "收集指标"
 SfcModule --> PerformanceMonitor : "包含"
 ```
 
 **图表来源**
 - [ts_compiler.rs:74-85](file://crates/iris-sfc/src/ts_compiler.rs#L74-L85)
+- [scss_processor.rs:79-86](file://crates/iris-sfc/src/scss_processor.rs#L79-L86)
 - [lib.rs:248-256](file://crates/iris-sfc/src/lib.rs#L248-L256)
 
 **章节来源**
 - [ts_compiler.rs:74-85](file://crates/iris-sfc/src/ts_compiler.rs#L74-L85)
+- [scss_processor.rs:79-86](file://crates/iris-sfc/src/scss_processor.rs#L79-L86)
 - [lib.rs:248-256](file://crates/iris-sfc/src/lib.rs#L248-L256)
 
 ## 故障排除指南
@@ -1219,6 +1447,28 @@ SfcModule --> PerformanceMonitor : "包含"
 2. 验证CSS Modules处理器的LazyLock初始化
 3. 确认正则表达式（CLASS_SELECTOR_RE、LOCAL_RE、GLOBAL_RE）是否正确
 4. 检查哈希算法生成是否正常
+
+#### CSS作用域化处理器初始化失败
+
+**症状**：CSS作用域化功能不可用或选择器作用域化失败
+
+**解决方案**：
+1. 检查xxhash-rust依赖是否正确安装
+2. 验证CSS作用域化处理器的LazyLock初始化
+3. 确认正则表达式（SELECTOR_BLOCK_RE、SIMPLE_SELECTOR_RE、DEEP_SELECTOR_RE）是否正确
+4. 检查作用域ID生成逻辑
+5. 验证深层选择器处理功能
+
+#### SCSS编译处理器初始化失败
+
+**症状**：SCSS编译功能不可用或编译错误
+
+**解决方案**：
+1. 检查grass依赖是否正确安装
+2. 验证SCSS编译处理器的初始化
+3. 确认SCSS配置参数（output_style、source_map）
+4. 检查SCSS语法是否正确
+5. 验证SCSS编译错误处理逻辑
 
 #### Script Setup转换器初始化失败
 
@@ -1286,27 +1536,17 @@ SfcModule --> PerformanceMonitor : "包含"
 3. 验证编译器配置参数
 4. 确认源码映射功能正常工作
 
-### CSS Modules集成问题
+### 样式处理问题
 
-**症状**：CSS Modules类名作用域化失败或映射不正确
-
-**解决方案**：
-1. 检查CSS内容中是否存在语法错误
-2. 验证类名选择器正则表达式是否正确匹配
-3. 确认哈希算法生成的唯一性
-4. 检查`:local()`和`:global()`语法解析
-5. 验证类名映射生成逻辑
-
-### Script Setup转换器问题
-
-**症状**：Script Setup编译器宏转换失败
+**症状**：样式编译或作用域化功能异常
 
 **解决方案**：
-1. 检查defineProps和defineEmits的正则表达式是否正确
-2. 验证TypeScript接口解析功能
-3. 确认数组形式的支持是否正常
-4. 检查withDefaults的解析逻辑
-5. 验证顶层声明提取功能
+1. 检查SCSS编译器grass是否正确安装
+2. 验证SCSS配置参数（output_style、source_map）
+3. 确认CSS作用域化处理器的正则表达式正确
+4. 检查CSS Modules处理器的哈希算法
+5. 验证样式类型检测逻辑
+6. 检查样式处理流水线的执行顺序
 
 ### 缓存系统问题
 
@@ -1334,9 +1574,11 @@ SfcModule --> PerformanceMonitor : "包含"
 - [lib.rs:138-188](file://crates/iris-sfc/src/lib.rs#L138-L188)
 - [ts_compiler.rs:291-409](file://crates/iris-sfc/src/ts_compiler.rs#L291-L409)
 - [css_modules.rs:47-161](file://crates/iris-sfc/src/css_modules.rs#L47-L161)
+- [scoped_css.rs:29-46](file://crates/iris-sfc/src/scoped_css.rs#L29-L46)
+- [scss_processor.rs:45-41](file://crates/iris-sfc/src/scss_processor.rs#L45-L41)
 - [script_setup.rs:129-165](file://crates/iris-sfc/src/script_setup.rs#L129-L165)
 - [cache.rs:136-158](file://crates/iris-sfc/src/cache.rs#L136-L158)
-- [lib.rs:794-811](file://crates/iris-sfc/src/lib.rs#L794-L811)
+- [lib.rs:969-987](file://crates/iris-sfc/src/lib.rs#L969-L987)
 - [SWC62-INTEGRATION-COMPLETE.md:1-238](file://SWC62-INTEGRATION-COMPLETE.md#L1-L238)
 
 ## 结论
@@ -1346,7 +1588,7 @@ Iris SFC编译器的初始化机制展现了现代Rust应用的最佳实践：
 ### 核心优势
 
 1. **性能优先**：通过懒加载和缓存机制实现零编译器启动
-2. **模块化设计**：清晰的模块边界和依赖管理
+2. **模块化设计**：清晰的模块边界和依赖管理，新增的scoped_css.rs和scss_processor.rs模块进一步增强了功能
 3. **并发安全**：线程安全的初始化和缓存机制
 4. **可扩展性**：灵活的配置系统支持不同编译需求
 5. **完整的初始化流程**：新增的`init()`函数提供明确的初始化入口
@@ -1358,13 +1600,14 @@ Iris SFC编译器的初始化机制展现了现代Rust应用的最佳实践：
 11. **全面的功能覆盖**：支持所有Vue 3指令和编译器宏
 12. **完整的集成测试**：验证所有功能的协同工作
 13. **详细的文档系统**：完整的README文档和使用指南
+14. **增强的样式处理**：新增的CSS作用域化和SCSS编译支持，显著提升了样式处理能力
 
 ### 技术亮点
 
 - **LazyLock模式**：实现了高效的延迟初始化
 - **全局实例模式**：TsCompiler实例在整个生命周期内复用
 - **内存优化策略**：禁用Source Map节省内存30-50%
-- **分层架构**：模板编译器、TypeScript编译器、CSS Modules处理器分离
+- **分层架构**：模板编译器、TypeScript编译器、CSS Modules处理器、CSS作用域化处理器、SCSS编译处理器分离
 - **增强的错误处理**：完善的错误类型和位置信息
 - **性能监控**：内置的编译时间和内存使用统计
 - **完整的API文档**：详细的函数文档和使用示例
@@ -1385,5 +1628,7 @@ Iris SFC编译器的初始化机制展现了现代Rust应用的最佳实践：
 8. **CSS Modules增强**：支持更多CSS Modules特性和语法
 9. **模板编译器完善**：支持更多Vue 3指令和特性
 10. **Script Setup转换器增强**：支持更多编译器宏和TypeScript特性
+11. **样式处理优化**：进一步优化CSS作用域化和SCSS编译性能
+12. **错误处理改进**：增强样式编译错误的诊断和修复建议
 
-SFC编译器初始化机制为整个Iris引擎提供了坚实的基础，其设计理念和实现方式值得在其他Rust项目中借鉴和学习。通过采用LazyLock模式、全局实例管理和内存优化策略，编译器在保证功能完整性的同时实现了卓越的性能表现。**重要变更**：成功的swc 62集成、全局TsCompiler实例的实现、TypeScript类型检查系统、CSS Modules支持功能、缓存系统的完整实现、Script Setup转换器的数组形式支持以及新增的集成测试框架，标志着编译器初始化机制达到了新的高度，为未来的功能扩展奠定了良好的基础。
+SFC编译器初始化机制为整个Iris引擎提供了坚实的基础，其设计理念和实现方式值得在其他Rust项目中借鉴和学习。通过采用LazyLock模式、全局实例管理和内存优化策略，编译器在保证功能完整性的同时实现了卓越的性能表现。**重要变更**：成功的swc 62集成、全局TsCompiler实例的实现、TypeScript类型检查系统、CSS Modules支持功能、缓存系统的完整实现、Script Setup转换器的数组形式支持、新增的集成测试框架，以及最重要的CSS作用域化处理器和SCSS编译处理器的引入，标志着编译器初始化机制达到了新的高度，为未来的功能扩展奠定了良好的基础。

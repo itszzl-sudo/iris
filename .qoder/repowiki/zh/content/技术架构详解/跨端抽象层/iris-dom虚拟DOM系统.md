@@ -11,8 +11,16 @@
 - [lib.rs](file://crates/iris-layout/src/lib.rs)
 - [dom.rs](file://crates/iris-layout/src/dom.rs)
 - [layout.rs](file://crates/iris-layout/src/layout.rs)
+- [vdom.rs](file://crates/iris-layout/src/vdom.rs)
 - [Cargo.toml](file://Cargo.toml)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 更新VNode系统以支持更多DOM操作功能
+- 增强事件处理系统，支持更完整的事件类型
+- 完善BOM API，提供更丰富的DOM模拟功能
+- 与增强的DOM API配合使用，提升系统整体功能
 
 ## 目录
 1. [简介](#简介)
@@ -29,7 +37,7 @@
 
 iris-dom是Iris跨平台UI引擎中的虚拟DOM系统，提供跨端统一的DOM/BOM抽象层和事件系统。该系统的核心目标是在浏览器和桌面原生环境中抹平差异，提供统一的事件处理机制，以及轻量级的BOM/DOM模拟API。
 
-系统采用"无真实DOM，仅做逻辑模拟"的设计理念，所有实际绘制都通过WebGPU进行，确保跨平台的一致性和高性能表现。
+系统采用"无真实DOM，仅做逻辑模拟"的设计理念，所有实际绘制都通过WebGPU进行，确保跨平台的一致性和高性能表现。最新的版本进一步完善了VNode系统，支持更多DOM操作和事件处理功能，与增强的DOM API形成完整的生态系统。
 
 ## 项目结构
 
@@ -46,11 +54,14 @@ end
 subgraph "依赖模块"
 E[iris-core - 核心运行时]
 F[iris-layout - 布局引擎]
+G[vdom.rs - 增强的虚拟DOM实现]
 end
 subgraph "外部依赖"
-G[winit - 窗口管理]
-H[tokio - 异步运行时]
-I[wgpu - GPU渲染]
+H[winit - 窗口管理]
+I[tokio - 异步运行时]
+J[wgpu - GPU渲染]
+K[html5ever - HTML解析]
+L[cssparser - CSS解析]
 end
 D --> A
 D --> B
@@ -58,9 +69,12 @@ D --> C
 A --> F
 B --> E
 C --> E
-E --> G
+F --> G
 E --> H
 E --> I
+E --> J
+F --> K
+F --> L
 ```
 
 **图表来源**
@@ -81,6 +95,7 @@ iris-dom的虚拟DOM系统提供了轻量级的DOM表示，支持差异比较和
 - **属性管理**：支持动态设置和获取节点属性
 - **样式集成**：与布局引擎无缝集成，支持样式计算
 - **布局信息**：存储计算后的布局信息，便于渲染优化
+- **增强的DOM操作**：支持更丰富的DOM操作API，包括节点查询、属性操作等
 
 ### 事件系统
 
@@ -90,6 +105,7 @@ iris-dom的虚拟DOM系统提供了轻量级的DOM表示，支持差异比较和
 - **键盘事件**：按键按下、释放、输入
 - **表单事件**：改变、输入、提交
 - **窗口事件**：滚动、调整大小、加载完成
+- **增强的事件处理**：支持事件冒泡、捕获阶段和事件停止传播
 
 ### BOM API模拟
 
@@ -98,6 +114,7 @@ iris-dom的虚拟DOM系统提供了轻量级的DOM表示，支持差异比较和
 - **Window对象**：窗口管理、尺寸调整、全局存储
 - **Document对象**：DOM操作API、元素查询
 - **Location/Navigator/History/Console**：浏览器环境模拟
+- **增强的DOM查询**：支持ID、类名、标签名等多种选择器
 
 **章节来源**
 - [vnode.rs:1-454](file://crates/iris-dom/src/vnode.rs#L1-L454)
@@ -112,25 +129,27 @@ iris-dom系统采用分层架构设计，各层职责清晰分离：
 graph TB
 subgraph "应用层"
 App[Iris应用]
-end
+End
 subgraph "虚拟DOM层"
 VNode[VNode - 虚拟DOM节点]
 EventSys[EventDispatcher - 事件系统]
 BOM[BOM API - 窗口/文档模拟]
-end
+EnhancedDOM[增强DOM API]
+End
 subgraph "布局层"
 Layout[LayoutBox - 布局计算]
 Style[ComputedStyles - 样式计算]
 DOMNode[DOMNode - DOM节点]
-end
+End
 subgraph "核心层"
 Core[iris-core - 运行时]
 GPU[WebGPU渲染]
-end
+End
 App --> VNode
 VNode --> EventSys
 VNode --> BOM
-VNode --> Layout
+VNode --> EnhancedDOM
+EnhancedDOM --> Layout
 Layout --> Style
 Layout --> DOMNode
 EventSys --> Core
@@ -152,7 +171,7 @@ Core --> GPU
 
 #### VNode数据结构
 
-VNode采用枚举类型设计，支持四种节点类型：
+VNode采用枚举类型设计，支持四种节点类型，并增强了DOM操作功能：
 
 ```mermaid
 classDiagram
@@ -162,32 +181,39 @@ class VNode {
 +Text
 +Comment
 +Fragment
++element(tag) VNode
++text(content) VNode
++comment(content) VNode
++fragment(children) VNode
++set_attr(key, value) void
++get_attr(key) Option~&String~
++append_child(child) void
++tag_name() Option~&str~
++text_content() Option~&str~
++set_style(property, value) void
++get_style(property) Option~&String~
++set_layout(layout) void
++get_layout() Option~&LayoutBox~
++collect_text() String
++child_count() usize
++is_element() bool
++is_text() bool
 }
 class Element {
 +String tag
 +HashMap~String,String~ attrs
 +Vec~VNode~ children
 +ComputedStyles styles
-+LayoutBox layout
-+element(tag) VNode
-+set_attr(key, value) void
-+append_child(child) void
-+set_style(property, value) void
-+set_layout(layout) void
-+collect_text() String
++Option~LayoutBox~ layout
 }
 class Text {
 +String content
-+text(content) VNode
-+text_content() Option~&str~
 }
 class Comment {
 +String content
-+comment(content) VNode
 }
 class Fragment {
 +Vec~VNode~ children
-+fragment(children) VNode
 }
 VNode --> Element
 VNode --> Text
@@ -196,11 +222,11 @@ VNode --> Fragment
 ```
 
 **图表来源**
-- [vnode.rs:10-43](file://crates/iris-dom/src/vnode.rs#L10-L43)
+- [vnode.rs:10-211](file://crates/iris-dom/src/vnode.rs#L10-L211)
 
 #### 差异比较算法
 
-系统实现了高效的VNode差异比较算法：
+系统实现了高效的VNode差异比较算法，支持更精细的更新：
 
 ```mermaid
 flowchart TD
@@ -237,7 +263,7 @@ RecurseCompare --> End
 
 #### 事件类型体系
 
-事件系统支持完整的浏览器事件类型：
+事件系统支持完整的浏览器事件类型，并增强了事件处理能力：
 
 ```mermaid
 classDiagram
@@ -293,7 +319,7 @@ Event --> EventDispatcher
 
 #### 事件分发流程
 
-事件系统采用简化的冒泡传播机制：
+事件系统采用简化的冒泡传播机制，支持事件停止传播：
 
 ```mermaid
 sequenceDiagram
@@ -329,7 +355,7 @@ ED-->>App : 事件处理完成
 
 #### Window对象
 
-Window对象提供完整的浏览器窗口模拟：
+Window对象提供完整的浏览器窗口模拟，增强了属性管理功能：
 
 ```mermaid
 classDiagram
@@ -394,7 +420,7 @@ Window --> Console
 
 #### Document对象
 
-Document对象提供DOM操作API：
+Document对象提供增强的DOM操作API，支持更丰富的查询功能：
 
 ```mermaid
 classDiagram
@@ -449,23 +475,25 @@ subgraph "iris-layout"
 F[lib.rs]
 G[dom.rs]
 H[layout.rs]
+I[vdom.rs - 增强的虚拟DOM]
 end
 A --> E
 A --> F
 B --> F
 F --> E
+F --> I
 subgraph "外部依赖"
-I[winit]
-J[tokio]
-K[wgpu]
-L[html5ever]
-M[cssparser]
+J[winit]
+K[tokio]
+L[wgpu]
+M[html5ever]
+N[cssparser]
 end
-E --> I
 E --> J
 E --> K
-F --> L
+E --> L
 F --> M
+F --> N
 ```
 
 **图表来源**
@@ -497,12 +525,14 @@ F --> M
 2. **内存复用**：使用HashMap和Vec的预分配策略
 3. **增量更新**：只更新发生变化的部分
 4. **布局缓存**：存储计算后的布局信息避免重复计算
+5. **增强的DOM操作**：优化节点查询和属性访问性能
 
 ### 事件系统优化
 
 1. **监听器管理**：使用HashMap快速定位监听器
 2. **传播控制**：通过RefCell实现内部可变性
 3. **批量处理**：支持多个监听器的批量执行
+4. **事件停止传播**：减少不必要的事件处理
 
 ### 渲染性能
 
@@ -510,6 +540,7 @@ F --> M
 - 跨平台一致性，避免平台特定的性能问题
 - GPU加速渲染，充分利用硬件性能
 - 减少系统调用开销
+- 增强的DOM操作优化
 
 ## 故障排除指南
 
@@ -522,6 +553,9 @@ F --> M
 
 **问题**：子节点添加失败
 **解决方案**：确认父节点必须是元素节点或Fragment节点
+
+**问题**：节点查询无效
+**解决方案**：检查选择器语法和节点属性，确认增强的DOM查询功能正常
 
 #### 事件系统问题
 
@@ -546,11 +580,13 @@ F --> M
 
 ## 结论
 
-iris-dom虚拟DOM系统是一个设计精良的跨平台UI抽象层，具有以下特点：
+iris-dom虚拟DOM系统是一个设计精良的跨平台UI抽象层，经过最新更新后具有以下增强特点：
 
 1. **架构清晰**：分层设计确保了模块间的低耦合高内聚
 2. **性能优秀**：通过差异比较和增量更新实现高效渲染
 3. **扩展性强**：模块化设计便于功能扩展和维护
 4. **跨平台**：统一的API确保了在不同平台上的行为一致性
+5. **功能增强**：VNode系统支持更多DOM操作，事件处理更加完善
+6. **API丰富**：与增强的DOM API配合，提供完整的前端开发体验
 
-系统的核心价值在于提供了"无真实DOM，仅做逻辑模拟"的创新架构，结合WebGPU渲染技术，为现代UI应用开发提供了高性能的解决方案。随着Iris生态系统的不断发展，iris-dom将继续发挥其作为跨平台UI基础设施的重要作用。
+系统的核心价值在于提供了"无真实DOM，仅做逻辑模拟"的创新架构，结合WebGPU渲染技术和增强的DOM API，为现代UI应用开发提供了高性能、功能丰富的解决方案。随着Iris生态系统的不断发展，iris-dom将继续发挥其作为跨平台UI基础设施的重要作用，为开发者提供更好的开发体验和更高的性能表现。
