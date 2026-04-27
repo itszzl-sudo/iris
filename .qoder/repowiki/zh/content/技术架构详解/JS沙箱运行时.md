@@ -13,7 +13,6 @@
 - [lib.rs](file://crates/iris-core/src/lib.rs)
 - [lib.rs](file://crates/iris-dom/src/lib.rs)
 - [bom.rs](file://crates/iris-dom/src/bom.rs)
-- [orchestrator.rs](file://crates/iris/src/orchestrator.rs)
 - [minimal_demo.rs](file://crates/iris-app/examples/demo/minimal_demo.rs)
 </cite>
 
@@ -22,9 +21,10 @@
 - 新增DOM绑定模块(dom_bindings.rs)，提供完整的document、window、Element API模拟
 - 新增ES模块支持模块(es_modules.rs)，实现ESM解析和模块系统模拟
 - 新增Web API集成模块(web_apis.rs)，提供fetch、XMLHttpRequest、Canvas等Web API
-- 更新Boa引擎集成，从QuickJS迁移到Boa Engine 0.20
+- 完成Boa引擎集成，从QuickJS迁移到Boa Engine 0.20
 - 重构沙箱隔离机制，通过Boa引擎提供更好的性能和安全性
 - 完善Vue3运行时集成，支持完整的Vue全局对象和编译器宏
+- 新增VNode管理能力和渲染函数执行框架
 
 ## 目录
 1. [引言](#引言)
@@ -41,9 +41,11 @@
 
 Leivue Runtime是一个革命性的前端运行时引擎，专为在Rust+WebGPU环境中提供高性能、零编译的Vue3应用执行能力。该项目的核心目标是消除前端工程化复杂性，突破浏览器沙箱限制，为Vue生态系统提供一个高性能的跨端执行底座。
 
-该JS沙箱运行时层位于整个七层架构的中间位置，承担着独立隔离执行环境的关键职责。**更新**：系统现已采用Boa JavaScript引擎0.20实现，这是一个纯Rust实现的高性能JavaScript引擎，完全替代了原有的QuickJS实现。Boa引擎提供了更好的Rust集成性和更完善的ESM模块系统支持，同时确保与宿主环境的完全隔离，为Vue3应用提供安全可靠的运行环境。
+该JS沙箱运行时层位于整个七层架构的中间位置，承担着独立隔离执行环境的关键职责。系统现已采用Boa JavaScript引擎0.20实现，这是一个纯Rust实现的高性能JavaScript引擎，完全替代了原有的QuickJS实现。Boa引擎提供了更好的Rust集成性和更完善的ESM模块系统支持，同时确保与宿主环境的完全隔离，为Vue3应用提供安全可靠的运行环境。
 
 **更新**：新增的DOM绑定、ES模块支持和Web API集成为JS沙箱运行时提供了更完整的Web标准兼容性，使得Vue3应用能够在沙箱环境中获得接近原生浏览器的开发体验。
+
+**更新**：新增的VNode管理能力和渲染函数执行框架为Vue3应用提供了完整的虚拟DOM支持，包括VNode注册表、渲染函数执行和VTree构建能力。
 
 ## 项目结构
 
@@ -62,6 +64,9 @@ Sandbox[JS沙箱运行时层]
 DOM[DOM绑定模块]
 ESM[ES模块系统]
 WebAPI[Web API集成]
+VueRuntime[Vue3运行时]
+VNode[VNode管理]
+Render[渲染函数执行]
 end
 subgraph "抽象层"
 Abstraction[跨端统一抽象层]
@@ -78,9 +83,14 @@ SFC --> Sandbox
 Sandbox --> DOM
 Sandbox --> ESM
 Sandbox --> WebAPI
+Sandbox --> VueRuntime
+VueRuntime --> VNode
+VueRuntime --> Render
 DOM --> Abstraction
 ESM --> Abstraction
 WebAPI --> Abstraction
+VNode --> Abstraction
+Render --> Abstraction
 Abstraction --> Layout
 Layout --> GPU
 GPU --> Kernel
@@ -164,6 +174,28 @@ GPU --> Kernel
 
 **更新**：Vue3运行时现在通过Boa引擎的原生支持进行注入，提供了更好的类型安全和性能表现。
 
+### VNode管理能力
+
+**更新**：新增的VNode管理能力为Vue3应用提供了完整的虚拟DOM支持：
+
+- **VNodeRegistry**：管理JavaScript创建的VNode，提供ID分配和节点管理
+- **VNode类型**：支持元素、文本、注释等不同类型的VNode
+- **树构建**：从JavaScript的VNode映射表构建完整的VTree
+- **线程本地存储**：使用RefCell实现线程安全的VNode注册表
+
+**更新**：VNode管理通过thread_local!宏实现，确保每个线程都有独立的VNode注册表实例。
+
+### 渲染函数执行框架
+
+**更新**：新增的渲染函数执行框架支持Vue3的SFC编译输出：
+
+- **渲染助手**：h、text、comment函数，用于创建VNode
+- **VNode映射表**：在JavaScript端维护VNode映射表
+- **执行流程**：清空映射表、执行render函数、获取根节点ID
+- **VTree构建**：从JSON映射表构建完整的VTree结构
+
+**更新**：渲染函数执行通过JSON序列化实现JavaScript和Rust之间的数据交换。
+
 ### 自研ESM解析器
 
 **更新**：系统实现了自研的ES模块解析器，支持现代JavaScript模块系统：
@@ -191,19 +223,22 @@ participant Engine as Boa引擎
 participant DOM as DOM绑定
 participant ESM as ES模块系统
 participant WebAPI as Web API
-participant Isolation as 沙箱隔离层
 participant VueRuntime as Vue3运行时
+participant VNode as VNode管理
+participant Render as 渲染执行
 App->>Transpiler : 提交SFC/TS代码
 Transpiler->>Sandbox : 转译后的JavaScript代码
 Sandbox->>Engine : 执行JavaScript代码
-Engine->>Isolation : 隔离执行环境
-Isolation->>DOM : 注入DOM API
-Isolation->>ESM : 注入ESM支持
-Isolation->>WebAPI : 注入Web API
+Engine->>DOM : 注入DOM API
+Engine->>ESM : 注入ESM支持
+Engine->>WebAPI : 注入Web API
 DOM->>VueRuntime : 加载Vue3运行时
 ESM->>VueRuntime : 加载Vue3运行时
 WebAPI->>VueRuntime : 加载Vue3运行时
-VueRuntime->>Engine : 注册Vue3 API
+VueRuntime->>VNode : 注册VNode管理
+VueRuntime->>Render : 注册渲染函数
+Render->>VNode : 执行渲染函数
+VNode->>Engine : 返回VTree
 Engine-->>App : 返回执行结果
 ```
 
@@ -220,8 +255,13 @@ Transpile --> Preload["预加载Vue3运行时"]
 Preload --> LoadModules["加载ESM模块"]
 LoadModules --> InjectDOM["注入DOM绑定"]
 InjectDOM --> InjectWebAPI["注入Web API"]
-InjectWebAPI --> Execute["执行JavaScript代码"]
-Execute --> Isolate["沙箱隔离执行"]
+InjectWebAPI --> InjectVueRuntime["注入Vue3运行时"]
+InjectVueRuntime --> InjectVNode["注入VNode管理"]
+InjectVNode --> InjectRender["注入渲染执行"]
+InjectRender --> Execute["执行JavaScript代码"]
+Execute --> RenderFunction["执行渲染函数"]
+RenderFunction --> BuildVTree["构建VTree"]
+BuildVTree --> Isolate["沙箱隔离执行"]
 Isolate --> Render["返回渲染结果"]
 Render --> End([执行完成])
 ```
@@ -363,44 +403,6 @@ Web API系统实现了以下关键功能：
 
 **更新**：Web API通过Boa引擎的全局属性注册实现，提供了类型安全的API注入。
 
-### 沙箱隔离机制
-
-#### 隔离层次设计
-
-```mermaid
-graph TB
-subgraph "物理隔离层"
-Physical[物理内存隔离]
-end
-subgraph "逻辑隔离层"
-Logical[逻辑API隔离]
-Network[网络访问控制]
-end
-subgraph "应用隔离层"
-App[应用程序沙箱]
-end
-subgraph "运行时隔离层"
-Runtime[运行时环境隔离]
-end
-Physical --> Logical
-Logical --> App
-App --> Runtime
-```
-
-**图表来源**
-- [vm.rs:88-130](file://crates/iris-js/src/vm.rs#L88-L130)
-
-#### API访问控制
-
-沙箱运行时实现了精细的API访问控制：
-
-- **受限BOM API**：仅提供必要的window/document对象
-- **事件系统模拟**：实现基本的事件处理机制
-- **网络API限制**：可配置的网络访问策略
-- **文件系统隔离**：虚拟化的文件系统接口
-
-**更新**：新的API访问控制通过Boa引擎的ObjectInitializer API实现，提供了更简洁和安全的API注入机制。
-
 ### Vue3运行时预加载机制
 
 #### 预加载策略
@@ -443,6 +445,99 @@ RegisterAPI --> Ready([运行时就绪])
 **图表来源**
 - [vue.rs:186-191](file://crates/iris-js/src/vue.rs#L186-L191)
 
+### VNode管理能力
+
+**更新**：VNode管理能力为Vue3应用提供了完整的虚拟DOM支持：
+
+#### VNode注册表架构
+
+```mermaid
+graph TB
+subgraph "VNode注册表"
+Registry[VNodeRegistry]
+Nodes[节点映射表]
+NextID[下一个ID计数器]
+end
+subgraph "VNode类型"
+Element[元素VNode]
+Text[文本VNode]
+Comment[注释VNode]
+end
+subgraph "线程本地存储"
+ThreadLocal[thread_local!]
+end
+Registry --> Nodes
+Registry --> NextID
+Nodes --> Element
+Nodes --> Text
+Nodes --> Comment
+ThreadLocal --> Registry
+```
+
+**图表来源**
+- [vue.rs:14-85](file://crates/iris-js/src/vue.rs#L14-L85)
+
+#### VNode创建流程
+
+```mermaid
+flowchart TD
+CreateVNode([创建VNode]) --> ChooseType{"选择VNode类型"}
+ChooseType --> |元素| CreateElement["创建元素VNode"]
+ChooseType --> |文本| CreateText["创建文本VNode"]
+ChooseType --> |注释| CreateComment["创建注释VNode"]
+CreateElement --> AssignID["分配唯一ID"]
+CreateText --> AssignID
+CreateComment --> AssignID
+AssignID --> StoreInMap["存储到映射表"]
+StoreInMap --> ReturnID["返回VNode ID"]
+ReturnID --> Ready([VNode就绪])
+```
+
+**图表来源**
+- [vue.rs:28-84](file://crates/iris-js/src/vue.rs#L28-L84)
+
+### 渲染函数执行框架
+
+**更新**：渲染函数执行框架支持Vue3的SFC编译输出：
+
+#### 渲染执行流程
+
+```mermaid
+sequenceDiagram
+participant RenderFn as 渲染函数
+participant Helper as 渲染助手
+participant VNodeMap as VNode映射表
+participant Builder as VTree构建器
+RenderFn->>Helper : 调用h/text/comment
+Helper->>VNodeMap : 存储VNode信息
+RenderFn->>Helper : 返回根节点ID
+Helper->>VNodeMap : 获取VNode映射表
+VNodeMap->>Builder : JSON序列化
+Builder->>Builder : 解析VNode映射表
+Builder->>Builder : 构建VTree
+Builder-->>RenderFn : 返回VTree
+```
+
+**图表来源**
+- [vue.rs:261-311](file://crates/iris-js/src/vue.rs#L261-L311)
+
+#### VTree构建算法
+
+```mermaid
+flowchart TD
+Start([开始构建]) --> ParseJSON["解析JSON映射表"]
+ParseJSON --> GetRootID["获取根节点ID"]
+GetRootID --> BuildRoot["构建根节点"]
+BuildRoot --> RecurseChildren{"有子节点?"}
+RecurseChildren --> |是| BuildChildren["递归构建子节点"]
+RecurseChildren --> |否| ReturnTree["返回VTree"]
+BuildChildren --> RecurseChildren
+BuildChildren --> ReturnTree
+```
+
+**图表来源**
+- [vue.rs:313-395](file://crates/iris-js/src/vue.rs#L313-L395)
+
 ### 自研ESM解析器
 
 **更新**：ESM解析器现在基于Boa引擎的原生支持进行了重构：
@@ -481,7 +576,7 @@ ESM解析器实现了复杂的依赖管理机制：
 **章节来源**
 - [vm.rs:1-319](file://crates/iris-js/src/vm.rs#L1-L319)
 - [module.rs:1-299](file://crates/iris-js/src/module.rs#L1-L299)
-- [vue.rs:1-265](file://crates/iris-js/src/vue.rs#L1-L265)
+- [vue.rs:1-683](file://crates/iris-js/src/vue.rs#L1-L683)
 - [dom_bindings.rs:1-541](file://crates/iris-js/src/dom_bindings.rs#L1-L541)
 - [es_modules.rs:1-386](file://crates/iris-js/src/es_modules.rs#L1-L386)
 - [web_apis.rs:1-464](file://crates/iris-js/src/web_apis.rs#L1-L464)
@@ -500,12 +595,14 @@ RustStd[Rust标准库]
 Serde[序列化库]
 Tokio[Tokio异步运行时]
 Regex[正则表达式库]
-end
+End
 subgraph "运行时依赖"
 Vue3[Vue3运行时]
 ESM[ESM解析器]
 DOM[DOM绑定]
 WebAPI[Web API]
+VNode[VNode管理]
+Render[渲染执行]
 end
 subgraph "系统依赖"
 WebGPU[WebGPU API]
@@ -516,6 +613,8 @@ Vue3 --> Boa
 ESM --> Boa
 DOM --> Boa
 WebAPI --> Boa
+VNode --> Vue3
+Render --> Vue3
 Boa --> WebGPU
 Boa --> Wasm
 ```
@@ -535,6 +634,9 @@ Isolation[隔离层]
 DOM[DOM绑定]
 ESM[ES模块系统]
 WebAPI[Web API]
+VueRuntime[Vue3运行时]
+VNode[VNode管理]
+Render[渲染执行]
 end
 subgraph "运行时系统"
 Runtime[运行时管理]
@@ -554,7 +656,10 @@ Isolation --> WebAPIs
 DOM --> DOMAPI
 ESM --> ModuleSystem
 WebAPI --> WebAPIs
-Runtime --> VueRuntime
+VueRuntime --> VNode
+VueRuntime --> Render
+VNode --> DOM
+Render --> DOM
 ```
 
 **图表来源**
@@ -599,6 +704,17 @@ ParallelExec --> End([性能提升])
 - **内存监控**：实时监控内存使用情况
 
 **更新**：Boa引擎的内存管理与Rust的内存管理系统深度集成，提供了更好的内存安全性和性能。
+
+### VNode管理性能
+
+**更新**：VNode管理通过以下机制优化性能：
+
+- **ID分配优化**：使用原子计数器分配VNode ID
+- **映射表优化**：使用HashMap实现O(1)查找
+- **线程本地存储**：避免锁竞争
+- **增量构建**：只构建变化的VTree部分
+
+**更新**：VNode管理通过thread_local!宏实现线程安全，确保多线程环境下的性能和安全性。
 
 ## 故障排除指南
 
@@ -648,10 +764,32 @@ ParallelExec --> End([性能提升])
 
 **更新**：Web API通过Boa引擎的全局属性注册实现，提供了类型安全的API注入。
 
+#### Vue3运行时问题
+
+**更新**：Vue3运行时可能出现的问题：
+
+- **Vue对象缺失**：检查Vue3运行时是否正确注入
+- **渲染函数执行失败**：验证渲染函数的语法和参数
+- **VNode构建错误**：检查VNode映射表的完整性
+- **响应式API异常**：确认ref/computed/watch等功能
+
+**更新**：Vue3运行时通过Boa引擎的原生支持实现，提供了更好的类型安全和性能表现。
+
+#### VNode管理问题
+
+**更新**：VNode管理相关的常见问题：
+
+- **VNode ID冲突**：检查ID分配机制
+- **VNode映射表损坏**：验证JSON序列化和反序列化
+- **树构建失败**：检查VNode类型和属性
+- **线程安全问题**：确认thread_local!宏的使用
+
+**更新**：VNode管理通过RefCell实现内部可变性，确保线程安全的VNode操作。
+
 **章节来源**
 - [vm.rs:194-319](file://crates/iris-js/src/vm.rs#L194-L319)
 - [module.rs:209-299](file://crates/iris-js/src/module.rs#L209-L299)
-- [vue.rs:193-265](file://crates/iris-js/src/vue.rs#L193-L265)
+- [vue.rs:193-683](file://crates/iris-js/src/vue.rs#L193-L683)
 - [dom_bindings.rs:449-541](file://crates/iris-js/src/dom_bindings.rs#L449-L541)
 - [es_modules.rs:302-386](file://crates/iris-js/src/es_modules.rs#L302-L386)
 - [web_apis.rs:366-464](file://crates/iris-js/src/web_apis.rs#L366-L464)
@@ -660,16 +798,16 @@ ParallelExec --> End([性能提升])
 
 **更新**：Leivue Runtime的JS沙箱运行时层代表了前端执行环境的一次重大创新。通过Boa引擎0.20的深度集成、多层次的沙箱隔离机制、以及自研的ESM解析器，该系统成功地在保持高性能的同时，提供了安全可靠的JavaScript执行环境。
 
-**更新**：新增的DOM绑定、ES模块支持和Web API集成为JS沙箱运行时提供了更完整的Web标准兼容性，使得Vue3应用能够在沙箱环境中获得接近原生浏览器的开发体验。
+**更新**：新增的DOM绑定、ES模块支持、Web API集成和VNode管理能力为JS沙箱运行时提供了更完整的Web标准兼容性，使得Vue3应用能够在沙箱环境中获得接近原生浏览器的开发体验。
 
 **更新**：该运行时层不仅消除了传统的前端工程化复杂性，还为Vue3应用提供了前所未有的执行效率。通过零编译运行、即时转译和智能缓存机制，开发者可以专注于业务逻辑的实现，而不必担心构建和部署的繁琐过程。
 
 **更新**：Boa引擎0.20的引入带来了更好的Rust集成性和更完善的ESM模块系统支持，使得JavaScript代码能够更自然地与Rust生态系统融合。新的API设计和错误处理机制提供了更好的开发体验和运行时稳定性。
 
-**更新**：随着技术的不断演进，JS沙箱运行时将成为下一代前端应用执行的重要基础设施。Boa引擎的持续改进和Rust生态系统的完善将为该系统提供更强大的功能和更好的性能表现。
+**更新**：VNode管理能力和渲染函数执行框架的完成标志着Vue3运行时的全面集成。通过VNodeRegistry、渲染助手函数和VTree构建器，系统现在能够完整地支持Vue3的虚拟DOM系统和渲染流程。
 
 **更新**：演示程序验证了Boa引擎作为JS沙箱运行时的完整功能，包括Vue全局对象注入、BOM API可用性和基础JavaScript执行能力。这标志着Boa引擎集成的最终完成，为后续的功能扩展和性能优化奠定了坚实的基础。
 
 **更新**：未来的发展方向包括进一步优化性能、增强安全性、扩展对更多JavaScript特性的支持，以及完善对第三方库的兼容性。随着Boa引擎的持续改进和Rust生态系统的完善，JS沙箱运行时将能够支持更复杂的JavaScript应用和更丰富的功能特性。
 
-**更新**：DOM绑定、ES模块系统和Web API集成的加入，使得Leivue Runtime的JS沙箱运行时具备了更完整的Web开发能力，为Vue3应用提供了更加接近原生浏览器的开发和运行环境。
+**更新**：DOM绑定、ES模块系统、Web API集成和VNode管理能力的加入，使得Leivue Runtime的JS沙箱运行时具备了更完整的Web开发能力，为Vue3应用提供了更加接近原生浏览器的开发和运行环境。

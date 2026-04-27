@@ -33,7 +33,10 @@ use iris_js::{
     vue::{setup_complete_vue_environment, inject_render_helpers, execute_render_function},
     vm::JsRuntime,
 };
+use iris_layout::dom::DOMNode;
 use iris_layout::vdom::VTree;
+use iris_layout::layout::compute_layout;
+use iris_layout::css::Stylesheet;
 use iris_sfc::SfcModule;
 use std::path::Path;
 use tracing::{debug, info};
@@ -50,6 +53,14 @@ pub struct RuntimeOrchestrator {
     root_vnode: Option<VNode>,
     /// 当前虚拟 DOM 树（新版，从 SFC render 函数生成）
     vtree: Option<VTree>,
+    /// 当前 DOM 树（从 VTree 转换而来）
+    dom_tree: Option<DOMNode>,
+    /// CSS 样式表
+    stylesheet: Stylesheet,
+    /// 视口宽度
+    viewport_width: f32,
+    /// 视口高度
+    viewport_height: f32,
     /// 是否已初始化
     initialized: bool,
 }
@@ -62,6 +73,10 @@ impl RuntimeOrchestrator {
             module_registry: ModuleRegistry::new(),
             root_vnode: None,
             vtree: None,
+            dom_tree: None,
+            stylesheet: Stylesheet::new(),
+            viewport_width: 800.0,
+            viewport_height: 600.0,
             initialized: false,
         }
     }
@@ -226,6 +241,80 @@ impl RuntimeOrchestrator {
         self.vtree.as_ref().map(|tree| tree.to_dom_node())
     }
 
+    /// 计算 DOM 树的布局
+    ///
+    /// 这是 Phase C 的核心功能：对 DOM 树应用 CSS 样式并计算布局
+    ///
+    /// # 流程
+    ///
+    /// 1. 从 VTree 构建 DOM 树（如果还没有）
+    /// 2. 应用 CSS 样式
+    /// 3. 计算布局（Flexbox/Block）
+    /// 4. 存储布局结果
+    ///
+    /// # 返回
+    ///
+    /// 返回带有布局信息的 DOM 树
+    ///
+    /// # 示例
+    ///
+    /// ```ignore
+    /// orchestrator.load_sfc_with_vtree("App.vue")?;
+    /// 
+    /// if let Some(dom_with_layout) = orchestrator.compute_layout()? {
+    ///     // 使用带布局信息的 DOM 树进行渲染
+    /// }
+    /// ```
+    pub fn compute_layout(&mut self) -> Result<&DOMNode, String> {
+        // 1. 确保有 VTree
+        if self.vtree.is_none() {
+            return Err("No VTree available. Call load_sfc_with_vtree() first.".to_string());
+        }
+
+        // 2. 构建 DOM 树
+        let dom_tree = self.build_dom_from_vtree()
+            .ok_or("Failed to build DOM tree from VTree")?;
+        
+        self.dom_tree = Some(dom_tree);
+
+        // 3. 获取可变的 DOM 树引用
+        let dom_tree_mut = self.dom_tree.as_mut().unwrap();
+
+        // 4. 计算布局
+        info!(
+            viewport = format!("{}x{}", self.viewport_width, self.viewport_height),
+            "Computing layout..."
+        );
+        
+        compute_layout(
+            dom_tree_mut,
+            &self.stylesheet,
+            self.viewport_width,
+            self.viewport_height,
+        );
+
+        info!("Layout computation completed");
+
+        // 5. 返回布局后的 DOM 树
+        Ok(self.dom_tree.as_ref().unwrap())
+    }
+
+    /// 设置视口尺寸
+    ///
+    /// # 参数
+    ///
+    /// * `width` - 视口宽度
+    /// * `height` - 视口高度
+    pub fn set_viewport_size(&mut self, width: f32, height: f32) {
+        self.viewport_width = width;
+        self.viewport_height = height;
+    }
+
+    /// 获取当前 DOM 树
+    pub fn dom_tree(&self) -> Option<&DOMNode> {
+        self.dom_tree.as_ref()
+    }
+
     /// 检查是否已初始化
     pub fn is_initialized(&self) -> bool {
         self.initialized
@@ -378,6 +467,61 @@ console.log('Component loaded')
         // 未初始化时加载应该失败
         let result = orchestrator.load_sfc_with_vtree("test.vue");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compute_layout_without_vtree() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        orchestrator.initialize().unwrap();
+        
+        // 没有 VTree 时计算布局应该失败
+        let result = orchestrator.compute_layout();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compute_layout_with_manual_dom() {
+        use iris_layout::dom::DOMNode;
+        
+        // 创建手动 DOM 树
+        let mut dom_tree = DOMNode::new_element("div");
+        dom_tree.set_attribute("id", "app");
+        dom_tree.set_attribute("style", "display: flex; flex-direction: column;");
+        
+        // 添加子节点
+        let mut child1 = DOMNode::new_element("h1");
+        child1.set_attribute("style", "color: blue;");
+        dom_tree.children.push(child1);
+        
+        let mut child2 = DOMNode::new_element("p");
+        child2.set_attribute("style", "margin: 10px;");
+        dom_tree.children.push(child2);
+
+        // 创建编排器并设置 DOM 树
+        let mut orchestrator = RuntimeOrchestrator::new();
+        orchestrator.dom_tree = Some(dom_tree);
+        orchestrator.set_viewport_size(1024.0, 768.0);
+
+        // 计算布局
+        let dom_with_layout = orchestrator.dom_tree().unwrap();
+        
+        // 验证 DOM 树存在
+        assert_eq!(dom_with_layout.tag_name().unwrap(), "div");
+        assert_eq!(dom_with_layout.children.len(), 2);
+    }
+
+    #[test]
+    fn test_viewport_size_configuration() {
+        let mut orchestrator = RuntimeOrchestrator::new();
+        
+        // 默认视口
+        assert_eq!(orchestrator.viewport_width, 800.0);
+        assert_eq!(orchestrator.viewport_height, 600.0);
+        
+        // 设置新视口
+        orchestrator.set_viewport_size(1920.0, 1080.0);
+        assert_eq!(orchestrator.viewport_width, 1920.0);
+        assert_eq!(orchestrator.viewport_height, 1080.0);
     }
 
     #[test]
