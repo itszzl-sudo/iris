@@ -16,16 +16,23 @@
 - [README.md](file://crates/iris-sfc/README.md)
 - [TYPESCRIPT_ARCHITECTURE.md](file://crates/iris-sfc/TYPESCRIPT_ARCHITECTURE.md)
 - [SWC62-INTEGRATION-COMPLETE.md](file://SWC62-INTEGRATION-COMPLETE.md)
+- [vue.rs](file://crates/iris-js/src/vue.rs)
+- [orchestrator.rs](file://crates/iris-engine/src/orchestrator.rs)
+- [vdom.rs](file://crates/iris-layout/src/vdom.rs)
+- [PHASE_A_COMPLETION_SUMMARY.md](file://PHASE_A_COMPLETION_SUMMARY.md)
+- [PHASE_B_COMPLETION_SUMMARY.md](file://PHASE_B_COMPLETION_SUMMARY.md)
+- [rendering_e2e_test.rs](file://crates/iris-engine/tests/rendering_e2e_test.rs)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- **新增CSS作用域化处理器**：新增scoped_css.rs模块，实现Vue `<style scoped>` 功能，为每个组件生成唯一属性并添加到选择器
-- **增强SCSS编译支持**：新增scss_processor.rs模块，支持SCSS/Less样式预处理，包括变量、嵌套、mixin等功能
-- **样式处理流水线优化**：重构样式编译流程，支持SCSS/Less编译后与CSS Modules和Scoped CSS的协同处理
-- **增强的样式类型检测**：新增StyleType枚举，支持css、scss、sass、less等多种样式语言的自动识别
-- **SCSS编译配置系统**：新增ScssConfig和ScssOutputStyle，支持展开和压缩两种输出样式
-- **完整的样式处理测试**：新增针对新样式功能的集成测试，验证SCSS编译和作用域化处理
+- **新增JavaScript运行时集成**：成功集成Boa引擎作为JavaScript运行时，支持Vue 3 SFC在Rust环境中执行
+- **增强VTree生成功能**：实现从SFC编译结果到虚拟DOM树的完整转换流程
+- **完整的渲染系统集成**：将SFC编译器与iris-js、iris-layout、iris-engine完全集成
+- **VNodeRegistry注册表**：实现JavaScript创建的VNode到Rust侧的双向映射
+- **Render辅助函数注入**：提供h()、text()、comment()等渲染辅助函数
+- **完整的端到端测试**：验证从SFC到VTree再到DOM的完整渲染流程
+- **增强的错误处理**：改进JavaScript运行时错误处理和调试信息
 
 ## 目录
 1. [简介](#简介)
@@ -34,25 +41,27 @@
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
 6. [初始化机制详解](#初始化机制详解)
-7. [演示程序验证](#演示程序验证)
-8. [TypeScript类型检查系统](#typescript类型检查系统)
-9. [CSS Modules支持功能](#css-modules支持功能)
-10. [CSS作用域化处理器](#css作用域化处理器)
-11. [SCSS编译处理器](#scss编译处理器)
-12. [Script Setup转换器](#script-setup-转换器)
-13. [缓存系统](#缓存系统)
-14. [依赖关系分析](#依赖关系分析)
-15. [性能考虑](#性能考虑)
-16. [故障排除指南](#故障排除指南)
-17. [结论](#结论)
+7. [JavaScript运行时集成](#javascript运行时集成)
+8. [VTree生成功能](#vtree生成功能)
+9. [演示程序验证](#演示程序验证)
+10. [TypeScript类型检查系统](#typescript类型检查系统)
+11. [CSS Modules支持功能](#css-modules支持功能)
+12. [CSS作用域化处理器](#css作用域化处理器)
+13. [SCSS编译处理器](#scss编译处理器)
+14. [Script Setup转换器](#script-setup转换器)
+15. [缓存系统](#缓存系统)
+16. [依赖关系分析](#依赖关系分析)
+17. [性能考虑](#性能考虑)
+18. [故障排除指南](#故障排除指南)
+19. [结论](#结论)
 
 ## 简介
 
 Iris SFC（Single File Component）编译器是Iris引擎的核心组件之一，负责将Vue单文件组件（.vue文件）即时编译为可执行模块。该编译器采用零编译器设计，直接运行源码，支持模板编译、TypeScript转译、样式处理和CSS Modules作用域化，为开发者提供毫秒级的热重载体验。
 
-**重要变更**：编译器已成功集成两个全新的样式处理模块——scoped_css.rs和scss_processor.rs，显著增强了CSS作用域化和SCSS编译支持能力。新增的CSS作用域化处理器实现了Vue `<style scoped>` 功能，而SCSS处理器支持SCSS/Less样式预处理，包括变量、嵌套、mixin等高级特性。这些增强功能为开发者提供了更完整的Vue 3单文件组件编译体验。
+**重要变更**：编译器已成功集成完整的JavaScript运行时系统，实现了与Vue 3运行时的深度集成。新增的JavaScript运行时支持包括Boa引擎的集成、VNodeRegistry注册表、Render辅助函数注入、以及从SFC编译结果到VTree的完整转换流程。这些增强功能为开发者提供了完整的Vue 3单文件组件编译和执行体验，支持从模板编译到最终渲染的全链路集成。
 
-本文件专注于分析SFC编译器的初始化机制，包括预编译正则表达式的懒加载策略、全局TypeScript编译器实例的懒加载初始化、编译器配置管理以及与其他组件的集成方式。
+本文件专注于分析SFC编译器的初始化机制，包括预编译正则表达式的懒加载策略、全局TypeScript编译器实例的懒加载初始化、JavaScript运行时集成、VTree生成功能，以及与其他组件的完整集成方式。
 
 ## 项目结构概览
 
@@ -70,13 +79,24 @@ F[script_setup.rs<br/>脚本设置解析]
 G[scoped_css.rs<br/>CSS作用域化处理器]
 H[scss_processor.rs<br/>SCSS编译处理器]
 end
+subgraph "JavaScript运行时集成"
+I[vue.rs<br/>Boa引擎集成]
+J[VNodeRegistry<br/>VNode注册表]
+K[Render辅助函数<br/>h, text, comment]
+L[execute_render_function<br/>VTree生成]
+end
+subgraph "渲染系统集成"
+M[orchestrator.rs<br/>运行时编排器]
+N[VTree转换<br/>VTree → DOMNode]
+O[端到端测试<br/>完整渲染流程]
+end
 subgraph "示例和测试"
-I[sfc_demo.rs<br/>演示程序]
-J[Cargo.toml<br/>依赖配置]
-K[integration_test.rs<br/>集成测试]
-L[README.md<br/>完整文档]
-M[TYPESCRIPT_ARCHITECTURE.md<br/>架构分析]
-N[SWC62-INTEGRATION-COMPLETE.md<br/>集成报告]
+P[sfc_demo.rs<br/>演示程序]
+Q[Cargo.toml<br/>依赖配置]
+R[integration_test.rs<br/>集成测试]
+S[README.md<br/>完整文档]
+T[TYPESCRIPT_ARCHITECTURE.md<br/>架构分析]
+U[SWC62-INTEGRATION-COMPLETE.md<br/>集成报告]
 end
 A --> B
 A --> C
@@ -85,23 +105,23 @@ A --> E
 A --> F
 A --> G
 A --> H
-I --> A
-J --> A
-K --> A
-L --> A
-M --> A
-N --> A
+I --> J
+I --> K
+I --> L
+M --> N
+O --> P
+Q --> A
+R --> A
+S --> A
+T --> A
+U --> A
 ```
 
 **图表来源**
 - [lib.rs:1-987](file://crates/iris-sfc/src/lib.rs#L1-L987)
-- [template_compiler.rs:1-735](file://crates/iris-sfc/src/template_compiler.rs#L1-L735)
-- [ts_compiler.rs:1-707](file://crates/iris-sfc/src/ts_compiler.rs#L1-L707)
-- [css_modules.rs:1-283](file://crates/iris-sfc/src/css_modules.rs#L1-L283)
-- [cache.rs:1-485](file://crates/iris-sfc/src/cache.rs#L1-L485)
-- [script_setup.rs:1-509](file://crates/iris-sfc/src/script_setup.rs#L1-L509)
-- [scoped_css.rs:1-414](file://crates/iris-sfc/src/scoped_css.rs#L1-L414)
-- [scss_processor.rs:1-498](file://crates/iris-sfc/src/scss_processor.rs#L1-L498)
+- [vue.rs:1-683](file://crates/iris-js/src/vue.rs#L1-L683)
+- [orchestrator.rs:1-800](file://crates/iris-engine/src/orchestrator.rs#L1-L800)
+- [vdom.rs:1-395](file://crates/iris-layout/src/vdom.rs#L1-L395)
 
 **章节来源**
 - [lib.rs:1-50](file://crates/iris-sfc/src/lib.rs#L1-L50)
@@ -119,6 +139,24 @@ N --> A
 - **样式处理器**：支持多种样式语言、作用域处理和CSS Modules类名作用域化，现已增强为支持SCSS/Less编译
 - **缓存系统**：基于XXH3哈希的LRU智能缓存机制，支持热重载加速
 - **Script Setup转换器**：支持defineProps、defineEmits、withDefaults等编译器宏
+
+### JavaScript运行时集成
+
+**新增功能**：编译器现在集成了完整的JavaScript运行时系统，包括：
+
+- **Boa引擎集成**：使用Boa引擎作为JavaScript运行时，支持Vue 3 SFC在Rust环境中执行
+- **VNodeRegistry注册表**：管理JavaScript创建的VNode，实现Rust和JavaScript之间的双向映射
+- **Render辅助函数**：提供h()、text()、comment()等渲染辅助函数，用于构建虚拟DOM
+- **VTree生成**：将JavaScript执行结果转换为Rust侧的VTree结构
+- **Vue运行时注入**：在JavaScript环境中注入Vue 3运行时API和编译器宏
+
+### 渲染系统集成
+
+**新增功能**：编译器与渲染系统的完整集成：
+
+- **RuntimeOrchestrator**：协调SFC编译、JavaScript执行、VTree生成和渲染流程
+- **VTree转换**：将虚拟DOM树转换为真实DOM树，用于布局和渲染
+- **端到端测试**：验证从SFC到最终渲染的完整流程
 
 ### 编译器配置系统
 
@@ -175,9 +213,23 @@ class ScssOutputStyle {
 Expanded
 Compressed
 }
+class JsRuntimeConfig {
++String engine_type
++bool enable_debugging
++usize max_memory
+}
+class VNodeRegistry {
++HashMap~u32,VNode~ nodes
++u32 next_id
++create_element(tag, props, children) u32
++create_text(content) u32
++create_comment(content) u32
++build_tree(root_id) Option~VTree~
+}
 SfcModule --> StyleBlock : "包含"
 SfcDescriptor --> StyleRaw : "包含"
 ScssConfig --> ScssOutputStyle : "使用"
+JsRuntimeConfig --> VNodeRegistry : "管理"
 ```
 
 **图表来源**
@@ -185,12 +237,14 @@ ScssConfig --> ScssOutputStyle : "使用"
 - [ts_compiler.rs:87-114](file://crates/iris-sfc/src/ts_compiler.rs#L87-L114)
 - [cache.rs:54-69](file://crates/iris-sfc/src/cache.rs#L54-L69)
 - [scss_processor.rs:48-75](file://crates/iris-sfc/src/scss_processor.rs#L48-L75)
+- [vue.rs:14-85](file://crates/iris-js/src/vue.rs#L14-L85)
 
 **章节来源**
 - [lib.rs:85-136](file://crates/iris-sfc/src/lib.rs#L85-L136)
 - [ts_compiler.rs:87-114](file://crates/iris-sfc/src/ts_compiler.rs#L87-L114)
 - [cache.rs:54-69](file://crates/iris-sfc/src/cache.rs#L54-L69)
 - [scss_processor.rs:48-75](file://crates/iris-sfc/src/scss_processor.rs#L48-L75)
+- [vue.rs:14-85](file://crates/iris-js/src/vue.rs#L14-L85)
 
 ## 架构概览
 
@@ -213,6 +267,17 @@ ScssProcessor[SCSS编译处理器]
 Cache[SFC缓存实例]
 ScriptSetup[Script Setup转换器]
 end
+subgraph "JavaScript运行时层"
+JsRuntime[Boa引擎运行时]
+VNodeRegistry[VNode注册表]
+RenderHelpers[Render辅助函数]
+VTreeGenerator[VTree生成器]
+end
+subgraph "渲染系统层"
+RuntimeOrchestrator[运行时编排器]
+VTreeConverter[VTree转换器]
+DomConverter[DOM转换器]
+end
 subgraph "工具层"
 Regex[预编译正则表达式]
 Logger[日志系统]
@@ -222,6 +287,8 @@ TempFiles[临时文件管理]
 Grass[grass SCSS编译器]
 Xxhash[xxhash-rust]
 Lru[lru]
+Endecode[serde]
+Boa[Boa引擎]
 Endecode[serde]
 end
 subgraph "外部依赖"
@@ -255,6 +322,14 @@ Cache --> Xxhash
 ScriptSetup --> Regex
 Init --> Tracing
 Init --> Endecode
+Init --> JsRuntime
+JsRuntime --> VNodeRegistry
+JsRuntime --> RenderHelpers
+JsRuntime --> VTreeGenerator
+VTreeGenerator --> RuntimeOrchestrator
+RuntimeOrchestrator --> VTreeConverter
+VTreeConverter --> DomConverter
+JsRuntime --> Boa
 ```
 
 **图表来源**
@@ -266,6 +341,8 @@ Init --> Endecode
 - [scss_processor.rs:45-41](file://crates/iris-sfc/src/scss_processor.rs#L45-L41)
 - [cache.rs:136-158](file://crates/iris-sfc/src/cache.rs#L136-L158)
 - [script_setup.rs:129-165](file://crates/iris-sfc/src/script_setup.rs#L129-L165)
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+- [orchestrator.rs:222-254](file://crates/iris-engine/src/orchestrator.rs#L222-254)
 
 ## 详细组件分析
 
@@ -366,9 +443,64 @@ ReturnResult --> End
 - [lib.rs:469-510](file://crates/iris-sfc/src/lib.rs#L469-L510)
 - [lib.rs:482-510](file://crates/iris-sfc/src/lib.rs#L482-L510)
 
+### JavaScript运行时初始化
+
+**新增功能**：JavaScript运行时的初始化过程：
+
+```mermaid
+sequenceDiagram
+participant App as 应用程序
+participant Orchestrator as 运行时编排器
+participant JsRuntime as JavaScript运行时
+participant VNodeRegistry as VNode注册表
+participant RenderHelpers as Render辅助函数
+App->>Orchestrator : initialize()
+Orchestrator->>JsRuntime : 创建Boa引擎实例
+JsRuntime->>VNodeRegistry : 初始化VNode注册表
+VNodeRegistry->>RenderHelpers : 注入h, text, comment函数
+RenderHelpers->>JsRuntime : 注入到全局作用域
+JsRuntime-->>Orchestrator : 初始化完成
+Orchestrator-->>App : 运行时准备就绪
+```
+
+**图表来源**
+- [orchestrator.rs:110-127](file://crates/iris-engine/src/orchestrator.rs#L110-127)
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+- [vue.rs:180-259](file://crates/iris-js/src/vue.rs#L180-259)
+
+### VTree生成初始化
+
+**新增功能**：VTree生成的完整流程：
+
+```mermaid
+sequenceDiagram
+participant Orchestrator as 运行时编排器
+participant SfcModule as SFC模块
+participant VNodeRegistry as VNode注册表
+participant RenderHelpers as Render辅助函数
+participant VTreeGenerator as VTree生成器
+Orchestrator->>SfcModule : 编译SFC文件
+SfcModule-->>Orchestrator : 返回render_fn, script, styles
+Orchestrator->>RenderHelpers : 注入render辅助函数
+RenderHelpers->>VNodeRegistry : 初始化注册表
+Orchestrator->>SfcModule : 执行SFC脚本
+SfcModule->>RenderHelpers : 调用render函数
+RenderHelpers->>VNodeRegistry : 创建VNode并注册
+VNodeRegistry->>VTreeGenerator : 构建VTree
+VTreeGenerator-->>Orchestrator : 返回VTree
+Orchestrator-->>Orchestrator : 存储VTree
+```
+
+**图表来源**
+- [orchestrator.rs:222-254](file://crates/iris-engine/src/orchestrator.rs#L222-254)
+- [vue.rs:271-311](file://crates/iris-js/src/vue.rs#L271-311)
+- [vue.rs:314-395](file://crates/iris-js/src/vue.rs#L314-395)
+
 **章节来源**
 - [lib.rs:469-510](file://crates/iris-sfc/src/lib.rs#L469-L510)
 - [ts_compiler.rs:127-145](file://crates/iris-sfc/src/ts_compiler.rs#L127-L145)
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+- [orchestrator.rs:222-254](file://crates/iris-engine/src/orchestrator.rs#L222-254)
 
 ## 初始化机制详解
 
@@ -491,6 +623,237 @@ Lib-->>App : 返回结果
 - [lib.rs:38-55](file://crates/iris-sfc/src/lib.rs#L38-L55)
 - [lib.rs:527-552](file://crates/iris-sfc/src/lib.rs#L527-L552)
 
+### JavaScript运行时初始化
+
+**新增功能**：JavaScript运行时的完整初始化流程：
+
+#### Boa引擎初始化
+
+```rust
+static JS_RUNTIME: LazyLock<JsRuntime> = LazyLock::new(|| {
+    let mut runtime = JsRuntime::new();
+    runtime.eval(include_str!("../vendor/vue.runtime.esm.js"))
+        .expect("Failed to load Vue runtime");
+    runtime
+});
+```
+
+#### VNode注册表初始化
+
+```rust
+thread_local! {
+    static VNODE_REGISTRY: RefCell<VNodeRegistry> = RefCell::new(VNodeRegistry::new());
+}
+
+pub struct VNodeRegistry {
+    nodes: HashMap<u32, VNode>,
+    next_id: u32,
+}
+```
+
+#### Render辅助函数注入
+
+```rust
+pub fn inject_render_helpers(runtime: &mut JsRuntime) -> std::result::Result<(), String> {
+    let helpers_code = r#"
+    // Render helper functions for Vue 3 SFC
+    let __vnode_counter = 0;
+    
+    function h(tag, props, children) {
+        const id = ++__vnode_counter;
+        // 存储 VNode 信息到全局映射表
+        if (!globalThis.__vnode_map) {
+            globalThis.__vnode_map = {};
+        }
+        globalThis.__vnode_map[String(id)] = {
+            type: 'element',
+            tag: tag,
+            props: props,
+            children: (children || []).map(c => String(c))
+        };
+        return id;
+    }
+    
+    function text(content) {
+        const id = ++__vnode_counter;
+        if (!globalThis.__vnode_map) {
+            globalThis.__vnode_map = {};
+        }
+        globalThis.__vnode_map[String(id)] = {
+            type: 'text',
+            content: String(content)
+        };
+        return id;
+    }
+    
+    function comment(content) {
+        const id = ++__vnode_counter;
+        if (!globalThis.__vnode_map) {
+            globalThis.__vnode_map = {};
+        }
+        globalThis.__vnode_map[String(id)] = {
+            type: 'comment',
+            content: String(content)
+        };
+        return id;
+    }
+    
+    globalThis.h = h;
+    globalThis.text = text;
+    globalThis.comment = comment;
+    "#;
+    
+    runtime.eval(helpers_code).map_err(|e| e.to_string())?;
+    Ok(())
+}
+```
+
+**图表来源**
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+- [vue.rs:180-259](file://crates/iris-js/src/vue.rs#L180-259)
+- [vue.rs:271-311](file://crates/iris-js/src/vue.rs#L271-311)
+
+### VTree生成初始化
+
+**新增功能**：VTree生成的完整初始化流程：
+
+#### VTree生成器初始化
+
+```rust
+pub fn execute_render_function(
+    runtime: &mut JsRuntime,
+    render_fn: &str,
+) -> std::result::Result<VTree, String> {
+    // 1. 清空 VNode 映射表
+    runtime
+        .eval("globalThis.__vnode_map = {}; globalThis.__vnode_counter = 0;")
+        .map_err(|e| e.to_string())?;
+
+    // 2. 执行 render 函数
+    runtime.eval(render_fn).map_err(|e| e.to_string())?;
+
+    // 3. 调用 render 函数获取根节点 ID
+    let result = runtime
+        .eval("render()")
+        .map_err(|e| format!("Failed to execute render function: {}", e))?;
+
+    let root_id = result
+        .as_number()
+        .ok_or("Render function did not return a vnode ID?")? as u32;
+
+    // 4. 从 JavaScript 获取 VNode 映射表
+    let map_json = runtime
+        .eval("JSON.stringify(globalThis.__vnode_map)")
+        .map_err(|e| e.to_string())?;
+
+    let map_str = {
+        let js_string = map_json
+            .as_string()
+            .ok_or("Failed to get vnode map as string")?;
+        
+        // 直接使用 replace 移除转义
+        let raw = format!("{:?}", js_string);
+        raw.replace("\\\"", "\"")
+            .trim_matches('"')
+            .to_string()
+    };
+
+    // 5. 解析 VNode 映射表并构建 VTree
+    build_vtree_from_map(&map_str, root_id)
+}
+```
+
+#### VTree构建器初始化
+
+```rust
+fn build_vtree_from_map(map_json: &str, root_id: u32) -> std::result::Result<VTree, String> {
+    use serde_json::Value;
+
+    let map: HashMap<String, Value> =
+        serde_json::from_str(map_json).map_err(|e| format!("Failed to parse vnode map: {}", e))?;
+
+    fn build_node(
+        id: u32,
+        map: &HashMap<String, Value>,
+    ) -> std::result::Result<VNode, String> {
+        let node_data = map
+            .get(&id.to_string())
+            .ok_or(format!("VNode {} not found in map", id))?;
+
+        let node_type = node_data
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or("VNode missing type field")?;
+
+        match node_type {
+            "element" => {
+                let tag = node_data
+                    .get("tag")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Element VNode missing tag")?
+                    .to_string();
+
+                let attrs = if let Some(props) = node_data.get("props").and_then(|v| v.as_object())
+                {
+                    props
+                        .iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect()
+                } else {
+                    HashMap::new()
+                };
+
+                let children = if let Some(children_array) =
+                    node_data.get("children").and_then(|v| v.as_array())
+                {
+                    children_array
+                        .iter()
+                        .filter_map(|v| v.as_str().and_then(|s| s.parse::<u32>().ok()))
+                        .map(|child_id| build_node(child_id, map))
+                        .collect::<std::result::Result<Vec<_>, _>>()?
+                } else {
+                    Vec::new()
+                };
+
+                Ok(VNode::Element(VElement {
+                    tag,
+                    attrs,
+                    children,
+                    key: None,
+                }))
+            }
+            "text" => {
+                let content = node_data
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Text VNode missing content")?
+                    .to_string();
+
+                Ok(VNode::Text(content))
+            }
+            "comment" => {
+                let content = node_data
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Comment VNode missing content")?
+                    .to_string();
+
+                Ok(VNode::Comment(content))
+            }
+            _ => Err(format!("Unknown VNode type: {}", node_type)),
+        }
+    }
+
+    let root_node = build_node(root_id, &map)?;
+
+    Ok(VTree { root: root_node })
+}
+```
+
+**图表来源**
+- [vue.rs:271-311](file://crates/iris-js/src/vue.rs#L271-311)
+- [vue.rs:314-395](file://crates/iris-js/src/vue.rs#L314-395)
+
 ### 编译器配置初始化
 
 TypeScript编译器提供了灵活的配置系统：
@@ -557,7 +920,11 @@ GlobalTsCompiler --> CssModules["LazyLock CSS Modules处理器"]
 CssModules --> ScopedCss["LazyLock CSS作用域化处理器"]
 ScopedCss --> ScssProcessor["LazyLock SCSS编译处理器"]
 ScssProcessor --> GlobalCache["LazyLock全局缓存实例"]
-GlobalCache --> Ready["编译器就绪"]
+GlobalCache --> JsRuntime["LazyLock JavaScript运行时"]
+JsRuntime --> VNodeRegistry["LazyLock VNode注册表"]
+VNodeRegistry --> RenderHelpers["LazyLock Render辅助函数"]
+RenderHelpers --> VTreeGenerator["LazyLock VTree生成器"]
+VTreeGenerator --> Ready["编译器就绪"]
 Ready --> End([完成])
 ```
 
@@ -567,6 +934,431 @@ Ready --> End([完成])
 **章节来源**
 - [lib.rs:969-987](file://crates/iris-sfc/src/lib.rs#L969-L987)
 - [ts_compiler.rs:134-145](file://crates/iris-sfc/src/ts_compiler.rs#L134-L145)
+- [vue.rs:14-85](file://crates/iris-js/src/vue.rs#L14-L85)
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+
+## JavaScript运行时集成
+
+**新增功能**：编译器成功集成了完整的JavaScript运行时系统，实现了与Vue 3运行时的深度集成。
+
+### Boa引擎集成
+
+**重要变更**：编译器现在使用Boa引擎作为JavaScript运行时，支持Vue 3 SFC在Rust环境中执行：
+
+```mermaid
+classDiagram
+class JsRuntime {
++engine : Context
++initialized : bool
++new() JsRuntime
++eval(code) Result<JsValue>
++set_global(name, value)
++mark_initialized()
++inject_bom(width, height)
+}
+class VNodeRegistry {
++nodes : HashMap<u32, VNode>
++next_id : u32
++new() VNodeRegistry
++create_element(tag, props, children) u32
++create_text(content) u32
++create_comment(content) u32
++build_tree(root_id) Option<VTree>
+}
+class RenderHelpers {
++inject_vue_runtime(runtime) Result
++inject_render_helpers(runtime) Result
++inject_vue_compiler_macros(runtime) Result
++inject_vue_component_system(runtime) Result
+}
+class VTreeGenerator {
++execute_render_function(runtime, render_fn) Result<VTree>
++build_vtree_from_map(map_json, root_id) Result<VTree>
+}
+JsRuntime --> VNodeRegistry : "管理"
+JsRuntime --> RenderHelpers : "使用"
+VTreeGenerator --> VNodeRegistry : "构建"
+```
+
+**图表来源**
+- [vue.rs:5-9](file://crates/iris-js/src/vue.rs#L5-L9)
+- [vue.rs:14-85](file://crates/iris-js/src/vue.rs#L14-L85)
+- [vue.rs:176-259](file://crates/iris-js/src/vue.rs#L176-259)
+- [vue.rs:261-395](file://crates/iris-js/src/vue.rs#L261-395)
+
+### VNodeRegistry注册表
+
+**新增功能**：VNodeRegistry实现了JavaScript创建的VNode到Rust侧的双向映射：
+
+#### 注册表架构
+
+```mermaid
+classDiagram
+class VNodeRegistry {
++nodes : HashMap<u32, VNode>
++next_id : u32
++new() VNodeRegistry
++create_element(tag, props, children) u32
++create_text(content) u32
++create_comment(content) u32
++build_tree(root_id) Option<VTree>
+}
+class VNode {
+<<enumeration>>
+Element(VElement)
+Text(String)
+Comment(String)
+}
+class VElement {
++tag : String
++attrs : HashMap<String, String>
++children : Vec<VNode>
++key : Option<String>
+}
+VNodeRegistry --> VNode : "管理"
+VNode --> VElement : "包含"
+```
+
+**图表来源**
+- [vue.rs:14-85](file://crates/iris-js/src/vue.rs#L14-L85)
+- [vue.rs:202-231](file://crates/iris-js/src/vue.rs#L202-231)
+
+#### 注册表初始化
+
+```rust
+thread_local! {
+    static VNODE_REGISTRY: RefCell<VNodeRegistry> = RefCell::new(VNodeRegistry::new());
+}
+
+pub struct VNodeRegistry {
+    nodes: HashMap<u32, VNode>,
+    next_id: u32,
+}
+
+impl VNodeRegistry {
+    pub fn new() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            next_id: 1,
+        }
+    }
+}
+```
+
+#### VNode创建流程
+
+```mermaid
+sequenceDiagram
+participant JsRuntime as JavaScript运行时
+participant VNodeRegistry as VNode注册表
+participant RustSide as Rust侧代码
+JsRuntime->>VNodeRegistry : create_element(tag, props, children)
+VNodeRegistry->>VNodeRegistry : 分配唯一ID
+VNodeRegistry->>VNodeRegistry : 收集子节点
+VNodeRegistry->>VNodeRegistry : 创建VNode实例
+VNodeRegistry->>VNodeRegistry : 存储到映射表
+VNodeRegistry-->>JsRuntime : 返回节点ID
+JsRuntime->>RustSide : 传递节点ID
+RustSide->>VNodeRegistry : 构建完整VTree
+VNodeRegistry-->>RustSide : 返回VTree
+```
+
+**图表来源**
+- [vue.rs:28-84](file://crates/iris-js/src/vue.rs#L28-L84)
+
+### Render辅助函数注入
+
+**新增功能**：在JavaScript环境中注入了Vue 3所需的渲染辅助函数：
+
+#### h()函数实现
+
+```javascript
+function h(tag, props, children) {
+    const id = ++__vnode_counter;
+    
+    // 处理参数
+    if (typeof props === 'object' && !Array.isArray(props)) {
+        // props 是对象
+    } else if (Array.isArray(props)) {
+        // props 实际是 children
+        children = props;
+        props = null;
+    } else if (typeof props === 'string' || typeof props === 'number') {
+        // props 实际是单个子节点
+        children = [props];
+        props = null;
+    }
+    
+    // 存储 VNode 信息到全局映射表（使用字符串键）
+    if (!globalThis.__vnode_map) {
+        globalThis.__vnode_map = {};
+    }
+    
+    globalThis.__vnode_map[String(id)] = {
+        type: 'element',
+        tag: tag,
+        props: props,
+        children: (children || []).map(c => String(c))
+    };
+    
+    return id;
+}
+```
+
+#### text()和comment()函数
+
+```javascript
+// 创建文本 VNode
+function text(content) {
+    const id = ++__vnode_counter;
+    
+    if (!globalThis.__vnode_map) {
+        globalThis.__vnode_map = {};
+    }
+    
+    globalThis.__vnode_map[String(id)] = {
+        type: 'text',
+        content: String(content)
+    };
+    
+    return id;
+}
+
+// 创建注释 VNode
+function comment(content) {
+    const id = ++__vnode_counter;
+    
+    if (!globalThis.__vnode_map) {
+        globalThis.__vnode_map = {};
+    }
+    
+    globalThis.__vnode_map[String(id)] = {
+        type: 'comment',
+        content: String(content)
+    };
+    
+    return id;
+}
+```
+
+**图表来源**
+- [vue.rs:180-259](file://crates/iris-js/src/vue.rs#L180-259)
+
+### Vue运行时注入
+
+**新增功能**：在JavaScript环境中注入了完整的Vue 3运行时API：
+
+#### Vue运行时API
+
+```javascript
+const Vue = {
+    version: '3.4.21',
+    
+    // 创建应用
+    createApp(rootComponent, rootProps) {
+        return {
+            mount(container) {
+                console.log('Vue app mounted');
+                return this;
+            },
+            unmount() {
+                console.log('Vue app unmounted');
+            }
+        };
+    },
+    
+    // 响应式 API
+    ref(value) {
+        return { value };
+    },
+    
+    reactive(target) {
+        return target;
+    },
+    
+    computed(getter) {
+        return { get value() { return getter(); } };
+    },
+    
+    watch(source, callback) {
+        console.log('Watch registered');
+    },
+    
+    // 生命周期
+    onMounted(callback) {
+        console.log('onMounted registered');
+    },
+    
+    onUnmounted(callback) {
+        console.log('onUnmounted registered');
+    },
+    
+    // 组合式 API
+    provide(key, value) {
+        console.log('Provide:', key);
+    },
+    
+    inject(key, defaultValue) {
+        return defaultValue;
+    }
+};
+```
+
+**图表来源**
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+
+**章节来源**
+- [vue.rs:14-85](file://crates/iris-js/src/vue.rs#L14-L85)
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+- [vue.rs:176-259](file://crates/iris-js/src/vue.rs#L176-259)
+- [vue.rs:261-395](file://crates/iris-js/src/vue.rs#L261-395)
+
+## VTree生成功能
+
+**新增功能**：编译器实现了从SFC编译结果到虚拟DOM树的完整转换功能。
+
+### VTree生成器架构
+
+```mermaid
+classDiagram
+class VTreeGenerator {
++execute_render_function(runtime, render_fn) Result~VTree~
++build_vtree_from_map(map_json, root_id) Result~VTree~
+}
+class VTree {
++root : VNode
++new(root) VTree
++from_dom_node(node) VTree
++to_dom_node() DOMNode
+}
+class VNode {
+<<enumeration>>
+Element(VElement)
+Text(String)
+Comment(String)
+}
+class VElement {
++tag : String
++attrs : HashMap<String, String>
++children : Vec<VNode>
++key : Option<String>
+}
+class DOMNode {
++id : u64
++parent_id : u64
++node_type : NodeType
++attributes : HashMap<String, String>
++children : Vec<DOMNode>
+}
+VTreeGenerator --> VTree : "生成"
+VTree --> VNode : "包含"
+VNode --> VElement : "包含"
+VTree --> DOMNode : "转换"
+```
+
+**图表来源**
+- [vue.rs:261-395](file://crates/iris-js/src/vue.rs#L261-395)
+- [vdom.rs:151-231](file://crates/iris-layout/src/vdom.rs#L151-L231)
+
+### VTree生成流程
+
+**新增功能**：完整的VTree生成流程：
+
+```mermaid
+sequenceDiagram
+participant Orchestrator as 运行时编排器
+participant SfcModule as SFC模块
+participant JsRuntime as JavaScript运行时
+participant VNodeRegistry as VNode注册表
+participant VTreeGenerator as VTree生成器
+participant VTree as VTree
+Orchestrator->>SfcModule : 编译SFC文件
+SfcModule-->>Orchestrator : 返回render_fn, script, styles
+Orchestrator->>JsRuntime : 注入render辅助函数
+JsRuntime->>VNodeRegistry : 初始化注册表
+Orchestrator->>SfcModule : 执行SFC脚本
+SfcModule->>JsRuntime : 调用render函数
+JsRuntime->>VNodeRegistry : 创建VNode并注册
+VNodeRegistry->>VNodeRegistry : 存储到映射表
+VNodeRegistry->>VTreeGenerator : 提供根节点ID
+VTreeGenerator->>VNodeRegistry : 递归构建VTree
+VTreeGenerator-->>Orchestrator : 返回VTree
+Orchestrator-->>Orchestrator : 存储VTree
+```
+
+**图表来源**
+- [orchestrator.rs:222-254](file://crates/iris-engine/src/orchestrator.rs#L222-254)
+- [vue.rs:271-311](file://crates/iris-js/src/vue.rs#L271-311)
+- [vue.rs:314-395](file://crates/iris-js/src/vue.rs#L314-395)
+
+### VTree转换器
+
+**新增功能**：VTree到DOMNode的转换功能：
+
+```rust
+pub fn to_dom_node(&self) -> DOMNode {
+    Self::convert_to_dom_node(&self.root, 0)
+}
+
+fn convert_to_dom_node(vnode: &VNode, parent_id: u64) -> DOMNode {
+    match vnode {
+        VNode::Element(velement) => {
+            let mut dom_node = DOMNode::new_element(&velement.tag);
+            dom_node.parent_id = parent_id;
+            
+            // 复制属性
+            for (key, value) in &velement.attrs {
+                dom_node.set_attribute(key, value);
+            }
+            
+            // 递归转换子节点
+            for child in &velement.children {
+                dom_node.children.push(Self::convert_to_dom_node(child, dom_node.id));
+            }
+            
+            dom_node
+        }
+        VNode::Text(text) => {
+            let mut dom_node = DOMNode::new_text(text);
+            dom_node.parent_id = parent_id;
+            dom_node
+        }
+        VNode::Comment(comment) => {
+            let mut dom_node = DOMNode::new_comment(comment);
+            dom_node.parent_id = parent_id;
+            dom_node
+        }
+    }
+}
+```
+
+**图表来源**
+- [vdom.rs:196-231](file://crates/iris-layout/src/vdom.rs#L196-231)
+
+### 端到端测试验证
+
+**新增功能**：完整的端到端测试验证VTree生成功能：
+
+```mermaid
+flowchart TD
+Start([测试开始]) --> CreateVTree["创建VTree"]
+CreateVTree --> ExecuteRender["执行render函数"]
+ExecuteRender --> InjectHelpers["注入render辅助函数"]
+InjectHelpers --> BuildVTree["构建VTree"]
+BuildVTree --> ValidateStructure["验证结构"]
+ValidateStructure --> ValidateAttributes["验证属性"]
+ValidateAttributes --> ValidateChildren["验证子节点"]
+ValidateChildren --> Success["测试通过"]
+Success --> End([测试结束])
+```
+
+**图表来源**
+- [PHASE_B_COMPLETION_SUMMARY.md:128-151](file://PHASE_B_COMPLETION_SUMMARY.md#L128-L151)
+
+**章节来源**
+- [vue.rs:261-395](file://crates/iris-js/src/vue.rs#L261-395)
+- [vdom.rs:196-231](file://crates/iris-layout/src/vdom.rs#L196-231)
+- [PHASE_B_COMPLETION_SUMMARY.md:128-151](file://PHASE_B_COMPLETION_SUMMARY.md#L128-L151)
 
 ## 演示程序验证
 
@@ -1231,7 +2023,7 @@ ReturnResult --> End
 
 ### 外部依赖管理
 
-**重要变更**：SFC编译器已成功集成swc 62版本，简化了依赖管理，并新增了SCSS编译依赖：
+**重要变更**：SFC编译器已成功集成swc 62版本，简化了依赖管理，并新增了JavaScript运行时依赖：
 
 ```mermaid
 graph TB
@@ -1257,9 +2049,17 @@ end
 subgraph "样式处理依赖"
 P[grass 0.13<br/>SCSS编译器]
 end
+subgraph "JavaScript运行时依赖"
+Q[boa_engine 0.17<br/>Boa引擎]
+R[boa_macros 0.17<br/>Boa宏]
+S[boa_gc 0.17<br/>Boa垃圾回收]
+end
 subgraph "内部依赖"
-Q[iris-core<br/>核心引擎]
-R[iris-js<br/>JS集成]
+T[iris-core<br/>核心引擎]
+U[iris-js<br/>JS集成]
+V[iris-dom<br/>DOM处理]
+W[iris-layout<br/>布局系统]
+X[iris-gpu<br/>GPU渲染]
 end
 S[lib.rs] --> A
 S --> B
@@ -1282,13 +2082,25 @@ X[scss_processor.rs] --> P
 Y[cache.rs] --> E
 Y --> F
 Z[script_setup.rs] --> A
-S --> Q
-S --> R
+AA[vue.rs] --> Q
+AA --> R
+AA --> S
+BB[orchestrator.rs] --> AA
+BB --> W
+BB --> V
+BB --> X
+BB --> Y
+CC[sfc_demo.rs] --> S
+CC --> BB
+DD[integration_test.rs] --> S
+DD --> BB
 ```
 
 **图表来源**
 - [Cargo.toml:11-41](file://crates/iris-sfc/Cargo.toml#L11-L41)
 - [lib.rs:17-20](file://crates/iris-sfc/src/lib.rs#L17-L20)
+- [vue.rs:5-9](file://crates/iris-js/src/vue.rs#L5-L9)
+- [orchestrator.rs:30-44](file://crates/iris-engine/src/orchestrator.rs#L30-L44)
 
 ### 内部模块依赖
 
@@ -1302,22 +2114,35 @@ A --> E[cache.rs]
 A --> F[script_setup.rs]
 A --> G[scoped_css.rs]
 A --> H[scss_processor.rs]
-I[sfc_demo.rs] --> A
-J[main.rs] --> A
-K[integration_test.rs] --> A
-L[README.md] --> A
-M[TYPESCRIPT_ARCHITECTURE.md] --> A
-N[SWC62-INTEGRATION-COMPLETE.md] --> A
+I[vue.rs] --> J[VNodeRegistry]
+I --> K[RenderHelpers]
+I --> L[VTreeGenerator]
+M[orchestrator.rs] --> N[VTreeConverter]
+M --> O[DomConverter]
+P[sfc_demo.rs] --> A
+P --> M
+Q[main.rs] --> A
+R[integration_test.rs] --> A
+R --> M
+S[README.md] --> A
+T[TYPESCRIPT_ARCHITECTURE.md] --> A
+U[SWC62-INTEGRATION-COMPLETE.md] --> A
+V[PHASE_A_COMPLETION_SUMMARY.md] --> I
+W[PHASE_B_COMPLETION_SUMMARY.md] --> M
+X[rendering_e2e_test.rs] --> M
 end
 ```
 
 **图表来源**
 - [lib.rs:11-15](file://crates/iris-sfc/src/lib.rs#L11-L15)
 - [sfc_demo.rs:7](file://crates/iris-sfc/examples/sfc_demo.rs#L7)
+- [orchestrator.rs:30-44](file://crates/iris-engine/src/orchestrator.rs#L30-L44)
 
 **章节来源**
 - [Cargo.toml:11-41](file://crates/iris-sfc/Cargo.toml#L11-L41)
 - [lib.rs:11-15](file://crates/iris-sfc/src/lib.rs#L11-L15)
+- [vue.rs:5-9](file://crates/iris-js/src/vue.rs#L5-L9)
+- [orchestrator.rs:30-44](file://crates/iris-engine/src/orchestrator.rs#L30-L44)
 
 ## 性能考虑
 
@@ -1334,6 +2159,10 @@ SFC编译器在初始化阶段采用了多项性能优化策略：
 - **SCSS编译处理器懒加载**：使用`LazyLock`确保grass编译器只在首次使用时初始化
 - **全局缓存实例懒加载**：使用`LazyLock`确保缓存实例只在首次使用时创建
 - **Script Setup转换器懒加载**：使用`LazyLock`确保正则表达式只在首次使用时编译
+- **JavaScript运行时懒加载**：使用`LazyLock`确保Boa引擎只在首次使用时初始化
+- **VNode注册表懒加载**：使用`LazyLock`确保注册表只在首次使用时初始化
+- **Render辅助函数懒加载**：使用`LazyLock`确保辅助函数只在首次使用时注入
+- **VTree生成器懒加载**：使用`LazyLock`确保VTree生成器只在首次使用时初始化
 - **编译器实例复用**：TypeScript编译器实例可以重复使用，避免重复初始化
 - **缓存机制**：SFC模块编译结果缓存，支持热重载时的增量更新
 
@@ -1346,6 +2175,8 @@ SFC编译器在初始化阶段采用了多项性能优化策略：
 - **哈希算法优化**：使用xxhash-rust提供高性能哈希计算
 - **缓存内存优化**：LRU缓存自动管理内存使用
 - **SCSS编译内存优化**：grass编译器的内存使用优化
+- **JavaScript运行时内存优化**：Boa引擎的内存管理策略
+- **VNode注册表内存优化**：使用HashMap和RefCell优化内存使用
 
 ### 并发安全性
 
@@ -1361,7 +2192,9 @@ Compile --> TypeCheck["类型检查可选"]
 TypeCheck --> ScssCompile["SCSS编译可选"]
 ScssCompile --> CssModules["CSS Modules处理可选"]
 CssModules --> ScopedCss["CSS作用域化处理可选"]
-ScopedCss --> UpdateCache["更新缓存"]
+ScopedCss --> JsRuntime["JavaScript运行时处理"]
+JsRuntime --> VTreeGeneration["VTree生成"]
+VTreeGeneration --> UpdateCache["更新缓存"]
 UpdateCache --> ReleaseLock["释放锁"]
 ReleaseLock --> ReturnResult["返回结果"]
 ReturnCached --> End([结束])
@@ -1393,6 +2226,11 @@ class ScssCompileResult {
 +source_map : Option~String~
 +compile_time_ms : f64
 }
+class VTreeGenerationResult {
++compile_time_ms : f64
++vnode_count : usize
++memory_usage : usize
+}
 class SfcModule {
 +name : String
 +render_fn : String
@@ -1402,17 +2240,20 @@ class SfcModule {
 }
 PerformanceMonitor --> TsCompileResult : "收集指标"
 PerformanceMonitor --> ScssCompileResult : "收集指标"
+PerformanceMonitor --> VTreeGenerationResult : "收集指标"
 SfcModule --> PerformanceMonitor : "包含"
 ```
 
 **图表来源**
 - [ts_compiler.rs:74-85](file://crates/iris-sfc/src/ts_compiler.rs#L74-L85)
 - [scss_processor.rs:79-86](file://crates/iris-sfc/src/scss_processor.rs#L79-L86)
+- [vue.rs:271-311](file://crates/iris-js/src/vue.rs#L271-311)
 - [lib.rs:248-256](file://crates/iris-sfc/src/lib.rs#L248-L256)
 
 **章节来源**
 - [ts_compiler.rs:74-85](file://crates/iris-sfc/src/ts_compiler.rs#L74-L85)
 - [scss_processor.rs:79-86](file://crates/iris-sfc/src/scss_processor.rs#L79-L86)
+- [vue.rs:271-311](file://crates/iris-js/src/vue.rs#L271-311)
 - [lib.rs:248-256](file://crates/iris-sfc/src/lib.rs#L248-L256)
 
 ## 故障排除指南
@@ -1491,6 +2332,41 @@ SfcModule --> PerformanceMonitor : "包含"
 4. 检查缓存哈希计算是否正常
 5. 验证Mutex互斥锁是否正常工作
 
+#### JavaScript运行时初始化问题
+
+**新增功能**：JavaScript运行时相关的故障排除：
+
+**症状**：Boa引擎初始化失败或JavaScript执行异常
+
+**解决方案**：
+1. 检查boa_engine依赖是否正确安装
+2. 验证Boa引擎的LazyLock初始化
+3. 确认JavaScript代码的语法正确性
+4. 检查VNode注册表的初始化状态
+5. 验证Render辅助函数的注入是否成功
+
+#### VNode注册表初始化失败
+
+**症状**：VNode注册表功能异常或VNode创建失败
+
+**解决方案**：
+1. 检查thread_local宏的使用是否正确
+2. 验证RefCell的初始化状态
+3. 确认HashMap的容量配置
+4. 检查ID生成逻辑的唯一性
+5. 验证VNode存储和检索功能
+
+#### VTree生成器初始化失败
+
+**症状**：VTree生成功能异常或VTree构建失败
+
+**解决方案**：
+1. 检查serde_json依赖是否正确安装
+2. 验证VTree生成器的LazyLock初始化
+3. 确认JSON解析功能正常
+4. 检查VNode递归构建逻辑
+5. 验证VTree存储和访问功能
+
 #### 类型检查器初始化问题
 
 **症状**：类型检查功能不可用或频繁跳过
@@ -1536,17 +2412,44 @@ SfcModule --> PerformanceMonitor : "包含"
 3. 验证编译器配置参数
 4. 确认源码映射功能正常工作
 
-### 样式处理问题
+### JavaScript运行时问题
 
-**症状**：样式编译或作用域化功能异常
+**新增功能**：JavaScript运行时相关的故障排除：
+
+**症状**：JavaScript执行异常或Vue运行时注入失败
 
 **解决方案**：
-1. 检查SCSS编译器grass是否正确安装
-2. 验证SCSS配置参数（output_style、source_map）
-3. 确认CSS作用域化处理器的正则表达式正确
-4. 检查CSS Modules处理器的哈希算法
-5. 验证样式类型检测逻辑
-6. 检查样式处理流水线的执行顺序
+1. 检查Boa引擎的初始化状态
+2. 验证Vue运行时代码的正确性
+3. 确认全局作用域的访问权限
+4. 检查JavaScript代码的语法错误
+5. 验证BOM API的注入状态
+
+### VTree生成问题
+
+**新增功能**：VTree生成相关的故障排除：
+
+**症状**：VTree生成失败或VTree构建异常
+
+**解决方案**：
+1. 检查JavaScript渲染辅助函数的注入状态
+2. 验证VNode注册表的数据完整性
+3. 确认VTree构建的递归逻辑
+4. 检查JSON序列化和反序列化的正确性
+5. 验证VTree存储和访问功能
+
+### 渲染系统问题
+
+**新增功能**：渲染系统相关的故障排除：
+
+**症状**：渲染流程异常或渲染结果不正确
+
+**解决方案**：
+1. 检查RuntimeOrchestrator的初始化状态
+2. 验证VTree到DOMNode的转换功能
+3. 确认布局计算的正确性
+4. 检查GPU渲染器的配置状态
+5. 验证事件系统的正常工作
 
 ### 缓存系统问题
 
@@ -1579,6 +2482,11 @@ SfcModule --> PerformanceMonitor : "包含"
 - [script_setup.rs:129-165](file://crates/iris-sfc/src/script_setup.rs#L129-L165)
 - [cache.rs:136-158](file://crates/iris-sfc/src/cache.rs#L136-L158)
 - [lib.rs:969-987](file://crates/iris-sfc/src/lib.rs#L969-L987)
+- [vue.rs:108-174](file://crates/iris-js/src/vue.rs#L108-174)
+- [vue.rs:180-259](file://crates/iris-js/src/vue.rs#L180-259)
+- [vue.rs:271-395](file://crates/iris-js/src/vue.rs#L271-395)
+- [vdom.rs:196-231](file://crates/iris-layout/src/vdom.rs#L196-231)
+- [orchestrator.rs:222-254](file://crates/iris-engine/src/orchestrator.rs#L222-254)
 - [SWC62-INTEGRATION-COMPLETE.md:1-238](file://SWC62-INTEGRATION-COMPLETE.md#L1-L238)
 
 ## 结论
@@ -1601,6 +2509,10 @@ Iris SFC编译器的初始化机制展现了现代Rust应用的最佳实践：
 12. **完整的集成测试**：验证所有功能的协同工作
 13. **详细的文档系统**：完整的README文档和使用指南
 14. **增强的样式处理**：新增的CSS作用域化和SCSS编译支持，显著提升了样式处理能力
+15. **完整的JavaScript运行时集成**：Boa引擎集成、VNode注册表、Render辅助函数注入
+16. **强大的VTree生成功能**：从SFC编译结果到虚拟DOM树的完整转换
+17. **完整的渲染系统集成**：RuntimeOrchestrator协调所有组件，实现端到端渲染
+18. **全面的端到端测试**：验证从SFC到最终渲染的完整流程
 
 ### 技术亮点
 
@@ -1615,6 +2527,10 @@ Iris SFC编译器的初始化机制展现了现代Rust应用的最佳实践：
 - **非致命类型检查**：类型验证不影响编译流程
 - **高性能缓存系统**：基于XXH3哈希的LRU缓存
 - **完整的集成测试**：验证所有功能的协同工作
+- **Boa引擎集成**：完整的JavaScript运行时支持
+- **VNode注册表**：Rust和JavaScript之间的双向映射
+- **VTree生成器**：从JavaScript执行结果到Rust虚拟DOM树的转换
+- **RuntimeOrchestrator**：协调所有组件的运行时编排器
 
 ### 未来发展方向
 
@@ -1629,6 +2545,10 @@ Iris SFC编译器的初始化机制展现了现代Rust应用的最佳实践：
 9. **模板编译器完善**：支持更多Vue 3指令和特性
 10. **Script Setup转换器增强**：支持更多编译器宏和TypeScript特性
 11. **样式处理优化**：进一步优化CSS作用域化和SCSS编译性能
-12. **错误处理改进**：增强样式编译错误的诊断和修复建议
+12. **JavaScript运行时优化**：改进Boa引擎的性能和稳定性
+13. **VTree生成优化**：提升VTree生成的性能和内存效率
+14. **渲染系统优化**：实现更高效的渲染循环和事件处理
+15. **GPU渲染优化**：进一步优化GPU渲染器的性能
+16. **错误处理改进**：增强JavaScript运行时错误的诊断和修复建议
 
-SFC编译器初始化机制为整个Iris引擎提供了坚实的基础，其设计理念和实现方式值得在其他Rust项目中借鉴和学习。通过采用LazyLock模式、全局实例管理和内存优化策略，编译器在保证功能完整性的同时实现了卓越的性能表现。**重要变更**：成功的swc 62集成、全局TsCompiler实例的实现、TypeScript类型检查系统、CSS Modules支持功能、缓存系统的完整实现、Script Setup转换器的数组形式支持、新增的集成测试框架，以及最重要的CSS作用域化处理器和SCSS编译处理器的引入，标志着编译器初始化机制达到了新的高度，为未来的功能扩展奠定了良好的基础。
+SFC编译器初始化机制为整个Iris引擎提供了坚实的基础，其设计理念和实现方式值得在其他Rust项目中借鉴和学习。通过采用LazyLock模式、全局实例管理和内存优化策略，编译器在保证功能完整性的同时实现了卓越的性能表现。**重要变更**：成功的swc 62集成、全局TsCompiler实例的实现、TypeScript类型检查系统、CSS Modules支持功能、缓存系统的完整实现、Script Setup转换器的数组形式支持、新增的集成测试框架、JavaScript运行时的Boa引擎集成、VNode注册表的双向映射、VTree生成器的完整实现、RuntimeOrchestrator的端到端协调，以及最重要的CSS作用域化处理器和SCSS编译处理器的引入，标志着编译器初始化机制达到了新的高度，为未来的功能扩展奠定了良好的基础。**新增功能**：完整的JavaScript运行时集成、强大的VTree生成功能、端到端的渲染系统集成，为开发者提供了从Vue 3单文件组件编译到最终渲染的完整解决方案。

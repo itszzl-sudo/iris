@@ -522,6 +522,26 @@ impl Renderer {
         Ok(())
     }
 
+    /// 提交绘制命令到批渲染器
+    ///
+    /// # 参数
+    ///
+    /// * `command` - 绘制命令
+    pub fn submit_command(&mut self, command: DrawCommand) {
+        self.batch_renderer.submit(command);
+    }
+
+    /// 批量提交绘制命令
+    ///
+    /// # 参数
+    ///
+    /// * `commands` - 绘制命令列表
+    pub fn submit_commands(&mut self, commands: Vec<DrawCommand>) {
+        for command in commands {
+            self.batch_renderer.submit(command);
+        }
+    }
+
     /// 获取当前渲染尺寸。
     pub fn size(&self) -> winit::dpi::PhysicalSize<u32> {
         self.size

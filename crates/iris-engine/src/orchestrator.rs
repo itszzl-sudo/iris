@@ -39,6 +39,7 @@ use iris_layout::vdom::VTree;
 use iris_layout::layout::compute_layout;
 use iris_layout::css::Stylesheet;
 use iris_gpu::DrawCommand;
+use iris_gpu::Renderer;
 use iris_sfc::SfcModule;
 use std::path::Path;
 use std::time::Instant;
@@ -62,6 +63,8 @@ pub struct RuntimeOrchestrator {
     stylesheet: Stylesheet,
     /// 事件分发器
     event_dispatcher: EventDispatcher,
+    /// GPU 渲染器（可选）
+    gpu_renderer: Option<Renderer>,
     /// 视口宽度
     viewport_width: f32,
     /// 视口高度
@@ -90,6 +93,7 @@ impl RuntimeOrchestrator {
             dom_tree: None,
             stylesheet: Stylesheet::new(),
             event_dispatcher: EventDispatcher::new(),
+            gpu_renderer: None,
             viewport_width: 800.0,
             viewport_height: 600.0,
             initialized: false,
@@ -554,6 +558,88 @@ impl RuntimeOrchestrator {
     /// 重置帧率时间戳（用于测试）
     pub fn reset_frame_timer(&mut self) {
         self.last_frame_time = None;
+    }
+
+    // ==========================================
+    // GPU 渲染器集成
+    // ==========================================
+
+    /// 设置 GPU 渲染器
+    ///
+    /// # 参数
+    ///
+    /// * `renderer` - GPU 渲染器实例
+    ///
+    /// # 示例
+    ///
+    /// ```ignore
+    /// let window = event_loop.create_window(...).await?;
+    /// let renderer = Renderer::new(window).await?;
+    /// orchestrator.set_gpu_renderer(renderer);
+    /// ```
+    pub fn set_gpu_renderer(&mut self, renderer: Renderer) {
+        self.gpu_renderer = Some(renderer);
+        info!("GPU renderer attached to orchestrator");
+    }
+
+    /// 获取 GPU 渲染器的可变引用
+    pub fn gpu_renderer_mut(&mut self) -> Option<&mut Renderer> {
+        self.gpu_renderer.as_mut()
+    }
+
+    /// 执行一帧的 GPU 渲染
+    ///
+    /// 这是完整的渲染流程：
+    /// 1. 检查是否需要渲染
+    /// 2. 生成渲染命令
+    /// 3. 提交到 GPU 渲染器
+    /// 4. 执行 GPU 渲染
+    ///
+    /// # 返回
+    ///
+    /// 返回是否成功执行了渲染
+    ///
+    /// # 错误
+    ///
+    /// 如果没有设置 GPU 渲染器，返回 false
+    pub fn render_frame_gpu(&mut self) -> bool {
+        // 1. 检查帧率限制和脏标志
+        if !self.should_render_frame() || !self.dirty {
+            return false;
+        }
+
+        // 2. 检查 GPU 渲染器是否存在
+        if self.gpu_renderer.is_none() {
+            warn!("GPU renderer not set, skipping GPU rendering");
+            return false;
+        }
+
+        info!("Rendering frame with GPU...");
+
+        // 3. 生成渲染命令（在获取可变借用之前）
+        let commands = self.generate_render_commands();
+        debug!(command_count = commands.len(), "Generated render commands");
+
+        // 4. 提交命令到 GPU 渲染器并执行渲染
+        let renderer = self.gpu_renderer.as_mut().unwrap();
+        renderer.submit_commands(commands);
+
+        match renderer.render() {
+            Ok(()) => {
+                info!("GPU rendering completed successfully");
+                self.dirty = false;
+                true
+            }
+            Err(e) => {
+                warn!(error = ?e, "GPU rendering failed");
+                false
+            }
+        }
+    }
+
+    /// 检查 GPU 渲染器是否已设置
+    pub fn has_gpu_renderer(&self) -> bool {
+        self.gpu_renderer.is_some()
     }
 
     // ==========================================
