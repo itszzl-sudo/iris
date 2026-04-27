@@ -100,16 +100,17 @@
 - [x] 与 Row/Column 组合测试
 - [x] 3 个测试验证
 
-### 1.7 其他布局算法 [ ]
-- [ ] Grid 布局
-- [ ] Absolute 定位
-- [ ] Fixed 定位
-- [ ] Sticky 定位
-- [ ] Float 布局
-- [ ] Table 布局
+### 1.7 其他布局算法 ✅
+- [x] Grid 布局（完整实现，支持 fr 单位、colspan/rowspan）
+- [x] Absolute 定位（包含块相对定位，支持 px/%/auto）
+- [x] Fixed 定位（PositionType::Fixed 支持）
+- [x] Sticky 定位（滚动状态检测 + 边界计算）
+- [x] Float 布局（Left/Right 浮动，Clear 清除浮动，流式布局）
+- [x] Table 布局（colspan/rowspan, border-collapse, border-spacing）
 
-**测试覆盖**: 108 个测试  
-**状态**: ✅ 完全完成（Flexbox 100%）
+**测试覆盖**: 182 个测试（+74 布局算法）  
+**状态**: ✅ Phase 1 完全完成（100%）  
+**代码量**: layout.rs (2702 行) + positioning.rs (498 行) + grid.rs (499 行) + float_layout.rs (570 行) + table_layout.rs (533 行) = 4,802 行
 
 ---
 

@@ -32,6 +32,8 @@ pub mod domtree;
 pub mod event;
 pub mod positioning;
 pub mod grid;
+pub mod float_layout;
+pub mod table_layout;
 
 // 重新导出常用类型
 pub use layout::{
@@ -54,6 +56,14 @@ pub use grid::{
     GridTrackSize, GridPlacement, GridItemConfig, GridConfig,
     GridCellLayout, GridLayout,
     compute_grid_layout,
+};
+pub use float_layout::{
+    FloatConfig, FloatContext, FloatLayout, FloatedElement,
+    compute_float_layout, clear_floats, calculate_available_width,
+};
+pub use table_layout::{
+    TableDisplayType, BorderCollapse, TableConfig, TableCell, TableRow, TableLayout,
+    compute_table_layout, parse_cell_spans, get_cell_absolute_position,
 };
 
 use iris_core;
