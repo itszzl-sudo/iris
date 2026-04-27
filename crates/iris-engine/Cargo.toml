@@ -18,5 +18,14 @@ iris-dom.workspace = true
 iris-js.workspace = true
 iris-sfc.workspace = true
 tracing = "0.1"
+tracing-subscriber = "0.3"
 winit = { workspace = true }
 pollster = "0.3"
+
+[[example]]
+name = "gpu_render_integration"
+required-features = []
+
+[[example]]
+name = "gpu_render_window"
+required-features = []
