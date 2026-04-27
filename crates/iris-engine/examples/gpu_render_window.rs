@@ -1,9 +1,9 @@
-//! 完整窗口示例：渲染第一个 Vue 组件
+//! 完整窗口示例：渲染真实的 Vue SFC 组件
 //!
 //! 这个示例展示了如何：
 //! 1. 创建 winit 窗口
 //! 2. 初始化 GPU 渲染器
-//! 3. 加载 Vue SFC 组件
+//! 3. 加载真实的 Vue SFC 文件（demo_app.vue）
 //! 4. 实现事件循环
 //! 5. 渲染到屏幕
 //!
@@ -16,9 +16,10 @@
 //! # 预期效果
 //!
 //! 打开一个 800x600 的窗口，显示：
-//! - 标题 "Hello Iris Engine!"
-//! - 副标题 "GPU Rendering with Vue SFC"
-//! - 背景色为渐变蓝色
+//! - Iris Engine 标题
+//! - 特性列表
+//! - 技术栈徽章
+//! - 渐变紫色背景
 
 use iris_engine::orchestrator::RuntimeOrchestrator;
 use iris_gpu::Renderer;
@@ -51,15 +52,34 @@ impl App {
         orchestrator.initialize().expect("Failed to initialize orchestrator");
         info!("RuntimeOrchestrator initialized");
 
-        // 2. 创建示例 VTree（模拟 Vue SFC 编译结果）
-        let vtree = create_sample_vtree();
-        orchestrator.set_vtree(vtree);
-        info!("Sample VTree created");
+        // 2. 加载真实的 Vue SFC 文件
+        let vue_path = "examples/demo_app.vue";
+        info!("Loading Vue SFC: {}", vue_path);
+        
+        match orchestrator.load_sfc_with_vtree(vue_path) {
+            Ok(()) => {
+                info!("✅ Vue SFC loaded and compiled successfully");
+                if let Some(vtree) = orchestrator.vtree() {
+                    info!("   VTree root: {:?}", std::mem::discriminant(&vtree.root));
+                }
+            }
+            Err(e) => {
+                warn!("⚠️  Failed to load Vue SFC: {}", e);
+                warn!("   Falling back to sample VTree...");
+                
+                // 如果加载失败，使用示例 VTree
+                let vtree = create_sample_vtree();
+                orchestrator.set_vtree(vtree);
+            }
+        }
 
         // 3. 计算布局
         orchestrator.set_viewport_size(800.0, 600.0);
-        orchestrator.compute_layout().expect("Failed to compute layout");
-        info!("Layout computed");
+        if let Err(e) = orchestrator.compute_layout() {
+            warn!("Failed to compute layout: {}", e);
+        } else {
+            info!("✅ Layout computed");
+        }
 
         Self {
             window: None,
@@ -132,7 +152,7 @@ impl ApplicationHandler for App {
             let window = event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("Iris Engine - GPU Rendering with Vue SFC")
+                        .with_title("Iris Engine - Real Vue SFC Rendering")
                         .with_inner_size(winit::dpi::PhysicalSize::new(800, 600)),
                 )
                 .expect("Failed to create window");
