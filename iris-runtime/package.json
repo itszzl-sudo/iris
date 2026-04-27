@@ -11,7 +11,8 @@
     "build": "node bin/iris-runtime.js build",
     "info": "node bin/iris-runtime.js info",
     "postinstall": "node scripts/install.js",
-    "prepublishOnly": "echo 'Binary will be downloaded on install'"
+    "prepare-binaries": "node scripts/prepare-binaries.js",
+    "prepublishOnly": "echo 'Ensure binaries/ directory contains pre-built binaries'"
   },
   "keywords": [
     "vue",
@@ -49,6 +50,7 @@
   "devDependencies": {},
   "files": [
     "bin/",
+    "binaries/",
     "scripts/",
     "README.md"
   ],

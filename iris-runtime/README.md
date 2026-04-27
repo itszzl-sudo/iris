@@ -52,12 +52,14 @@ npx iris-runtime info
 - ✓ GPU-Accelerated Rendering
 - ✓ CSS Modules & Scoped CSS
 - ✓ Powered by Rust + WebGPU
-- ✓ **No Rust Required** - Pre-built binaries provided!
+- ✓ **No Rust Required** - Pre-built binaries included!
+- ✓ **No Network Download** - Binary bundled in package!
 
 ## Requirements
 
 - Node.js >= 14.0.0
-- **No Rust toolchain needed** - Binary is downloaded automatically
+- **No Rust toolchain needed** - Binary is included in the package
+- **No network access needed** - No download during install
 
 ### Supported Platforms
 
@@ -69,49 +71,12 @@ npx iris-runtime info
 
 ## Installation
 
-### Automatic Installation (Recommended)
-
 ```bash
 npm install iris-runtime
 ```
 
-The postinstall script will automatically download the pre-built binary for your platform from GitHub or Gitee.
-
-### Manual Installation
-
-If automatic download fails, you can manually download the binary:
-
-**From GitHub:**
-```bash
-# Windows
-https://github.com/iris-engine/iris/releases/download/v0.1.0/iris-runtime-x86_64-pc-windows-msvc.exe
-
-# macOS (Intel)
-https://github.com/iris-engine/iris/releases/download/v0.1.0/iris-runtime-x86_64-apple-darwin
-
-# macOS (Apple Silicon)
-https://github.com/iris-engine/iris/releases/download/v0.1.0/iris-runtime-aarch64-apple-darwin
-
-# Linux
-https://github.com/iris-engine/iris/releases/download/v0.1.0/iris-runtime-x86_64-unknown-linux-gnu
-```
-
-**From Gitee (China):**
-```bash
-# Windows
-https://gitee.com/wanquanbuhuime/iris/releases/download/v0.1.0/iris-runtime-x86_64-pc-windows-msvc.exe
-
-# macOS (Intel)
-https://gitee.com/wanquanbuhuime/iris/releases/download/v0.1.0/iris-runtime-x86_64-apple-darwin
-
-# macOS (Apple Silicon)
-https://gitee.com/wanquanbuhuime/iris/releases/download/v0.1.0/iris-runtime-aarch64-apple-darwin
-
-# Linux
-https://gitee.com/wanquanbuhuime/iris/releases/download/v0.1.0/iris-runtime-x86_64-unknown-linux-gnu
-```
-
-Place the downloaded binary in `node_modules/iris-runtime/bin/` directory.
+That's it! The pre-built binary is automatically copied during installation.
+No network download, no compilation, no Rust required!
 
 ## Architecture
 
@@ -131,9 +96,34 @@ npm/Node.js                    Rust Binary
 
 ## Development
 
-### Build and Release Binary (For Maintainers)
+### For Maintainers: Building Binaries
 
-To build binaries for all platforms:
+To build binaries for all platforms before publishing:
+
+```bash
+cd iris-runtime
+npm run prepare-binaries
+```
+
+This will:
+1. Build iris-cli for all supported platforms
+2. Copy binaries to `binaries/` directory
+3. Verify all builds completed successfully
+
+**Requirements:**
+- Rust toolchain installed
+- Cross-compilation targets installed (automatically handled)
+
+**Binary Naming Convention:**
+
+| Platform | Target Triple | Binary Name |
+|----------|--------------|-------------|
+| Windows x64 | `x86_64-pc-windows-msvc` | `iris-runtime-x86_64-pc-windows-msvc.exe` |
+| macOS Intel | `x86_64-apple-darwin` | `iris-runtime-x86_64-apple-darwin` |
+| macOS ARM | `aarch64-apple-darwin` | `iris-runtime-aarch64-apple-darwin` |
+| Linux x64 | `x86_64-unknown-linux-gnu` | `iris-runtime-x86_64-unknown-linux-gnu` |
+
+### Manual Build (Single Platform)
 
 ```bash
 # Windows
@@ -149,19 +139,20 @@ cargo build --release -p iris-cli --target aarch64-apple-darwin
 cargo build --release -p iris-cli --target x86_64-unknown-linux-gnu
 ```
 
-### Sign and Publish Binary
-
-1. Build binaries for all platforms
-2. Sign binaries with your GPG key (optional but recommended)
-3. Create a GitHub/Gitee release
-4. Upload binaries to the release
-5. Update VERSION in `scripts/install.js`
-
-### Publish to npm
+### Publishing to npm
 
 ```bash
+# 1. Build all binaries
+npm run prepare-binaries
+
+# 2. Verify binaries/ directory contains all platforms
+ls binaries/
+
+# 3. Publish
 npm publish
 ```
+
+**Important:** The `binaries/` directory is included in the npm package (see `files` in package.json).
 
 ## License
 
