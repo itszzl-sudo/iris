@@ -1,0 +1,46 @@
+{
+  "name": "iris-runtime",
+  "version": "0.1.0",
+  "description": "Iris Runtime - Vue 3 development server powered by Rust + WebGPU",
+  "main": "index.js",
+  "bin": {
+    "iris-runtime": "./bin/iris-runtime.js"
+  },
+  "scripts": {
+    "dev": "node bin/iris-runtime.js dev",
+    "build": "node bin/iris-runtime.js build",
+    "info": "node bin/iris-runtime.js info",
+    "postinstall": "node scripts/install.js",
+    "prepublishOnly": "npm run build-cli"
+  },
+  "keywords": [
+    "vue",
+    "vue3",
+    "runtime",
+    "webgpu",
+    "rust",
+    "dev-server",
+    "hmr",
+    "sfc"
+  ],
+  "author": "Iris Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iris-engine/iris.git"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "commander": "^11.0.0",
+    "chalk": "^4.1.2",
+    "which": "^3.0.1"
+  },
+  "devDependencies": {},
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md"
+  ]
+}
