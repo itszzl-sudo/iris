@@ -11,7 +11,7 @@
     "build": "node bin/iris-runtime.js build",
     "info": "node bin/iris-runtime.js info",
     "postinstall": "node scripts/install.js",
-    "prepublishOnly": "npm run build-cli"
+    "prepublishOnly": "echo 'Binary will be downloaded on install'"
   },
   "keywords": [
     "vue",
@@ -32,6 +32,15 @@
   "engines": {
     "node": ">=14.0.0"
   },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
   "dependencies": {
     "commander": "^11.0.0",
     "chalk": "^4.1.2",
@@ -42,5 +51,7 @@
     "bin/",
     "scripts/",
     "README.md"
-  ]
+  ],
+  "optionalDependencies": {},
+  "preferUnplugged": true
 }
