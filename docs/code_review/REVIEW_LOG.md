@@ -12,7 +12,7 @@
 |------|------|
 | **总模块数** | 8 (Phase 6) |
 | **已审查模块** | 8 |
-| **待审查模块** | 0 |
+| **待审查模块** | ~40 (Phase 0-5) |
 | **审查覆盖率** | 100% (Phase 6) |
 | **最近审查** | 2026-02-24 |
 
@@ -137,54 +137,79 @@
 
 ### Phase 5: JavaScript 引擎
 
+*⏳ 待审查 - Phase 5 已完成 100%，需要代码审查*
+
+**待审查模块**:
+- crates/iris-js/src/lib.rs
+- crates/iris-js/src/engine.rs
+- crates/iris-js/src/dom_bindings.rs
+- crates/iris-js/src/web_apis.rs
+- crates/iris-js/src/es_modules.rs
+
 ---
 
 ### Phase 4: GPU 渲染管线
 
-*待添加审查记录...*
+*⏳ 待审查 - Phase 4 已完成 100%，需要代码审查*
+
+**待审查模块**:
+- crates/iris-gpu/src/lib.rs
+- crates/iris-gpu/src/batch_renderer.rs
+- crates/iris-gpu/src/canvas.rs
+- crates/iris-gpu/src/text_renderer.rs
+- crates/iris-gpu/src/texture_cache.rs
+- crates/iris-gpu/src/font_atlas.rs
 
 ---
 
 ### Phase 3: 动画与过渡
 
-*待添加审查记录...*
+*⏳ 待审查 - Phase 3 完成 60%*
+
+**待审查模块**:
+- crates/iris/src/animation_engine/*.rs
 
 ---
 
 ### Phase 2: DOM 系统
 
-*待添加审查记录...*
+*⏳ 待审查 - Phase 2 已完成 100%*
+
+**待审查模块**:
+- crates/iris-layout/src/dom.rs
+- crates/iris-layout/src/domtree.rs
+- crates/iris-layout/src/vdom.rs
+- crates/iris-layout/src/event.rs
 
 ---
 
 ### Phase 1: 布局引擎
 
-*待添加审查记录...*
+*⏳ 待审查 - Phase 1 已完成 100%*
+
+**待审查模块**:
+- crates/iris-layout/src/layout.rs
+- crates/iris-layout/src/style.rs
+- crates/iris-layout/src/css.rs
+- crates/iris-layout/src/html.rs
 
 ---
 
 ### Phase 0: 架构基础
 
-*待添加审查记录...*
+*⏳ 待审查 - Phase 0 已完成 100%*
+
+**待审查模块**:
+- crates/iris-core/src/*.rs
+- crates/iris-dom/src/*.rs
 
 ---
 
-## 📋 待审查模块清单
+## 📋 待审查模块清单（Phase 0-5）
 
-### crates/iris-sfc (SFC 编译器)
+> **注意**: Phase 6 已 100% 审查完成。以下为其他 Phase 待审查模块。
 
-| 模块 | 文件路径 | 行数 | 优先级 | 状态 |
-|------|---------|------|--------|------|
-| ✅ scoped_css.rs | `crates/iris-sfc/src/scoped_css.rs` | 405 | 高 | ✅ 已审查 |
-| ✅ scss_processor.rs | `crates/iris-sfc/src/scss_processor.rs` | 458 | 高 | ✅ 已审查 |
-| ✅ script_setup.rs | `crates/iris-sfc/src/script_setup.rs` | 877 | 高 | ✅ 已审查，待修复 |
-| ✅ template_compiler.rs | `crates/iris-sfc/src/template_compiler.rs` | 790 | 高 | ✅ 已审查，待修复 |
-| ✅ ts_compiler.rs | `crates/iris-sfc/src/ts_compiler.rs` | 699 | 中 | ✅ 已审查，待修复 |
-| ✅ css_modules.rs | `crates/iris-sfc/src/css_modules.rs` | 287 | 中 | ✅ 已审查，优秀 |
-| ✅ cache.rs | `crates/iris-sfc/src/cache.rs` | 482 | 中 | ✅ 已审查，优秀 |
-| ✅ lib.rs | `crates/iris-sfc/src/lib.rs` | 987 | 低 | ✅ 已审查，良好 |
-
-### crates/iris-js (JavaScript 引擎)
+### crates/iris-js (JavaScript 引擎 - Phase 5)
 
 | 模块 | 文件路径 | 行数 | 优先级 | 状态 |
 |------|---------|------|--------|------|
@@ -193,42 +218,49 @@
 | ⬜ dom_bindings.rs | `crates/iris-js/src/dom_bindings.rs` | 296 | 高 | ⏳ 待审查 |
 | ⬜ web_apis.rs | `crates/iris-js/src/web_apis.rs` | 488 | 高 | ⏳ 待审查 |
 | ⬜ es_modules.rs | `crates/iris-js/src/es_modules.rs` | 386 | 中 | ⏳ 待审查 |
+| ⬜ event.rs | `crates/iris-js/src/event.rs` | ~150 | 中 | ⏳ 待审查 |
+| ⬜ timers.rs | `crates/iris-js/src/timers.rs` | ~100 | 中 | ⏳ 待审查 |
 
-### crates/iris-gpu (GPU 渲染)
+### crates/iris-gpu (GPU 渲染 - Phase 4)
 
 | 模块 | 文件路径 | 行数 | 优先级 | 状态 |
 |------|---------|------|--------|------|
 | ⬜ lib.rs | `crates/iris-gpu/src/lib.rs` | ~400 | 高 | ⏳ 待审查 |
-| ⬜ renderer.rs | `crates/iris-gpu/src/renderer.rs` | ~500 | 高 | ⏳ 待审查 |
+| ⬜ batch_renderer.rs | `crates/iris-gpu/src/batch_renderer.rs` | ~500 | 高 | ⏳ 待审查 |
 | ⬜ canvas.rs | `crates/iris-gpu/src/canvas.rs` | 497 | 高 | ⏳ 待审查 |
-| ⬜ texture.rs | `crates/iris-gpu/src/texture.rs` | ~300 | 中 | ⏳ 待审查 |
-| ⬜ font.rs | `crates/iris-gpu/src/font.rs` | ~350 | 中 | ⏳ 待审查 |
+| ⬜ text_renderer.rs | `crates/iris-gpu/src/text_renderer.rs` | ~350 | 中 | ⏳ 待审查 |
+| ⬜ texture_cache.rs | `crates/iris-gpu/src/texture_cache.rs` | ~300 | 中 | ⏳ 待审查 |
+| ⬜ font_atlas.rs | `crates/iris-gpu/src/font_atlas.rs` | ~250 | 中 | ⏳ 待审查 |
+| ⬜ shader.rs | `crates/iris-gpu/src/shader.rs` | ~200 | 中 | ⏳ 待审查 |
 
-### crates/iris-layout (布局引擎)
+### crates/iris/src (动画引擎 - Phase 3)
 
 | 模块 | 文件路径 | 行数 | 优先级 | 状态 |
 |------|---------|------|--------|------|
-| ⬜ lib.rs | `crates/iris-layout/src/lib.rs` | ~200 | 高 | ⏳ 待审查 |
-| ⬜ layout.rs | `crates/iris-layout/src/layout.rs` | ~1500 | 高 | ⏳ 待审查 |
-| ⬜ flexbox.rs | `crates/iris-layout/src/flexbox.rs` | ~800 | 高 | ⏳ 待审查 |
+| ⬜ lib.rs | `crates/iris/src/lib.rs` | ~150 | 高 | ⏳ 待审查 |
+| ⬜ animation_engine/*.rs | `crates/iris/src/animation_engine/` | ~800 | 高 | ⏳ 待审查 |
+| ⬜ main.rs | `crates/iris/src/main.rs` | ~100 | 低 | ⏳ 待审查 |
+
+### crates/iris-layout (布局引擎 & DOM - Phase 1 & 2)
+
+| 模块 | 文件路径 | 行数 | 优先级 | 状态 |
+|------|---------|------|--------|------|
+| ⬜ lib.rs | `crates/iris-layout/src/lib.rs` | ~50 | 高 | ⏳ 待审查 |
+| ⬜ layout.rs | `crates/iris-layout/src/layout.rs` | ~2500 | 高 | ⏳ 待审查 |
+| ⬜ dom.rs | `crates/iris-layout/src/dom.rs` | 885 | 高 | ⏳ 待审查 |
+| ⬜ domtree.rs | `crates/iris-layout/src/domtree.rs` | 492 | 高 | ⏳ 待审查 |
+| ⬜ vdom.rs | `crates/iris-layout/src/vdom.rs` | ~650 | 高 | ⏳ 待审查 |
+| ⬜ event.rs | `crates/iris-layout/src/event.rs` | 308 | 中 | ⏳ 待审查 |
 | ⬜ style.rs | `crates/iris-layout/src/style.rs` | ~400 | 中 | ⏳ 待审查 |
-| ⬜ domtree.rs | `crates/iris-layout/src/domtree.rs` | ~300 | 中 | ⏳ 待审查 |
+| ⬜ css.rs | `crates/iris-layout/src/css.rs` | ~400 | 中 | ⏳ 待审查 |
+| ⬜ html.rs | `crates/iris-layout/src/html.rs` | ~200 | 低 | ⏳ 待审查 |
 
-### crates/iris-dom (DOM 系统)
-
-| 模块 | 文件路径 | 行数 | 优先级 | 状态 |
-|------|---------|------|--------|------|
-| ⬜ lib.rs | `crates/iris-dom/src/lib.rs` | ~200 | 高 | ⏳ 待审查 |
-| ⬜ dom_tree.rs | `crates/iris-dom/src/dom_tree.rs` | ~400 | 高 | ⏳ 待审查 |
-| ⬜ element.rs | `crates/iris-dom/src/element.rs` | ~500 | 高 | ⏳ 待审查 |
-| ⬜ node.rs | `crates/iris-dom/src/node.rs` | ~300 | 中 | ⏳ 待审查 |
-
-### crates/iris-core (核心库)
+### crates/iris-core & iris-dom (核心库 - Phase 0)
 
 | 模块 | 文件路径 | 行数 | 优先级 | 状态 |
 |------|---------|------|--------|------|
-| ⬜ lib.rs | `crates/iris-core/src/lib.rs` | ~150 | 高 | ⏳ 待审查 |
-| ⬜ ... | ... | ... | 中 | ⏳ 待审查 |
+| ⬜ iris-core/src/*.rs | `crates/iris-core/src/` | ~300 | 高 | ⏳ 待审查 |
+| ⬜ iris-dom/src/*.rs | `crates/iris-dom/src/` | ~400 | 高 | ⏳ 待审查 |
 
 ---
 
@@ -252,17 +284,17 @@
 ## 🎯 审查覆盖率目标
 
 ### 短期目标（本周）
-- [ ] 完成 Phase 6 所有模块审查（8 个模块，已完成 2 个）
-- [ ] 完成 Phase 5 核心模块审查（4 个模块）
-- [ ] 总体覆盖率：~30%
+- [x] 完成 Phase 6 所有模块审查（8 个模块，100% 完成） ✅
+- [ ] 开始 Phase 5 核心模块审查（7 个模块）
+- [ ] 总体覆盖率：~25%
 
 ### 中期目标（本月）
-- [ ] 完成 Phase 4-6 所有模块审查
-- [ ] 完成 Phase 1-3 核心模块审查
-- [ ] 总体覆盖率：~70%
+- [ ] 完成 Phase 4-5 所有模块审查（~15 个模块）
+- [ ] 完成 Phase 2-3 核心模块审查（~12 个模块）
+- [ ] 总体覆盖率：~60%
 
 ### 长期目标（本季度）
-- [ ] 完成所有模块审查
+- [ ] 完成所有模块审查（Phase 0-6）
 - [ ] 建立定期审查机制（每月一次）
 - [ ] 总体覆盖率：100%
 
