@@ -142,6 +142,42 @@ impl VNode {
         }
     }
 
+    /// 获取子节点引用（只读）
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use iris_dom::vnode::VNode;
+    ///
+    /// let mut div = VNode::element("div");
+    /// div.append_child(VNode::text("Hello"));
+    /// assert_eq!(div.children().len(), 1);
+    /// ```
+    pub fn children(&self) -> &[VNode] {
+        match self {
+            VNode::Element { children, .. } | VNode::Fragment { children } => children,
+            _ => &[],
+        }
+    }
+
+    /// 获取子节点可变引用（可修改）
+    ///
+    /// # 示例
+    ///
+    /// ```rust
+    /// use iris_dom::vnode::VNode;
+    ///
+    /// let mut div = VNode::element("div");
+    /// div.append_child(VNode::text("Hello"));
+    /// div.children_mut()[0] = VNode::text("World");
+    /// ```
+    pub fn children_mut(&mut self) -> &mut Vec<VNode> {
+        match self {
+            VNode::Element { children, .. } | VNode::Fragment { children } => children,
+            _ => panic!("Cannot get mutable children reference for non-element/fragment node"),
+        }
+    }
+
     /// 设置样式
     pub fn set_style(&mut self, property: &str, value: &str) {
         if let VNode::Element { styles, .. } = self {
