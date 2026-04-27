@@ -362,7 +362,7 @@ impl RuntimeOrchestrator {
         let mut commands = Vec::new();
         
         if let Some(dom_tree) = &self.dom_tree {
-            self.collect_render_commands(dom_tree, &mut commands);
+            self.collect_render_commands(dom_tree, &mut commands, 0);
         }
         
         info!(command_count = commands.len(), "Generated render commands");
@@ -374,32 +374,53 @@ impl RuntimeOrchestrator {
         &self,
         node: &DOMNode,
         commands: &mut Vec<DrawCommand>,
+        depth: usize,
     ) {
         // 只处理元素节点
         if !node.is_element() {
             return;
         }
 
-        // TODO: 从布局信息中提取渲染数据
-        // 当前 DOMNode 还没有完整的布局信息存储
-        // 这里先创建一个占位实现
-        
-        // 示例：如果有背景颜色，生成矩形命令
-        if let Some(bg_color) = self.parse_background_color(node) {
-            // 这里需要节点的布局矩形信息
-            // 暂时使用默认值，后续需要从 layout 字段获取
-            commands.push(DrawCommand::Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 100.0,
-                height: 100.0,
-                color: bg_color,
-            });
-        }
+        // 获取元素标签
+        let tag = match &node.node_type {
+            iris_layout::dom::NodeType::Element(tag) => tag.clone(),
+            _ => return,
+        };
+
+        // 为每个元素生成一个可视化的矩形（调试用）
+        // 使用不同的颜色区分不同类型的元素
+        let color = match tag.as_str() {
+            "div" => [0.4, 0.5, 0.9, 1.0],  // 蓝色
+            "header" => [0.4, 0.3, 0.8, 1.0],  // 紫色
+            "main" => [0.3, 0.6, 0.4, 1.0],  // 绿色
+            "footer" => [0.6, 0.3, 0.4, 1.0],  // 红色
+            "h1" => [1.0, 1.0, 1.0, 1.0],  // 白色
+            "h2" => [0.9, 0.9, 0.9, 1.0],  // 浅白
+            "p" => [0.8, 0.8, 0.8, 1.0],  // 灰色
+            "span" => [0.7, 0.7, 0.9, 1.0],  // 浅蓝
+            "ul" | "li" => [0.5, 0.5, 0.7, 1.0],  // 蓝灰
+            _ => [0.6, 0.6, 0.6, 1.0],  // 灰色
+        };
+
+        // 计算位置（简单的层级布局）
+        let spacing = 60.0;
+        let x = 50.0 + (depth as f32 * 20.0);
+        let y = 50.0 + (commands.len() as f32 * spacing);
+        let width = 200.0;
+        let height = 40.0;
+
+        // 生成矩形命令
+        commands.push(DrawCommand::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+        });
 
         // 递归处理子节点
         for child in &node.children {
-            self.collect_render_commands(child, commands);
+            self.collect_render_commands(child, commands, depth + 1);
         }
     }
 
