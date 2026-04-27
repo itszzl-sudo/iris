@@ -14,3 +14,4 @@ iris-core.workspace = true
 html5ever.workspace = true
 markup5ever_rcdom.workspace = true
 cssparser.workspace = true
+seahash = "4.1"

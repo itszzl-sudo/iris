@@ -34,6 +34,7 @@ pub mod positioning;
 pub mod grid;
 pub mod float_layout;
 pub mod table_layout;
+pub mod cache;
 
 // 重新导出常用类型
 pub use layout::{
@@ -64,6 +65,10 @@ pub use float_layout::{
 pub use table_layout::{
     TableDisplayType, BorderCollapse, TableConfig, TableCell, TableRow, TableLayout,
     compute_table_layout, parse_cell_spans, get_cell_absolute_position,
+};
+pub use cache::{
+    LayoutCache, LayoutCacheKey, LayoutCacheStats, CacheEntry,
+    StyleHasher,
 };
 
 use iris_core;
