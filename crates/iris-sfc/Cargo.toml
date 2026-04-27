@@ -35,3 +35,6 @@ lru = "0.12"
 
 # XXH3 哈希算法（用于源码哈希计算）
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+# SCSS 编译器
+grass = "0.13"

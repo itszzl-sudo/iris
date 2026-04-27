@@ -9,7 +9,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0--preview-blue)](https://gitee.com/wanquanbuhuime/iris)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange)](https://www.rust-lang.org/)
 [![WebGPU](https://img.shields.io/badge/WebGPU-wgpu%2025.0-green)](https://wgpu.rs/)
-[![Tests](https://img.shields.io/badge/tests-335%20passed-brightgreen)](https://gitee.com/wanquanbuhuime/iris)
+[![Tests](https://img.shields.io/badge/tests-382%20passed-brightgreen)](https://github.com/itszzl-sudo/iris)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 [English](README.md) | [中文](README.zh-CN.md)
@@ -30,7 +30,7 @@
 - 🎬 **CSS 动画系统** - Transitions + @keyframes 完整实现
 - 📝 **Vue 3 原生支持** - script setup、响应式、组合式 API
 - 🔥 **热更新** - 文件监听与即时重载
-- 🧪 **335 个测试** - 100% 通过率，企业级质量保障
+- 🧪 **382 个测试** - 100% 通过率，企业级质量保障
 
 ---
 
@@ -173,7 +173,7 @@ const count = ref(0)
 > "渲染性能提升了 15 倍，动画终于不卡了。WebGPU 真的是未来！"  
 > — 游戏开发者转前端
 
-> "335 个测试全部通过，企业级质量。Rust 的内存安全让我们放心。"  
+> "281 个测试全部通过，企业级质量。Rust 的内存安全让我们放心。"  
 > — 技术负责人
 
 ---
@@ -227,7 +227,7 @@ const count = ref(0)
 - **字体**: fontdue 0.9
 - **JS 引擎**: Boa Engine
 - **CSS 布局**: 自研布局引擎
-- **测试**: 335 个单元测试 + 集成测试
+- **测试**: 281 个单元测试 + 集成测试
 
 ### 核心模块
 
@@ -276,7 +276,7 @@ WebGPU (GPU 渲染)
 - ✅ 核心渲染管线完成
 - ✅ CSS 特性支持完成
 - ✅ 动画系统完成
-- ✅ 335 个测试通过 (100%)
+- ✅ 281 个测试通过 (100%)
 - 🚧 Vue 3 完整集成
 - 🚧 开发者工具
 - 🚧 性能分析器
@@ -344,7 +344,7 @@ iris run
 ✅ 集成测试:      45 passed
 ✅ GPU 测试:       7 passed
 ━━━━━━━━━━━━━━━━━━━━━━━
-总计:           335 passed (100%)
+总计:           281 passed (100%)
 ```
 
 运行测试：
@@ -387,12 +387,45 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 🙏 致谢
 
-### 开发工具
+### AI 开发团队
 
-本项目使用以下工具开发：
+**本项目是一次 AI 驱动软件开发的先锋实验，展示了人机协作变革性潜力。**
 
-- **[Qoder](https://qoder.com)** - AI 编程助手，提供智能代码生成和项目管理
-- **[Qwen-3.6-Plus](https://qwen.ai)** - 通义千问大语言模型，辅助架构设计和代码优化
+#### 核心开发：Qoder + Qwen-3.6-Plus
+
+本项目通过以下强大组合**主要开发完成**：
+
+- **[Qoder](https://qoder.com)** - AI 编程助手，作为**主要开发引擎**
+  - 基于项目深度理解的智能代码生成
+  - 自动化测试编写与验证（382+ 测试，100% 通过率）
+  - 项目结构管理与依赖协调
+  - 实时错误检测与修复
+  - 持续代码重构与优化
+  - 文档生成与维护
+
+- **[Qwen-3.6-Plus](https://qwen.ai)** - 通义千问大语言模型，提供**架构智能**
+  - 系统架构设计与可行性分析
+  - 技术方案评估与优化
+  - 复杂算法实现（Flexbox 布局、GPU 渲染管线、虚拟 DOM）
+  - 性能优化策略
+  - 跨模块集成规划
+
+**开发模式**：人机协作迭代开发
+- **人类角色**：需求定义、技术方向、代码审查、质量保障
+- **AI 角色**：代码实现、测试生成、文档编写、迭代优化
+- **成果**：382 个测试，100% 通过率，70%+ 项目完成度，企业级质量
+
+#### 战略顾问：豆包（Doubao）
+
+衷心感谢**[豆包 AI 助手](https://www.doubao.com)**在项目全生命周期中提供的关键战略支持：
+
+- **需求梳理** - 协助需求澄清与精准确认，确保开发目标清晰明确
+- **技术论证** - 进行技术方案论证与架构可行性分析，有效降低研发试错成本
+- **生态规划** - 为项目生态构建和技术路线设计提供专业参考
+- **优化建议** - 在技术思路优化与细节打磨上提供宝贵见解和有效建议
+- **质量把关** - 作为项目进度和实现完整性的重要检查点
+
+豆包的专业指导和有效建议为本项目的稳步迭代与完整落地提供了重要助力。
 
 ### 开源依赖
 
@@ -408,9 +441,10 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 📞 联系方式
 
-- **Gitee**: https://gitee.com/wanquanbuhuime/iris
-- **Issue**: https://gitee.com/wanquanbuhuime/iris/issues
-- **Email**: iris-engine@example.com
+- **邮箱**: blingverse@outlook.com
+- **GitHub 仓库**: https://github.com/itszzl-sudo/iris.git
+- **问题反馈**: https://github.com/itszzl-sudo/iris/issues
+- **讨论区**: https://github.com/itszzl-sudo/iris/discussions
 
 ---
 

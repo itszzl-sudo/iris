@@ -373,7 +373,32 @@ impl TsCompiler {
         }
 
         if let Some(ts_config) = &config.ts_config_path {
-            cmd.arg("--project").arg(ts_config);
+            // 修复：验证路径的有效性，防止命令注入和路径遍历
+            let path = PathBuf::from(ts_config);
+            
+            // 验证路径存在且是文件
+            if !path.exists() {
+                return TypeCheckResult::Errors { 
+                    errors: vec![format!("tsconfig not found: {}", ts_config)] 
+                };
+            }
+            
+            if !path.is_file() {
+                return TypeCheckResult::Errors { 
+                    errors: vec![format!("not a file: {}", ts_config)] 
+                };
+            }
+            
+            // 验证路径在当前工作目录内（防止路径遍历）
+            if let (Ok(current_dir), Ok(canonical)) = (std::env::current_dir(), path.canonicalize()) {
+                if !canonical.starts_with(&current_dir) {
+                    return TypeCheckResult::Errors { 
+                        errors: vec![format!("path outside project directory: {}", ts_config)] 
+                    };
+                }
+            }
+            
+            cmd.arg("--project").arg(&path);
         }
 
         cmd.arg(file_path);

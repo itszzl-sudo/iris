@@ -27,6 +27,20 @@ pub mod html;
 pub mod css;
 pub mod style;
 pub mod layout;
+pub mod vdom;
+pub mod domtree;
+
+// 重新导出常用类型
+pub use layout::{
+    LayoutBox, BoxModel, LayoutType,
+    FlexContainer, FlexItem, FlexLine,
+    FlexDirection, FlexWrap, AlignContent,
+    JustifyContent, AlignItems,
+};
+pub use css::{Selector, Stylesheet, CSSRule, SelectorType};
+pub use dom::{DOMNode, NodeType};
+pub use vdom::{VNode, VTree, VElement, Patch};
+pub use domtree::DOMTree;
 
 use iris_core;
 

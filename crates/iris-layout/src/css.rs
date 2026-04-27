@@ -2,37 +2,150 @@
 //!
 //! 基于 cssparser 实现 CSS 样式表解析。
 
-use cssparser::{Parser, ParserInput, RuleBodyParser, ToCss};
-use std::collections::HashMap;
+use cssparser::{Parser, ParserInput};
+
+/// CSS 选择器类型
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelectorType {
+    /// 标签选择器: div, p, span
+    Tag(String),
+    /// ID 选择器: #id
+    Id(String),
+    /// Class 选择器: .class
+    Class(String),
+    /// 属性选择器: [attr=value]
+    Attribute { name: String, value: Option<String> },
+    /// 通配符: *
+    Universal,
+    /// 复合选择器: div.class#id
+    Compound(Vec<SelectorType>),
+    /// 后代选择器: div p
+    Descendant(Box<SelectorType>, Box<SelectorType>),
+    /// 子元素选择器: div > p
+    Child(Box<SelectorType>, Box<SelectorType>),
+}
 
 /// CSS 选择器
 #[derive(Debug, Clone, PartialEq)]
 pub struct Selector {
     /// 选择器文本 (如 ".class", "#id", "div")
     pub text: String,
+    /// 选择器类型（增强版）
+    pub selector_type: SelectorType,
 }
 
 impl Selector {
-    /// 创建新的选择器
+    /// 创建新的选择器（自动解析类型）
     pub fn new(text: &str) -> Self {
+        let selector_type = parse_selector_type(text);
         Self {
             text: text.to_string(),
+            selector_type,
+        }
+    }
+
+    /// 创建指定类型的选择器
+    pub fn with_type(text: &str, selector_type: SelectorType) -> Self {
+        Self {
+            text: text.to_string(),
+            selector_type,
         }
     }
 
     /// 判断是否为 ID 选择器
     pub fn is_id(&self) -> bool {
-        self.text.starts_with('#')
+        matches!(self.selector_type, SelectorType::Id(_))
     }
 
     /// 判断是否为 Class 选择器
     pub fn is_class(&self) -> bool {
-        self.text.starts_with('.')
+        matches!(self.selector_type, SelectorType::Class(_))
     }
 
     /// 判断是否为标签选择器
     pub fn is_tag(&self) -> bool {
-        !self.is_id() && !self.is_class()
+        matches!(self.selector_type, SelectorType::Tag(_))
+    }
+
+    /// 判断是否为复合选择器
+    pub fn is_compound(&self) -> bool {
+        matches!(self.selector_type, SelectorType::Compound(_))
+    }
+}
+
+/// 解析选择器类型（增强版）
+fn parse_selector_type(text: &str) -> SelectorType {
+    let text = text.trim();
+    
+    // 通配符
+    if text == "*" {
+        return SelectorType::Universal;
+    }
+    
+    // 属性选择器 [attr] 或 [attr=value]
+    if text.starts_with('[') && text.ends_with(']') {
+        let content = &text[1..text.len() - 1];
+        if let Some(eq_pos) = content.find('=') {
+            let name = content[..eq_pos].trim().to_string();
+            let value = Some(content[eq_pos + 1..].trim().trim_matches(|c| c == '"' || c == '\'').to_string());
+            return SelectorType::Attribute { name, value };
+        } else {
+            return SelectorType::Attribute {
+                name: content.trim().to_string(),
+                value: None,
+            };
+        }
+    }
+    
+    // 复合选择器（包含 . 或 # 的组合）
+    if (text.contains('.') || text.contains('#')) && !text.starts_with('.') && !text.starts_with('#') {
+        // 例如: div.class, div#id, div.class1.class2
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut chars = text.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '.' || ch == '#' {
+                if !current.is_empty() {
+                    // 保存之前的部分
+                    if parts.is_empty() && !current.starts_with('.') && !current.starts_with('#') {
+                        parts.push(SelectorType::Tag(current.clone()));
+                    } else if current.starts_with('.') {
+                        parts.push(SelectorType::Class(current[1..].to_string()));
+                    } else if current.starts_with('#') {
+                        parts.push(SelectorType::Id(current[1..].to_string()));
+                    }
+                    current.clear();
+                }
+                current.push(ch);
+            } else {
+                current.push(ch);
+            }
+        }
+        
+        // 处理最后一部分
+        if !current.is_empty() {
+            if current.starts_with('.') {
+                parts.push(SelectorType::Class(current[1..].to_string()));
+            } else if current.starts_with('#') {
+                parts.push(SelectorType::Id(current[1..].to_string()));
+            } else {
+                parts.push(SelectorType::Class(current)); // 默认当作 class
+            }
+        }
+        
+        if parts.len() > 1 {
+            return SelectorType::Compound(parts);
+        }
+    }
+    
+    // 简单选择器
+    if text.starts_with('#') {
+        SelectorType::Id(text[1..].to_string())
+    } else if text.starts_with('.') {
+        SelectorType::Class(text[1..].to_string())
+    } else {
+        SelectorType::Tag(text.to_string())
     }
 }
 
@@ -109,7 +222,7 @@ impl Stylesheet {
 /// ```
 pub fn parse_stylesheet(css: &str) -> Stylesheet {
     let mut input = ParserInput::new(css);
-    let mut parser = Parser::new(&mut input);
+    let _parser = Parser::new(&mut input);
     
     let mut stylesheet = Stylesheet::new();
     
@@ -279,5 +392,45 @@ mod tests {
         
         let stylesheet = parse_stylesheet(css);
         assert_eq!(stylesheet.rules.len(), 1);
+    }
+
+    #[test]
+    fn test_attribute_selector() {
+        let sel1 = Selector::new("[data-type]");
+        let sel2 = Selector::new("[data-type=button]");
+        let sel3 = Selector::new("[href=\"https://example.com\"]");
+        
+        assert!(sel1.is_compound() || matches!(sel1.selector_type, crate::css::SelectorType::Attribute { .. }));
+        assert!(sel2.is_compound() || matches!(sel2.selector_type, crate::css::SelectorType::Attribute { .. }));
+        assert!(sel3.is_compound() || matches!(sel3.selector_type, crate::css::SelectorType::Attribute { .. }));
+    }
+
+    #[test]
+    fn test_compound_selector() {
+        let sel = Selector::new("div.container");
+        assert!(sel.is_compound());
+        
+        let sel2 = Selector::new("div#main.container");
+        assert!(sel2.is_compound());
+    }
+
+    #[test]
+    fn test_universal_selector() {
+        let sel = Selector::new("*");
+        assert!(matches!(sel.selector_type, crate::css::SelectorType::Universal));
+    }
+
+    #[test]
+    fn test_selector_type_parsing() {
+        use crate::css::SelectorType;
+        
+        let id_sel = Selector::new("#main");
+        assert!(matches!(id_sel.selector_type, SelectorType::Id(s) if s == "main"));
+        
+        let class_sel = Selector::new(".container");
+        assert!(matches!(class_sel.selector_type, SelectorType::Class(s) if s == "container"));
+        
+        let tag_sel = Selector::new("div");
+        assert!(matches!(tag_sel.selector_type, SelectorType::Tag(s) if s == "div"));
     }
 }

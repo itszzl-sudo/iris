@@ -393,6 +393,8 @@ fn generate_directives(
     }
 
     // Handle v-if conditional rendering
+    // 注意：当前实现独立处理每个条件分支，未形成完整的 if-else 链
+    // 完整实现需要在模板解析阶段识别相邻的 v-if/v-else-if/v-else 节点
     if let Some(directive) = directives
         .iter()
         .find(|d| matches!(d, Directive::VIf { .. }))
@@ -427,7 +429,8 @@ fn generate_directives(
     {
         if let Directive::VFor { iterator, source } = directive {
             let element = generate_element(tag, attrs, children);
-            return Some(format!("...{}.map(({}) => {})", source, iterator, element));
+            // 修复：移除 ... 前缀，直接返回数组（避免语法错误）
+            return Some(format!("{}.map(({}) => {})", source, iterator, element));
         }
     }
 
@@ -470,12 +473,14 @@ fn generate_directives(
     }
 
     // Handle v-bind: add dynamic attributes
+    // 修复：直接使用表达式，而不是字符串拼接（避免 XSS）
     for directive in directives
         .iter()
         .filter(|d| matches!(d, Directive::VBind { .. }))
     {
         if let Directive::VBind { prop, value } = directive {
-            final_attrs.push((prop.clone(), format!("' + {} + '", value)));
+            // 将动态值作为表达式直接传递，由运行时处理转义
+            final_attrs.push((prop.clone(), format!("/* dynamic: */ {}", value)));
         }
     }
 

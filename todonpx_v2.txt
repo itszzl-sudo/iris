@@ -1,0 +1,43 @@
+一、核心定位（一句话）
+iris-runtime：基于 Rust + WebGPU 的 Vue 双端运行时
+--web：浏览器开发（Vite 内置服务）
+--desktop：原生窗口开发（无浏览器）
+二、全套可用命令
+1. 开发模式
+bash
+运行
+# 网页开发：启动 Vite 服务 + 打开浏览器
+npx iris-runtime dev --web
+
+# 桌面开发：启动 Rust + WebGPU 原生窗口（无浏览器）
+npx iris-runtime dev --desktop
+2. 打包模式
+bash
+运行
+# 打包网页：输出静态资源（dist/web）
+npx iris-runtime build --web
+
+# 打包桌面：输出 exe/app/dmg 原生软件（dist/desktop）
+npx iris-runtime build --desktop
+3. 简写版（可选）
+bash
+运行
+npx iris-runtime dev -w
+npx iris-runtime dev -d
+npx iris-runtime build -w
+npx iris-runtime build -d
+
+-w 指--web 
+-d 指--desktop
+只运行npx iris-runtime 指 npx iris-runtime dev --web
+只运行npx iris-runtime dev  指 npx iris-runtime dev --web
+只运行npx iris-runtime build   指 npx iris-runtime build --web
+
+简写版和不完整参数在代码中实现并出现在详细用户文档中。
+
+
+1，修改readme中iris run App.vue为npx iris-runtime dev 并删除App.vue的源码；
+2，主要客户是npx npm用户，次要才是cargo用户，examples需要包含j较完整的vue项目示例。
+3, 用户客户可以使用熟悉的npx来安装iris-runtime，速度慢时提示通过cdn直接下载iris-runtime可执行文件。
+4, iris-runtime只是iris-cli的别名，用来使得web开发者记忆方便。
+5，取消iris-cli这个名词或只出现在项目模块中

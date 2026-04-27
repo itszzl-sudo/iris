@@ -10,6 +10,8 @@
 
 mod cache;
 mod css_modules;
+mod scoped_css;
+mod scss_processor;
 mod script_setup;
 mod template_compiler;
 mod ts_compiler;
@@ -676,11 +678,41 @@ fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
     styles
         .iter()
         .map(|style| {
+            // 第一步：编译 SCSS/Less 为 CSS
+            let css_content = if style.lang == "scss" || style.lang == "sass" {
+                let config = scss_processor::ScssConfig::default();
+                match scss_processor::compile_scss(&style.content, &config) {
+                    Ok(result) => {
+                        debug!(lang = %style.lang, "SCSS compiled");
+                        result.css
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "SCSS compilation failed, using original content");
+                        style.content.clone()
+                    }
+                }
+            } else if style.lang == "less" {
+                match scss_processor::compile_less(&style.content) {
+                    Ok(result) => {
+                        debug!("Less compiled");
+                        result.css
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Less compilation failed, using original content");
+                        style.content.clone()
+                    }
+                }
+            } else {
+                // 普通 CSS，直接使用
+                style.content.clone()
+            };
+
+            // 第二步：应用 CSS Modules 或 Scoped CSS
             if style.module {
                 // CSS Modules: 作用域化类名
-                let hash = css_modules::generate_short_hash(&style.content);
-                let scoped_css = css_modules::transform_css(&style.content, &hash);
-                let class_mapping = css_modules::generate_mapping(&style.content, &hash);
+                let hash = css_modules::generate_short_hash(&css_content);
+                let scoped_css = css_modules::transform_css(&css_content, &hash);
+                let class_mapping = css_modules::generate_mapping(&css_content, &hash);
 
                 debug!(
                     hash = %hash,
@@ -695,11 +727,25 @@ fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
                     module: true,
                     class_mapping,
                 }
+            } else if style.scoped {
+                // Scoped CSS: 为选择器添加唯一属性
+                let scope_id = scoped_css::generate_scope_id("component", &css_content);
+                let scoped_css = scoped_css::transform_css_scoped(&css_content, &scope_id);
+
+                debug!(scope_id = %scope_id, "Scoped CSS applied");
+
+                StyleBlock {
+                    css: scoped_css,
+                    scoped: true,
+                    lang: style.lang.clone(),
+                    module: false,
+                    class_mapping: std::collections::HashMap::new(),
+                }
             } else {
                 // 普通样式：保持原样
                 StyleBlock {
-                    css: style.content.clone(),
-                    scoped: style.scoped,
+                    css: css_content,
+                    scoped: false,
                     lang: style.lang.clone(),
                     module: false,
                     class_mapping: std::collections::HashMap::new(),

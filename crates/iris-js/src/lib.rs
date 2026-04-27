@@ -28,6 +28,9 @@
 pub mod vm;
 pub mod module;
 pub mod vue;
+pub mod dom_bindings;
+pub mod web_apis;
+pub mod es_modules;
 
 use iris_core;
 use iris_dom;

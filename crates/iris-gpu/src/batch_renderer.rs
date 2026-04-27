@@ -147,6 +147,32 @@ pub enum DrawCommand {
         /// 阴影颜色（通常半透明黑色）。
         color: [f32; 4],
     },
+    /// 圆形/椭圆。
+    Circle {
+        /// 中心 X 坐标（像素）。
+        center_x: f32,
+        /// 中心 Y 坐标（像素）。
+        center_y: f32,
+        /// 半径 X（像素）。
+        radius_x: f32,
+        /// 半径 Y（像素）。
+        radius_y: f32,
+        /// RGBA 颜色。
+        color: [f32; 4],
+    },
+    /// 径向渐变矩形。
+    RadialGradientRect {
+        /// 中心 X 坐标（像素）。
+        center_x: f32,
+        /// 中心 Y 坐标（像素）。
+        center_y: f32,
+        /// 渐变半径（像素）。
+        radius: f32,
+        /// 起始颜色（中心）。
+        start_color: [f32; 4],
+        /// 结束颜色（边缘）。
+        end_color: [f32; 4],
+    },
 }
 
 /// 2D 批渲染器。
@@ -487,6 +513,36 @@ impl BatchRenderer {
                 color,
             } => {
                 self.add_box_shadow(x, y, width, height, offset_x, offset_y, blur, color);
+            }
+            DrawCommand::Circle {
+                center_x,
+                center_y,
+                radius_x,
+                radius_y,
+                color,
+            } => {
+                // 使用圆角矩形近似圆形（radius = 50% 宽高）
+                let x = center_x - radius_x;
+                let y = center_y - radius_y;
+                let width = radius_x * 2.0;
+                let height = radius_y * 2.0;
+                let radius = radius_x.min(radius_y);
+                self.add_rounded_rect(x, y, width, height, radius, color);
+            }
+            DrawCommand::RadialGradientRect {
+                center_x,
+                center_y,
+                radius,
+                start_color,
+                end_color,
+            } => {
+                // 简化实现：使用中心点渐变矩形
+                let x = center_x - radius;
+                let y = center_y - radius;
+                let width = radius * 2.0;
+                let height = radius * 2.0;
+                // 使用对角线渐变近似径向渐变
+                self.add_rect(x, y, width, height, start_color, end_color);
             }
         }
     }
@@ -1497,5 +1553,51 @@ mod texture_tests {
         // 最后层：接近 0 透明度
         let alpha_last = base_alpha * (1.0 - (layers - 1) as f32 / layers as f32);
         assert!(alpha_last < 0.15_f32);
+    }
+
+    /// 测试：圆形命令创建
+    #[test]
+    fn test_circle_command_creation() {
+        let cmd = DrawCommand::Circle {
+            center_x: 100.0,
+            center_y: 100.0,
+            radius_x: 50.0,
+            radius_y: 50.0,
+            color: [1.0, 0.0, 0.0, 1.0],
+        };
+
+        match cmd {
+            DrawCommand::Circle { center_x, center_y, radius_x, radius_y, color } => {
+                assert_eq!(center_x, 100.0);
+                assert_eq!(center_y, 100.0);
+                assert_eq!(radius_x, 50.0);
+                assert_eq!(radius_y, 50.0);
+                assert_eq!(color, [1.0, 0.0, 0.0, 1.0]);
+            }
+            _ => panic!("Expected Circle command"),
+        }
+    }
+
+    /// 测试：径向渐变命令创建
+    #[test]
+    fn test_radial_gradient_command_creation() {
+        let cmd = DrawCommand::RadialGradientRect {
+            center_x: 200.0,
+            center_y: 200.0,
+            radius: 100.0,
+            start_color: [1.0, 1.0, 1.0, 1.0],
+            end_color: [0.0, 0.0, 0.0, 1.0],
+        };
+
+        match cmd {
+            DrawCommand::RadialGradientRect { center_x, center_y, radius, start_color, end_color } => {
+                assert_eq!(center_x, 200.0);
+                assert_eq!(center_y, 200.0);
+                assert_eq!(radius, 100.0);
+                assert_eq!(start_color, [1.0, 1.0, 1.0, 1.0]);
+                assert_eq!(end_color, [0.0, 0.0, 0.0, 1.0]);
+            }
+            _ => panic!("Expected RadialGradientRect command"),
+        }
     }
 }

@@ -223,6 +223,21 @@ impl FontAtlas {
     pub fn cached_glyph_count(&self) -> usize {
         self.glyph_cache.len()
     }
+
+    /// 获取字体大小
+    pub fn font_size(&self) -> f32 {
+        self.font_size
+    }
+
+    /// 清空字形缓存和图集
+    pub fn clear(&mut self) {
+        self.atlas_data = vec![0u8; (self.atlas_width * self.atlas_height * 4) as usize];
+        self.cursor_x = 0;
+        self.cursor_y = 0;
+        self.row_max_height = 0;
+        self.glyph_cache.clear();
+        self.dirty = true;
+    }
 }
 
 #[cfg(test)]

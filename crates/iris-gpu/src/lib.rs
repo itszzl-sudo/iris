@@ -9,9 +9,15 @@
 mod batch_renderer;
 mod file_watcher;
 mod font_atlas;
+mod texture_cache;
+mod text_renderer;
+mod canvas;
 
 pub use batch_renderer::{BatchRenderer, BatchVertex, DrawCommand};
 pub use font_atlas::{FontAtlas, GlyphInfo};
+pub use texture_cache::{TextureCache, TextureEntry};
+pub use text_renderer::TextRenderer;
+pub use canvas::Canvas2DContext;
 use bytemuck::{Pod, Zeroable};
 pub use file_watcher::{deduplicate_changes, FileChange, FileWatcher, WatcherConfig};
 use wgpu::util::DeviceExt;
@@ -101,6 +107,9 @@ pub struct Renderer {
 
     // 2D 批渲染系统（新版）
     batch_renderer: BatchRenderer,
+
+    // 纹理缓存
+    texture_cache: TextureCache,
 
     // 文件热更新监听器（可选）
     file_watcher: Option<FileWatcher>,
@@ -288,7 +297,10 @@ impl Renderer {
             1024,
         );
 
-        println!("✅ Iris GPU renderer initialized (batch renderer ready)");
+        // 初始化纹理缓存
+        let texture_cache = TextureCache::new(surface_format);
+
+        println!("✅ Iris GPU renderer initialized (batch renderer + texture cache ready)");
 
         Ok(Self {
             surface,
@@ -303,6 +315,7 @@ impl Renderer {
             triangle_vertices,
             rect_indices,
             batch_renderer,
+            texture_cache,
             file_watcher: None, // 默认不启动，需要时手动设置
         })
     }
@@ -479,6 +492,24 @@ impl Renderer {
                 });
             }
 
+            // 示例 6: 圆形（使用 Circle 命令）
+            self.batch_renderer.submit(DrawCommand::Circle {
+                center_x: 1000.0,
+                center_y: 300.0,
+                radius_x: 50.0,
+                radius_y: 50.0,
+                color: [1.0, 0.843, 0.0, 0.8], // 金色半透明
+            });
+
+            // 示例 7: 径向渐变（使用 RadialGradientRect）
+            self.batch_renderer.submit(DrawCommand::RadialGradientRect {
+                center_x: 1150.0,
+                center_y: 300.0,
+                radius: 60.0,
+                start_color: [0.0, 0.831, 0.667, 1.0], // 中心：青色
+                end_color: [0.4196, 0.3059, 0.9020, 1.0], // 边缘：紫色
+            });
+
             // 刷新批渲染（单次 draw call 提交所有矩形）
             let count = self.batch_renderer.draw_count();
             self.batch_renderer.flush(&mut render_pass);
@@ -494,6 +525,46 @@ impl Renderer {
     /// 获取当前渲染尺寸。
     pub fn size(&self) -> winit::dpi::PhysicalSize<u32> {
         self.size
+    }
+
+    /// 从 RGBA 数据加载纹理。
+    ///
+    /// # 参数
+    ///
+    /// * `data` - RGBA 像素数据
+    /// * `width` - 纹理宽度
+    /// * `height` - 纹理高度
+    ///
+    /// # 返回
+    ///
+    /// 返回纹理 ID
+    pub fn load_texture_from_rgba(
+        &mut self,
+        data: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Result<u32, String> {
+        self.texture_cache
+            .create_texture_from_rgba(&self.device, &self.queue, data, width, height)
+    }
+
+    /// 从文件路径加载纹理。
+    ///
+    /// # 参数
+    ///
+    /// * `path` - 图像文件路径
+    ///
+    /// # 返回
+    ///
+    /// 返回纹理 ID
+    pub fn load_texture_from_path(&mut self, path: &str) -> Result<u32, String> {
+        self.texture_cache
+            .create_texture_from_path(&self.device, &self.queue, path)
+    }
+
+    /// 获取纹理缓存引用。
+    pub fn texture_cache(&self) -> &TextureCache {
+        &self.texture_cache
     }
 }
 

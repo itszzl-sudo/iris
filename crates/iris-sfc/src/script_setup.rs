@@ -79,6 +79,10 @@ pub struct MacroResult {
     pub transformed_script: String,
     /// 需要暴露的变量列表
     pub exposed_vars: Vec<String>,
+    /// 响应式 refs（变量名 -> 初始值）
+    pub refs: Vec<(String, String)>,
+    /// 生命周期钩子列表
+    pub lifecycle_hooks: Vec<String>,
 }
 
 /// Props 解析器：TypeScript 接口 -> 运行时 props
@@ -87,13 +91,24 @@ static PROPS_TYPE_RE: LazyLock<Regex> =
 
 /// Props 数组形式：defineProps(['prop1', 'prop2'])
 static PROPS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps\(\[([^\]]+)\]\)\s*;?\s*$"#)
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+(\w+)\s*=\s*defineProps\((\[[^\]]+\])\)\s*;?\s*$"#)
         .unwrap()
 });
 
 /// Props 泛型形式（包含变量声明）
 static PROPS_TYPE_FULL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineProps<\{([^}]+)\}>\(\)\s*;?\s*$"#)
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+(\w+)\s*=\s*defineProps<\{([^}]+)\}>\(\)\s*;?\s*$"#)
+        .unwrap()
+});
+
+/// Props 无变量声明形式：defineProps<{...}>()
+static PROPS_TYPE_NO_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*defineProps<\{([^}]+)\}>\(\)\s*;?\s*$"#).unwrap()
+});
+
+/// Props 运行时对象形式：defineProps({ prop1: String, prop2: Number })
+static PROPS_RUNTIME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+(\w+)\s*=\s*defineProps\((\{[^}]+\})\)\s*;?\s*$"#)
         .unwrap()
 });
 
@@ -103,19 +118,47 @@ static EMITS_TYPE_RE: LazyLock<Regex> =
 
 /// Emits 数组形式：defineEmits(['event1', 'event2'])
 static EMITS_ARRAY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits\(\[([^\]]+)\]\)\s*;?\s*$"#)
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+(\w+)\s*=\s*defineEmits\((\[[^\]]+\])\)\s*;?\s*$"#)
         .unwrap()
 });
 
 /// Emits 泛型形式（包含变量声明）
 static EMITS_TYPE_FULL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?m)^\s*(const|let|var)\s+\w+\s*=\s*defineEmits<\{([^}]+)\}>\(\)\s*;?\s*$"#)
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+(\w+)\s*=\s*defineEmits<\{([^}]+)\}>\(\)\s*;?\s*$"#)
+        .unwrap()
+});
+
+/// Emits 无变量声明形式：defineEmits<{...}>()
+static EMITS_TYPE_NO_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*defineEmits<\{([^}]+)\}>\(\)\s*;?\s*$"#).unwrap()
+});
+
+/// Emits 运行时对象形式：defineEmits(['event1', 'event2'])
+static EMITS_RUNTIME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*(const|let|var)\s+(\w+)\s*=\s*defineEmits\((\[[^\]]+\])\)\s*;?\s*$"#)
         .unwrap()
 });
 
 /// withDefaults 解析器
 static WITH_DEFAULTS_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"withDefaults\s*\(\s*defineProps<\{([^}]+)\}>\(\)\s*,\s*\{([^}]*)\}\s*\)"#)
+        .unwrap()
+});
+
+/// ref() 响应式引用：const count = ref(0)
+static REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*(const|let)\s+(\w+)\s*=\s*ref\s*\(([^)]*)\)\s*;?\s*$"#).unwrap()
+});
+
+/// reactive() 响应式对象：const state = reactive({ count: 0 })
+static REACTIVE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*(const|let)\s+(\w+)\s*=\s*reactive\s*\((\{[^}]*\})\s*\)\s*;?\s*$"#)
+        .unwrap()
+});
+
+/// 生命周期钩子：onMounted, onUpdated, onUnmounted 等
+static LIFECYCLE_HOOK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?m)^\s*on(Mounted|Updated|Unmounted|BeforeMount|BeforeUpdate|BeforeUnmount|Activated|Deactivated|ErrorCaptured)\s*\("#)
         .unwrap()
 });
 
@@ -181,34 +224,16 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
     let mut result = MacroResult::default();
     let mut transformed = script.to_string();
 
-    // 解析 defineProps - TypeScript 泛型形式（包含变量声明）
-    if let Some(caps) = PROPS_TYPE_FULL_RE.captures(script) {
-        let props_interface = &caps[2];
-        let runtime_props = parse_props_interface(props_interface);
-        result.props = Some(runtime_props);
-
-        // 移除整行（包括变量声明）
-        transformed = PROPS_TYPE_FULL_RE
-            .replace(&transformed, "/* props injected */")
-            .to_string();
-    }
-    // 解析 defineProps - 数组形式（包含变量声明）
-    else if let Some(caps) = PROPS_ARRAY_RE.captures(script) {
-        let props_array = &caps[2];
-        result.props = Some(format!("[{}]", props_array.trim()));
-
-        // 移除整行（包括变量声明）
-        transformed = PROPS_ARRAY_RE
-            .replace(&transformed, "/* props injected */")
-            .to_string();
-    }
-
-    // 解析 withDefaults
+    // 修复：先解析 withDefaults（优先级高于普通的 defineProps）
+    // 避免重复解析和不必要的中间处理
+    let mut props_parsed = false;
+    
     if let Some(caps) = WITH_DEFAULTS_RE.captures(script) {
         let props_interface = &caps[1];
         let defaults = &caps[2];
         let runtime_props = parse_props_interface_with_defaults(props_interface, defaults);
         result.props = Some(runtime_props);
+        props_parsed = true;
 
         // 移除宏调用
         transformed = WITH_DEFAULTS_RE
@@ -216,30 +241,101 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
             .to_string();
     }
 
+    // 只有在 withDefaults 不存在时才解析普通的 defineProps
+    if !props_parsed {
+        // 解析 defineProps - TypeScript 泛型形式（包含变量声明）
+        if let Some(caps) = PROPS_TYPE_FULL_RE.captures(script) {
+            let var_name = &caps[2]; // 变量名
+            let props_interface = &caps[3]; // 接口内容
+            let runtime_props = parse_props_interface(props_interface);
+            result.props = Some(runtime_props);
+
+            // 移除整行（包括变量声明）
+            transformed = PROPS_TYPE_FULL_RE
+                .replace(&transformed, &format!("const {} = /* props injected */", var_name))
+                .to_string();
+        }
+        // 解析 defineProps - 数组形式（包含变量声明）
+        else if let Some(caps) = PROPS_ARRAY_RE.captures(script) {
+            let var_name = &caps[2];
+            let props_array = &caps[3];
+            // props_array 已经是 ['title', 'count'] 形式，不需要再包装
+            result.props = Some(props_array.trim().to_string());
+
+            // 移除整行（包括变量声明）
+            transformed = PROPS_ARRAY_RE
+                .replace(&transformed, &format!("const {} = /* props injected */", var_name))
+                .to_string();
+        }
+        // 解析 defineProps - 无变量声明形式（TypeScript 泛型）
+        else if let Some(caps) = PROPS_TYPE_NO_VAR_RE.captures(script) {
+            let props_interface = &caps[1];
+            let runtime_props = parse_props_interface(props_interface);
+            result.props = Some(runtime_props);
+
+            // 移除宏调用
+            transformed = PROPS_TYPE_NO_VAR_RE
+                .replace(&transformed, "/* props injected */")
+                .to_string();
+        }
+        // 解析 defineProps - 运行时对象形式（不常见但支持）
+        else if let Some(caps) = PROPS_RUNTIME_RE.captures(script) {
+            let var_name = &caps[2];
+            let runtime_obj = &caps[3];
+            result.props = Some(runtime_obj.to_string());
+
+            // 移除宏调用，保留变量声明（但标记为已注入）
+            transformed = PROPS_RUNTIME_RE
+                .replace(&transformed, &format!("const {} = /* props injected */", var_name))
+                .to_string();
+        }
+    }
+
     // 解析 defineEmits - TypeScript 泛型形式（包含变量声明）
     if let Some(caps) = EMITS_TYPE_FULL_RE.captures(&transformed) {
-        let emits_interface = &caps[2];
+        let var_name = &caps[2];
+        let emits_interface = &caps[3];
         let runtime_emits = parse_emits_interface(emits_interface);
         result.emits = Some(runtime_emits);
 
         // 移除整行（包括变量声明）
         transformed = EMITS_TYPE_FULL_RE
-            .replace(&transformed, "/* emits injected */")
+            .replace(&transformed, &format!("const {} = /* emits injected */", var_name))
             .to_string();
     }
     // 解析 defineEmits - 数组形式（包含变量声明）
     else if let Some(caps) = EMITS_ARRAY_RE.captures(&transformed) {
-        let emits_array = &caps[2];
-        result.emits = Some(format!("[{}]", emits_array.trim()));
+        let var_name = &caps[2];
+        let emits_array = &caps[3];
+        // emits_array 已经是 ['change', 'update'] 形式，不需要再包装
+        result.emits = Some(emits_array.trim().to_string());
 
         // 移除整行（包括变量声明）
         transformed = EMITS_ARRAY_RE
+            .replace(&transformed, &format!("const {} = /* emits injected */", var_name))
+            .to_string();
+    }
+    // 解析 defineEmits - 无变量声明形式（TypeScript 泛型）
+    else if let Some(caps) = EMITS_TYPE_NO_VAR_RE.captures(&transformed) {
+        let emits_interface = &caps[1];
+        let runtime_emits = parse_emits_interface(emits_interface);
+        result.emits = Some(runtime_emits);
+
+        // 移除宏调用
+        transformed = EMITS_TYPE_NO_VAR_RE
             .replace(&transformed, "/* emits injected */")
             .to_string();
     }
 
     // 提取顶层声明（用于 return）
     result.exposed_vars = extract_top_level_declarations(&transformed);
+    
+    // 提取响应式 refs 和 reactive 对象
+    result.refs = extract_refs_and_reactive(&transformed);
+    
+    // 提取生命周期钩子
+    result.lifecycle_hooks = extract_lifecycle_hooks(&transformed);
+    
     result.transformed_script = transformed;
 
     Ok(result)
@@ -405,6 +501,59 @@ fn extract_top_level_declarations(script: &str) -> Vec<String> {
     vars
 }
 
+/// 提取响应式 refs 和 reactive 对象
+fn extract_refs_and_reactive(script: &str) -> Vec<(String, String)> {
+    let mut refs = Vec::new();
+
+    // 提取 ref() 声明
+    for caps in REF_RE.captures_iter(script) {
+        let var_name = &caps[2];
+        let initial_value = &caps[3];
+        refs.push((var_name.to_string(), initial_value.to_string()));
+    }
+
+    // 提取 reactive() 声明
+    for caps in REACTIVE_RE.captures_iter(script) {
+        let var_name = &caps[2];
+        let initial_value = &caps[3];
+        refs.push((var_name.to_string(), format!("reactive({})", initial_value)));
+    }
+
+    refs
+}
+
+/// 提取生命周期钩子调用
+fn extract_lifecycle_hooks(script: &str) -> Vec<String> {
+    let mut hooks = Vec::new();
+
+    for caps in LIFECYCLE_HOOK_RE.captures_iter(script) {
+        let hook_name = &caps[0];
+        // 提取完整的钩子调用（包括参数）
+        if let Some(start) = script.find(hook_name) {
+            // 查找匹配的括号
+            let rest = &script[start..];
+            let mut depth = 0;
+            let mut end = 0;
+            for (i, ch) in rest.chars().enumerate() {
+                if ch == '(' {
+                    depth += 1;
+                } else if ch == ')' {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+            }
+            if end > 0 {
+                hooks.push(rest[..end].to_string());
+            }
+        }
+    }
+
+    hooks
+}
+
 /// 生成 setup 函数（不包含 export default）
 fn generate_setup_function(script: &str, exposed_vars: &[String]) -> String {
     let return_stmt = if exposed_vars.is_empty() {
@@ -416,9 +565,16 @@ fn generate_setup_function(script: &str, exposed_vars: &[String]) -> String {
         )
     };
 
+    // 注入生命周期钩子的初始化代码（可选）
+    let lifecycle_init = r#"
+    // Lifecycle hooks are automatically managed by the Vue runtime
+    // onMounted, onUpdated, onUnmounted, etc. will be called at appropriate times"#;
+
     format!(
-        "  setup(props, {{ emit }}) {{{}\n{}\n  }}\n",
-        script, return_stmt
+        "  setup(props, {{ emit }}) {{\n{}\n{}\n{}\n  }}\n",
+        lifecycle_init,
+        script,
+        return_stmt
     )
 }
 
@@ -530,5 +686,198 @@ const { a, b } = obj
         // 但现在我们只测试 const 和 function
         assert!(vars.contains(&"handleClick".to_string()));
         assert!(!vars.contains(&"{ a, b }".to_string())); // 解构赋值不提取
+    }
+
+    // ===== 新增测试用例 =====
+
+    #[test]
+    fn test_props_array_syntax() {
+        // 测试数组形式的 props
+        let script = r#"
+const props = defineProps(['title', 'count', 'visible'])
+"#;
+
+        let result = transform_script_setup(script).unwrap();
+        println!("Result:\n{}", result);
+        // 数组形式应该被转换为 props: ['title', 'count', 'visible']
+        assert!(result.contains("props:"));
+        assert!(result.contains("'title'"));
+        assert!(result.contains("'count'"));
+        assert!(result.contains("'visible'"));
+    }
+
+    #[test]
+    fn test_props_with_defaults() {
+        // 测试 withDefaults 语法
+        let script = r#"
+const props = withDefaults(defineProps<{
+  title: string
+  count?: number
+  visible?: boolean
+}>(), {
+  title: 'Default Title',
+  count: 0
+})
+"#;
+
+        let result = transform_script_setup(script).unwrap();
+        assert!(result.contains("props:"));
+        assert!(result.contains("default: 'Default Title'"));
+        assert!(result.contains("default: 0"));
+    }
+
+    #[test]
+    fn test_emits_array_syntax() {
+        // 测试数组形式的 emits
+        let script = r#"
+const emit = defineEmits(['change', 'update', 'delete'])
+"#;
+
+        let result = transform_script_setup(script).unwrap();
+        println!("Result:\n{}", result);
+        // 数组形式应该被转换为 emits: ['change', 'update', 'delete']
+        assert!(result.contains("emits:"));
+        assert!(result.contains("'change'"));
+        assert!(result.contains("'update'"));
+        assert!(result.contains("'delete'"));
+    }
+
+    #[test]
+    fn test_ref_extraction() {
+        // 测试 ref 响应式提取
+        let script = r#"
+const count = ref(0)
+const name = ref('Vue')
+let visible = ref(false)
+"#;
+
+        let result = parse_macros(script).unwrap();
+        assert_eq!(result.refs.len(), 3);
+        assert!(result.refs.iter().any(|(name, _)| name == "count"));
+        assert!(result.refs.iter().any(|(name, _)| name == "name"));
+    }
+
+    #[test]
+    fn test_reactive_extraction() {
+        // 测试 reactive 响应式提取
+        let script = r#"
+const state = reactive({
+  count: 0,
+  name: 'Vue'
+})
+"#;
+
+        let result = parse_macros(script).unwrap();
+        assert_eq!(result.refs.len(), 1);
+        assert_eq!(result.refs[0].0, "state");
+        assert!(result.refs[0].1.contains("reactive"));
+    }
+
+    #[test]
+    fn test_lifecycle_hooks() {
+        // 测试生命周期钩子提取
+        let script = r#"
+onMounted(() => {
+  console.log('mounted')
+})
+
+onUpdated(() => {
+  console.log('updated')
+})
+
+onUnmounted(() => {
+  console.log('unmounted')
+})
+"#;
+
+        let result = parse_macros(script).unwrap();
+        assert_eq!(result.lifecycle_hooks.len(), 3);
+        assert!(result.lifecycle_hooks.iter().any(|h| h.contains("onMounted")));
+        assert!(result.lifecycle_hooks.iter().any(|h| h.contains("onUpdated")));
+        assert!(result.lifecycle_hooks.iter().any(|h| h.contains("onUnmounted")));
+    }
+
+    #[test]
+    fn test_full_script_setup_with_all_features() {
+        // 测试完整的 script setup 包含所有功能
+        let script = r#"
+import { ref, reactive, onMounted } from 'vue'
+
+const props = defineProps<{
+  title: string
+  count?: number
+}>()
+
+const emit = defineEmits<{
+  change: [value: number]
+  update: []
+}>()
+
+const count = ref(0)
+const name = ref('Test')
+
+const state = reactive({
+  loading: false,
+  data: null
+})
+
+function increment() {
+  count.value++
+  emit('change', count.value)
+}
+
+onMounted(() => {
+  console.log('Component mounted')
+})
+"#;
+
+        let result = transform_script_setup(script).unwrap();
+        
+        // 验证组件结构
+        assert!(result.contains("export default {"));
+        assert!(result.contains("props:"));
+        assert!(result.contains("emits:"));
+        assert!(result.contains("setup("));
+        
+        // 验证宏被移除并注入注释
+        assert!(result.contains("/* props injected */"));
+        assert!(result.contains("/* emits injected */"));
+        
+        // 验证 return 语句
+        assert!(result.contains("return {"));
+        assert!(result.contains("count"));
+        assert!(result.contains("name"));
+        assert!(result.contains("state"));
+        assert!(result.contains("increment"));
+    }
+
+    #[test]
+    fn test_props_no_variable_declaration() {
+        // 测试无变量声明的 props
+        let script = r#"
+defineProps<{
+  title: string
+  count?: number
+}>()
+"#;
+
+        let result = transform_script_setup(script).unwrap();
+        assert!(result.contains("props:"));
+        assert!(result.contains("title: { type: String, required: true }"));
+    }
+
+    #[test]
+    fn test_emits_no_variable_declaration() {
+        // 测试无变量声明的 emits
+        let script = r#"
+defineEmits<{
+  change: [value: number]
+  update: []
+}>()
+"#;
+
+        let result = transform_script_setup(script).unwrap();
+        assert!(result.contains("emits:"));
+        assert!(result.contains("['change', 'update']"));
     }
 }

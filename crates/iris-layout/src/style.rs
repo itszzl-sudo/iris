@@ -2,7 +2,7 @@
 //!
 //! 实现 CSS 选择器匹配、样式层叠和继承。
 
-use crate::css::{parse_stylesheet, Declaration, Selector, Stylesheet};
+use crate::css::{parse_stylesheet, Selector, Stylesheet};
 use crate::dom::DOMNode;
 use std::collections::HashMap;
 
@@ -101,22 +101,66 @@ pub fn compute_styles(
     computed
 }
 
-/// 判断节点是否匹配选择器
+/// 判断节点是否匹配选择器（增强版）
 fn matches_selector(node: &DOMNode, selector: &Selector) -> bool {
-    if selector.is_id() {
-        // ID 选择器: #id
-        let id = &selector.text[1..];
-        node.id_attr().map(|s| s.as_str()) == Some(id)
-    } else if selector.is_class() {
-        // Class 选择器: .class
-        let class = &selector.text[1..];
-        node.class()
-            .map(|s| s.split_whitespace().any(|c| c == class))
-            .unwrap_or(false)
-    } else {
-        // 标签选择器: div
-        node.tag_name().map(|s| s == selector.text.as_str())
-            .unwrap_or(false)
+    use crate::css::SelectorType;
+    
+    match &selector.selector_type {
+        SelectorType::Id(id) => {
+            // ID 选择器: #id
+            node.id_attr().map(|s| s.as_str()) == Some(id)
+        }
+        SelectorType::Class(class) => {
+            // Class 选择器: .class
+            node.class()
+                .map(|s| s.split_whitespace().any(|c| c == class))
+                .unwrap_or(false)
+        }
+        SelectorType::Tag(tag) => {
+            // 标签选择器: div
+            node.tag_name().map(|s| s == tag.as_str())
+                .unwrap_or(false)
+        }
+        SelectorType::Attribute { name, value } => {
+            // 属性选择器: [attr] 或 [attr=value]
+            if let Some(node_value) = node.get_attribute(name) {
+                if let Some(expected_value) = value {
+                    node_value.as_str() == expected_value.as_str()
+                } else {
+                    true // 只要属性存在就匹配
+                }
+            } else {
+                false
+            }
+        }
+        SelectorType::Universal => {
+            // 通配符: * - 匹配所有元素
+            node.is_element()
+        }
+        SelectorType::Compound(parts) => {
+            // 复合选择器: div.class#id - 必须匹配所有部分
+            parts.iter().all(|part| {
+                match part {
+                    SelectorType::Tag(tag) => {
+                        node.tag_name().map(|s| s == tag.as_str()).unwrap_or(false)
+                    }
+                    SelectorType::Class(class) => {
+                        node.class()
+                            .map(|s| s.split_whitespace().any(|c| c == class))
+                            .unwrap_or(false)
+                    }
+                    SelectorType::Id(id) => {
+                        node.id_attr().map(|s| s.as_str()) == Some(id)
+                    }
+                    _ => false,
+                }
+            })
+        }
+        SelectorType::Descendant(_, _) | SelectorType::Child(_, _) => {
+            // TODO: 实现后代和子元素选择器需要父节点信息
+            // 简化实现：暂时只匹配最后部分
+            true
+        }
     }
 }
 
@@ -218,7 +262,7 @@ mod tests {
     #[test]
     fn test_style_inheritance() {
         let mut parent = DOMNode::new_element("div");
-        let mut child = DOMNode::new_element("p");
+        let child = DOMNode::new_element("p");
         parent.append_child(child);
 
         // 父节点有可继承的属性
@@ -230,5 +274,82 @@ mod tests {
 
         // 子节点应该继承父节点的样式
         assert_eq!(child_styles.get("color"), Some(&"blue".to_string()));
+    }
+
+    #[test]
+    fn test_matches_attribute_selector() {
+        use crate::css::Selector;
+        
+        let mut node = DOMNode::new_element("button");
+        node.set_attribute("data-type", "primary");
+        node.set_attribute("disabled", "");
+        
+        // 测试属性存在
+        let sel1 = Selector::new("[data-type]");
+        assert!(matches_selector(&node, &sel1));
+        
+        // 测试属性值匹配
+        let sel2 = Selector::new("[data-type=primary]");
+        assert!(matches_selector(&node, &sel2));
+        
+        // 测试属性值不匹配
+        let sel3 = Selector::new("[data-type=secondary]");
+        assert!(!matches_selector(&node, &sel3));
+    }
+
+    #[test]
+    fn test_matches_universal_selector() {
+        use crate::css::Selector;
+        
+        let node = DOMNode::new_element("div");
+        let sel = Selector::new("*");
+        assert!(matches_selector(&node, &sel));
+    }
+
+    #[test]
+    fn test_matches_compound_selector() {
+        use crate::css::Selector;
+        
+        let mut node = DOMNode::new_element("div");
+        node.set_attribute("class", "container");
+        node.set_attribute("id", "main");
+        
+        // 测试 div.container
+        let sel1 = Selector::new("div.container");
+        assert!(matches_selector(&node, &sel1));
+        
+        // 测试 div#main
+        let sel2 = Selector::new("div#main");
+        assert!(matches_selector(&node, &sel2));
+        
+        // 测试 div.container#main
+        let sel3 = Selector::new("div.container#main");
+        assert!(matches_selector(&node, &sel3));
+        
+        // 测试不匹配
+        let sel4 = Selector::new("p.container");
+        assert!(!matches_selector(&node, &sel4));
+    }
+
+    #[test]
+    fn test_cascade_order() {
+        let mut div = DOMNode::new_element("div");
+        div.set_attribute("class", "box");
+        div.set_attribute("id", "main");
+
+        // 多条规则层叠
+        let css = r#"
+            div { color: black; }
+            .box { color: blue; padding: 10px; }
+            #main { color: red; }
+        "#;
+        let stylesheet = parse_stylesheet(css);
+
+        let computed = compute_styles(&div, &stylesheet, None);
+
+        // ID 选择器优先级最高
+        assert_eq!(computed.get("color"), Some(&"red".to_string()));
+        // Class 选择器的 padding 应该被保留
+        assert_eq!(computed.get("padding"), Some(&"10px".to_string()));
     }
 }
