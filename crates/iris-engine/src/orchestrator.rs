@@ -541,6 +541,21 @@ impl RuntimeOrchestrator {
         self.target_fps
     }
 
+    /// 设置 VTree（用于测试）
+    pub fn set_vtree(&mut self, vtree: VTree) {
+        self.vtree = Some(vtree);
+    }
+
+    /// 设置 DOM 树（用于测试）
+    pub fn set_dom_tree(&mut self, dom_tree: DOMNode) {
+        self.dom_tree = Some(dom_tree);
+    }
+
+    /// 重置帧率时间戳（用于测试）
+    pub fn reset_frame_timer(&mut self) {
+        self.last_frame_time = None;
+    }
+
     // ==========================================
     // Phase F: 事件系统与交互
     // ==========================================

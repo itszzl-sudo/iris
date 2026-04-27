@@ -2,9 +2,22 @@
 
 <cite>
 **本文档引用的文件**
-- [doc.txt](file://doc.txt)
-- [todo.txt](file://todo.txt)
+- [dirty_rect_manager.rs](file://crates/iris-engine/src/dirty_rect_manager.rs)
+- [orchestrator.rs](file://crates/iris-engine/src/orchestrator.rs)
+- [batch_renderer.rs](file://crates/iris-gpu/src/batch_renderer.rs)
+- [lib.rs](file://crates/iris-gpu/src/lib.rs)
+- [gpu_texture_rendering.rs](file://crates/iris-gpu/tests/gpu_texture_rendering.rs)
+- [gpu_texture_real.rs](file://crates/iris-gpu/tests/gpu_texture_real.rs)
+- [TEXTURE_INTEGRATION.md](file://crates/iris-gpu/TEXTURE_INTEGRATION.md)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 新增帧率控制功能章节，详细说明目标帧率设置和帧率限制机制
+- 新增脏标志管理章节，介绍脏矩形管理系统的工作原理和优化策略
+- 更新GPU命令生成章节，增加DrawCommand枚举类型和批渲染器实现细节
+- 新增渲染器架构图，展示帧率控制、脏标志管理和GPU命令生成的集成关系
+- 更新性能优化建议，增加基于脏矩形优化的渲染性能提升策略
 
 ## 目录
 1. [简介](#简介)
@@ -22,7 +35,7 @@
 
 Leivue Runtime是一个基于Rust和WebGPU的下一代无构建前端运行时引擎。该项目的核心目标是提供一套完全脱离Node.js/浏览器DOM/编译打包的原生双端运行环境，支持零编译直接执行Vue3 + TypeScript，并完全兼容Element Plus、Ant Design Vue等第三方UI库。
 
-该引擎采用七层分层架构设计，其中WebGPU硬件渲染管线层是核心技术之一，负责替代传统的DOM渲染流水线，提供完全自研的GPU渲染能力。
+该引擎采用七层分层架构设计，其中WebGPU硬件渲染管线层是核心技术之一，负责替代传统的DOM渲染流水线，提供完全自研的GPU渲染能力。最新版本新增了帧率控制、脏标志管理和GPU命令生成等核心功能，显著提升了渲染性能和系统效率。
 
 ## 项目结构
 
@@ -76,6 +89,9 @@ GPU --> Kernel
 - **高性能渲染**：支持批渲染、矢量绘制、圆角/阴影/渐变
 - **纹理管理**：纹理图集、字体渲染、图层合成
 - **稳定性能**：60fps稳定渲染，大列表/复杂组件无卡顿
+- **帧率控制**：可配置的目标帧率，支持30-144fps范围
+- **脏标志管理**：智能脏矩形检测，优化渲染区域
+- **GPU命令生成**：统一的绘制命令接口，支持多种图形类型
 
 ### 核心渲染功能
 
@@ -84,22 +100,36 @@ GPU --> Kernel
 3. **视觉效果**：圆角、阴影、边框、渐变等高级视觉效果
 4. **纹理处理**：纹理图集管理和字体渲染
 5. **图层合成**：多图层的合成和渲染
+6. **帧率控制**：动态帧率限制和性能监控
+7. **脏矩形优化**：智能渲染区域检测和优化
+8. **GPU命令管理**：统一的绘制命令生成和提交
 
 **章节来源**
 - [doc.txt:30-34](file://doc.txt#L30-L34)
 
 ## 架构概览
 
-Leivue Runtime的WebGPU渲染API架构设计体现了高度的模块化和解耦性：
+Leivue Runtime的WebGPU渲染API架构设计体现了高度的模块化和解耦性，最新版本集成了帧率控制、脏标志管理和GPU命令生成等核心功能：
 
 ```mermaid
 graph TB
-subgraph "WebGPU渲染API层"
-RenderAPI[渲染命令生成API]
-ResourceMgr[GPU资源管理API]
-ShaderAPI[着色器程序接口API]
-TextureAPI[纹理操作API]
-BufferAPI[缓冲区操作API]
+subgraph "帧率控制系统"
+FPSControl[帧率控制管理器]
+TargetFPS[目标帧率设置]
+CurrentFPS[当前帧率监控]
+FrameTimer[帧定时器]
+end
+subgraph "脏标志管理系统"
+DirtyManager[脏矩形管理器]
+DirtyRect[脏矩形检测]
+MergeAlgo[合并算法]
+RedrawRegions[重绘区域计算]
+end
+subgraph "GPU命令生成系统"
+DrawCommand[绘制命令枚举]
+BatchRenderer[批渲染器]
+FlushPipeline[刷新管线]
+TextureSubmit[纹理提交]
 end
 subgraph "渲染管线配置"
 PipelineCfg[渲染管线配置]
@@ -111,11 +141,14 @@ PerfOpt[性能优化建议]
 ResourceBest[资源使用最佳实践]
 IssueSolve[问题解决方案]
 end
-RenderAPI --> PipelineCfg
-ResourceMgr --> PipelineCfg
-ShaderAPI --> PipelineCfg
-TextureAPI --> PipelineCfg
-BufferAPI --> PipelineCfg
+FPSControl --> FrameTimer
+DirtyManager --> RedrawRegions
+DrawCommand --> BatchRenderer
+BatchRenderer --> FlushPipeline
+FlushPipeline --> PipelineCfg
+DirtyManager --> FPSControl
+FPSControl --> DrawCommand
+RedrawRegions --> BatchRenderer
 PipelineCfg --> BatchCtrl
 BatchCtrl --> HWAccel
 HWAccel --> PerfOpt
@@ -124,133 +157,136 @@ ResourceBest --> IssueSolve
 ```
 
 **图表来源**
-- [doc.txt:30-34](file://doc.txt#L30-L34)
+- [orchestrator.rs:484-522](file://crates/iris-engine/src/orchestrator.rs#L484-L522)
+- [dirty_rect_manager.rs:67-254](file://crates/iris-engine/src/dirty_rect_manager.rs#L67-L254)
+- [batch_renderer.rs:53-176](file://crates/iris-gpu/src/batch_renderer.rs#L53-L176)
 
 ## 详细组件分析
 
-### 渲染命令生成API
+### 帧率控制系统
 
-渲染命令生成是WebGPU渲染API的核心组成部分，负责创建和管理渲染操作序列。
+帧率控制系统是Leivue Runtime渲染架构的重要组成部分，负责控制渲染频率和性能监控。
 
 #### 主要功能特性
 
-- **命令缓冲区管理**：创建、提交和重用命令缓冲区
-- **渲染通道管理**：配置颜色附件、深度模板附件
-- **状态设置**：设置渲染管线、绑定着色器阶段
-- **绘制调用**：执行顶点绘制、索引绘制、实例化绘制
+- **目标帧率设置**：支持30-144fps的可配置帧率范围
+- **帧率限制机制**：基于时间戳的帧间隔计算和限制
+- **实时性能监控**：动态跟踪当前帧率和渲染统计
+- **智能调度**：根据帧率限制决定是否执行渲染
 
 #### API设计原则
 
-- **链式调用**：支持方法链式调用提高代码可读性
-- **类型安全**：严格的类型检查确保API使用正确性
-- **资源跟踪**：自动跟踪GPU资源的生命周期
-- **错误处理**：完善的错误处理和恢复机制
+- **范围验证**：自动限制帧率在1-144fps范围内
+- **时间精度**：使用纳秒级时间戳确保帧率准确性
+- **性能优先**：避免不必要的渲染调用
+- **统计追踪**：记录帧率变化和渲染性能指标
 
-### GPU资源管理API
+#### 关键实现细节
 
-GPU资源管理API负责管理WebGPU中的各种GPU资源，包括缓冲区、纹理、采样器等。
+帧率控制的核心逻辑位于`RuntimeOrchestrator`中，通过`should_render_frame()`方法实现帧率限制：
 
-#### 资源类型
+```rust
+let target_frame_duration = std::time::Duration::from_secs_f64(1.0 / self.target_fps as f64);
+if elapsed < target_frame_duration {
+    return false;
+}
+```
 
-1. **缓冲区(Buffer)**：存储顶点数据、索引数据、常量数据
-2. **纹理(Texture)**：存储图像数据、渲染目标
-3. **采样器(Sampler)**：控制纹理采样行为
-4. **绑定组(BindGroup)**：组织资源绑定
-5. **管线状态对象(Pipeline)**：描述渲染状态
+**章节来源**
+- [orchestrator.rs:440-453](file://crates/iris-engine/src/orchestrator.rs#L440-L453)
+- [orchestrator.rs:524-542](file://crates/iris-engine/src/orchestrator.rs#L524-L542)
 
-#### 管理策略
+### 脏标志管理系统
 
-- **内存池**：高效的GPU内存分配和回收
-- **资源共享**：避免重复创建相同资源
-- **生命周期管理**：自动跟踪资源使用情况
-- **异步释放**：支持异步资源释放避免阻塞
+脏标志管理系统是Leivue Runtime性能优化的核心组件，通过智能检测和合并脏矩形区域来减少不必要的渲染。
 
-### 着色器程序接口API
+#### 脏矩形管理器
 
-着色器程序接口API提供了与WebGPU着色器交互的能力。
+脏矩形管理器负责跟踪和管理需要重绘的屏幕区域：
 
-#### 着色器类型
+- **脏矩形检测**：跟踪发生变化的UI区域
+- **区域合并**：合并重叠的脏矩形以减少绘制调用
+- **智能阈值**：根据脏区域比例决定是否全屏重绘
+- **统计监控**：记录渲染优化效果和性能指标
 
-- **顶点着色器(Vertex Shader)**：处理顶点属性变换
-- **片段着色器(Fragment Shader)**：计算像素颜色
-- **通用着色器(Compute Shader)**：执行通用计算任务
+#### 合并算法
 
-#### 接口特性
+系统采用迭代合并算法处理重叠的脏矩形：
 
-- **着色器编译**：支持SPIR-V字节码和WGSL源码
-- **绑定管理**：自动管理着色器资源绑定
-- **参数传递**：支持动态参数传递和uniform更新
-- **调试支持**：提供着色器调试和性能分析
+1. 遍历所有脏矩形
+2. 检查是否与现有矩形重叠
+3. 合并重叠矩形为更大的包围盒
+4. 重复直到没有更多重叠
 
-### 纹理和缓冲区操作API
+#### 性能优化策略
 
-纹理和缓冲区操作API提供了对GPU内存数据的访问和操作能力。
+- **阈值控制**：当脏区域超过屏幕面积的50%时，直接全屏重绘
+- **面积计算**：通过脏矩形面积总和与屏幕面积比值判断优化效果
+- **统计分析**：记录合并前后的矩形数量和节省的渲染面积比例
 
-#### 纹理操作
+**章节来源**
+- [dirty_rect_manager.rs:67-254](file://crates/iris-engine/src/dirty_rect_manager.rs#L67-L254)
+- [dirty_rect_manager.rs:135-221](file://crates/iris-engine/src/dirty_rect_manager.rs#L135-L221)
 
-- **纹理创建**：支持多种格式和尺寸的纹理
-- **数据上传**：从CPU内存上传到GPU纹理
-- **格式转换**：支持不同像素格式之间的转换
-- **mipmap生成**：自动生成mipmap层级
+### GPU命令生成系统
 
-#### 缓冲区操作
+GPU命令生成系统提供了统一的绘制命令接口，支持多种图形类型的高效渲染。
 
-- **缓冲区创建**：支持不同用途的缓冲区
-- **数据映射**：CPU/GPU数据同步传输
-- **偏移操作**：支持缓冲区部分数据访问
-- **内存对齐**：自动处理内存对齐要求
+#### DrawCommand枚举类型
 
-### 渲染管线配置
+系统定义了丰富的绘制命令类型：
 
-渲染管线配置API允许开发者精细控制渲染过程的各个方面。
+- **基础形状**：纯色矩形、圆角矩形、边框矩形
+- **渐变效果**：线性渐变、径向渐变矩形
+- **纹理渲染**：纹理矩形、UV坐标映射
+- **阴影效果**：盒阴影、多层阴影叠加
+- **几何图形**：圆形、椭圆等复杂形状
 
-#### 配置要素
+#### 批渲染器实现
 
-1. **顶点输入**：定义顶点数据布局和输入绑定
-2. **着色器阶段**：配置各个着色器阶段
-3. **光栅化**：控制三角形光栅化过程
-4. **混合**：配置颜色混合模式
-5. **深度模板**：设置深度和模板测试
+批渲染器通过合并多次绘制调用为单次GPU渲染来提升性能：
 
-#### 动态配置
+- **顶点池管理**：动态管理顶点和索引缓冲区
+- **纹理绑定**：支持多纹理的统一绑定和切换
+- **混合模式**：实现透明度和混合效果
+- **内存优化**：高效的GPU内存使用和复用
 
-- **状态切换**：快速切换渲染状态
-- **参数更新**：动态更新渲染参数
-- **批处理优化**：减少状态切换开销
+#### 命令提交流程
 
-### 批量渲染控制
+1. **命令解析**：将DrawCommand转换为顶点数据
+2. **缓冲区更新**：将顶点数据写入GPU缓冲区
+3. **渲染状态设置**：配置渲染管线和绑定组
+4. **批量绘制**：一次性提交所有累积的绘制命令
 
-批量渲染控制API专门用于优化大量相似对象的渲染性能。
+**章节来源**
+- [batch_renderer.rs:53-176](file://crates/iris-gpu/src/batch_renderer.rs#L53-L176)
+- [batch_renderer.rs:411-548](file://crates/iris-gpu/src/batch_renderer.rs#L411-L548)
+- [batch_renderer.rs:848-880](file://crates/iris-gpu/src/batch_renderer.rs#L848-L880)
 
-#### 批处理策略
+### 渲染器架构
 
-- **实例化渲染**：使用instanced rendering渲染多个实例
-- **顶点重用**：共享顶点数据减少内存占用
-- **状态合并**：合并相似状态减少状态切换
-- **绘制调用优化**：减少GPU命令调用次数
+渲染器架构整合了帧率控制、脏标志管理和GPU命令生成等核心功能：
 
-#### 性能优化
+#### 渲染流程
 
-- **GPU内存优化**：合理组织GPU内存布局
-- **带宽利用**：最大化GPU内存带宽利用率
-- **并发处理**：利用GPU并行计算能力
+1. **帧率检查**：根据目标帧率决定是否渲染
+2. **脏标志检查**：确认是否有需要重绘的内容
+3. **命令生成**：生成GPU绘制命令
+4. **批渲染执行**：提交到GPU进行渲染
+5. **状态清理**：清除脏标志和重置状态
 
-### 硬件加速相关API
+#### 性能优化集成
 
-硬件加速API提供了与底层GPU硬件交互的能力。
+渲染器通过以下方式实现性能优化：
 
-#### 支持的硬件特性
+- **帧率限制**：避免过度渲染消耗系统资源
+- **脏矩形优化**：只重绘发生变化的区域
+- **批渲染**：减少GPU状态切换开销
+- **内存管理**：高效的GPU资源使用
 
-- **多GPU支持**：支持多GPU并行渲染
-- **硬件特性检测**：检测GPU硬件能力
-- **驱动程序兼容性**：适配不同厂商驱动程序
-- **性能监控**：实时监控GPU性能指标
-
-#### 优化策略
-
-- **硬件特定优化**：针对特定GPU架构优化
-- **内存管理**：优化GPU内存使用模式
-- **功耗控制**：平衡性能和功耗
+**章节来源**
+- [orchestrator.rs:484-522](file://crates/iris-engine/src/orchestrator.rs#L484-L522)
+- [lib.rs:513-523](file://crates/iris-gpu/src/lib.rs#L513-L523)
 
 ## 依赖关系分析
 
@@ -261,10 +297,12 @@ WGPU[wgpu crate]
 Winit[winit]
 Tokio[tokio]
 Reqwest[reqwest]
+Fontdue[fontdue]
+Bytemuck[bytemuck]
 end
 subgraph "内部模块"
-Render[渲染模块]
-GPU[GPU资源模块]
+Engine[引擎核心模块]
+GPU[GPU渲染模块]
 Shader[着色器模块]
 Texture[纹理模块]
 Buffer[缓冲区模块]
@@ -273,48 +311,55 @@ subgraph "平台适配"
 Browser[浏览器适配]
 Desktop[桌面适配]
 end
-WGPU --> Render
-Render --> GPU
-Render --> Shader
-Render --> Texture
-Render --> Buffer
+WGPU --> Engine
 Winit --> Desktop
 Tokio --> Desktop
 Reqwest --> Desktop
-Browser --> Render
-Desktop --> Render
+Fontdue --> GPU
+Bytemuck --> GPU
+Engine --> GPU
+GPU --> Shader
+GPU --> Texture
+GPU --> Buffer
+Browser --> Engine
+Desktop --> Engine
 ```
 
 **图表来源**
-- [doc.txt:23-29](file://doc.txt#L23-L29)
+- [lib.rs:16-24](file://crates/iris-gpu/src/lib.rs#L16-L24)
+- [batch_renderer.rs:10-12](file://crates/iris-gpu/src/batch_renderer.rs#L10-L12)
 
 **章节来源**
-- [doc.txt:23-29](file://doc.txt#L23-L29)
+- [lib.rs:16-24](file://crates/iris-gpu/src/lib.rs#L16-L24)
 
 ## 性能考虑
 
-基于项目文档中提到的性能优势，WebGPU渲染API在设计时充分考虑了性能优化：
+基于项目文档中提到的性能优势，WebGPU渲染API在设计时充分考虑了性能优化，最新版本的帧率控制和脏标志管理进一步提升了系统性能：
 
 ### 性能基准
 
-- **帧率稳定性**：60fps稳定渲染
-- **大列表性能**：复杂组件无卡顿
-- **CPU开销**：极低的CPU开销
-- **内存效率**：高效的内存使用模式
+- **帧率稳定性**：60fps稳定渲染，支持30-144fps可配置
+- **脏矩形优化**：智能区域检测，减少不必要的渲染
+- **批渲染优化**：合并多次绘制调用为单次GPU渲染
+- **内存效率**：高效的GPU内存使用和资源复用
 
 ### 优化策略
 
-1. **批渲染优化**：通过批处理减少状态切换
-2. **纹理图集**：合并纹理减少绑定次数
-3. **内存池**：复用GPU内存减少分配开销
-4. **异步处理**：利用异步特性避免阻塞
+1. **帧率控制优化**：通过目标帧率限制避免过度渲染
+2. **脏矩形合并**：智能合并重叠区域减少绘制调用
+3. **批渲染优化**：统一管理顶点和索引缓冲区
+4. **纹理管理优化**：高效的纹理缓存和绑定组管理
 
 ### 最佳实践
 
-- **资源复用**：尽量复用已创建的GPU资源
-- **状态最小化**：减少渲染状态切换频率
-- **数据局部性**：优化数据布局提高缓存命中率
-- **负载均衡**：合理分配GPU工作负载
+- **帧率设置**：根据应用场景选择合适的帧率（游戏30-60fps，UI动画60-120fps）
+- **脏矩形管理**：合理标记脏区域，避免频繁的大面积重绘
+- **批渲染策略**：合并相似的绘制命令，减少状态切换
+- **资源复用**：充分利用GPU资源池，避免重复创建相同资源
+
+**章节来源**
+- [orchestrator.rs:524-542](file://crates/iris-engine/src/orchestrator.rs#L524-L542)
+- [dirty_rect_manager.rs:182-221](file://crates/iris-engine/src/dirty_rect_manager.rs#L182-L221)
 
 ## 故障排除指南
 
@@ -326,11 +371,13 @@ Desktop --> Render
 - 检查着色器编译是否成功
 - 验证顶点数据布局是否正确
 - 确认渲染状态配置是否合理
+- 验证帧率设置是否合适
 
 **问题**：性能下降明显
 - 分析GPU内存使用情况
 - 检查是否有过多的状态切换
 - 评估批处理策略的有效性
+- 检查脏矩形合并效果
 
 #### 资源管理问题
 
@@ -338,6 +385,7 @@ Desktop --> Render
 - 确认所有GPU资源都正确释放
 - 检查资源生命周期管理
 - 验证异步释放机制
+- 检查纹理缓存是否正确管理
 
 **问题**：资源竞争
 - 实现适当的资源锁定机制
@@ -350,31 +398,50 @@ Desktop --> Render
 - 检查WebGPU特性支持情况
 - 实现平台特定的降级策略
 - 验证着色器兼容性
+- 检查帧率控制在不同平台的表现
+
+#### 帧率控制问题
+
+**问题**：帧率不稳定
+- 检查系统时间精度
+- 验证帧率限制算法
+- 分析渲染时间开销
+- 调整目标帧率设置
+
+#### 脏标志管理问题
+
+**问题**：脏矩形检测不准确
+- 检查脏矩形坐标转换
+- 验证合并算法正确性
+- 分析脏区域阈值设置
+- 检查全屏重绘触发条件
 
 **章节来源**
-- [doc.txt:84-87](file://doc.txt#L84-L87)
+- [dirty_rect_manager.rs:256-368](file://crates/iris-engine/src/dirty_rect_manager.rs#L256-L368)
+- [orchestrator.rs:954-1017](file://crates/iris-engine/src/orchestrator.rs#L954-L1017)
 
 ## 结论
 
-Leivue Runtime的WebGPU渲染API代表了现代WebGPU技术的先进应用，通过七层分层架构设计实现了高度的模块化和性能优化。该API不仅提供了完整的GPU渲染能力，还特别注重性能优化和平台兼容性。
+Leivue Runtime的WebGPU渲染API代表了现代WebGPU技术的先进应用，通过七层分层架构设计实现了高度的模块化和性能优化。最新版本新增的帧率控制、脏标志管理和GPU命令生成功能，进一步提升了系统的渲染效率和性能表现。
 
 ### 核心优势
 
 1. **高性能渲染**：基于WebGPU的硬件加速渲染
-2. **零编译运行**：直接执行Vue3 + TypeScript源码
-3. **跨端兼容**：统一的渲染接口支持多平台
-4. **生态兼容**：完全兼容Vue3生态系统
-5. **内存安全**：基于Rust实现的内存安全保障
+2. **智能帧率控制**：可配置的帧率限制和性能监控
+3. **脏矩形优化**：智能渲染区域检测和优化
+4. **统一命令接口**：支持多种图形类型的统一绘制命令
+5. **零编译运行**：直接执行Vue3 + TypeScript源码
+6. **跨端兼容**：统一的渲染接口支持多平台
+7. **生态兼容**：完全兼容Vue3生态系统
+8. **内存安全**：基于Rust实现的内存安全保障
 
 ### 发展前景
 
-随着WebGPU技术的不断发展和硬件支持的逐步完善，Leivue Runtime的WebGPU渲染API将为开发者提供更加高效、稳定的渲染解决方案，特别是在大屏应用、复杂UI界面和高性能图形应用领域具有巨大潜力。
+随着WebGPU技术的不断发展和硬件支持的逐步完善，Leivue Runtime的WebGPU渲染API将为开发者提供更加高效、稳定的渲染解决方案，特别是在大屏应用、复杂UI界面和高性能图形应用领域具有巨大潜力。帧率控制和脏标志管理等新功能的加入，使得系统能够更好地适应不同的应用场景和性能需求。
 
 ## 附录
 
 ### API使用示例
-
-由于当前仓库中没有具体的源代码实现，以下示例展示了如何使用WebGPU渲染API进行常见的渲染操作：
 
 #### 基础渲染流程
 
@@ -384,19 +451,52 @@ Leivue Runtime的WebGPU渲染API代表了现代WebGPU技术的先进应用，通
 4. 记录渲染命令到命令缓冲区
 5. 提交命令缓冲区并呈现
 
+#### 帧率控制示例
+
+```rust
+// 设置目标帧率为60fps
+orchestrator.set_target_fps(60);
+
+// 检查是否需要渲染（基于帧率限制）
+if orchestrator.should_render_frame() {
+    // 执行渲染流程
+    orchestrator.render_frame();
+}
+```
+
+#### 脏矩形管理示例
+
+```rust
+// 添加脏矩形区域
+dirty_manager.add_change(100.0, 100.0, 200.0, 150.0);
+
+// 合并重叠的脏矩形
+dirty_manager.merge_overlapping();
+
+// 计算需要重绘的区域
+let redraw_regions = dirty_manager.compute_redraw_regions();
+```
+
 #### 批量渲染示例
 
-1. 创建实例化渲染的顶点数据
-2. 设置实例属性数据
-3. 使用instanced drawing渲染多个实例
-4. 优化状态切换减少性能开销
+```rust
+// 创建批渲染器
+let mut batch_renderer = BatchRenderer::new(&device, &queue, surface_format, 800.0, 600.0, 1000);
 
-#### 纹理管理示例
+// 提交绘制命令
+batch_renderer.submit(DrawCommand::Rect {
+    x: 100.0,
+    y: 100.0,
+    width: 200.0,
+    height: 150.0,
+    color: [1.0, 0.5, 0.0, 1.0],
+});
 
-1. 加载和创建纹理资源
-2. 纹理格式转换和mipmap生成
-3. 纹理绑定和采样器配置
-4. 纹理数据的动态更新
+// 刷新渲染
+batch_renderer.flush(&mut render_pass);
+```
 
 **章节来源**
-- [doc.txt:65-97](file://doc.txt#L65-L97)
+- [orchestrator.rs:484-522](file://crates/iris-engine/src/orchestrator.rs#L484-L522)
+- [dirty_rect_manager.rs:182-221](file://crates/iris-engine/src/dirty_rect_manager.rs#L182-L221)
+- [batch_renderer.rs:411-548](file://crates/iris-gpu/src/batch_renderer.rs#L411-L548)
