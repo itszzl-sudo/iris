@@ -40,9 +40,32 @@
 pub mod runtime;
 pub mod module;
 pub mod web_apis;
+pub mod web_apis_enhanced;  // 增强的 Web API
 pub mod bridge;
+pub mod esm;      // 增强版 ESM 模块加载器
+pub mod cpm;      // CPM 包管理集成
+pub mod wasm_bridge;  // WASM 桥接
 
 // 重新导出常用类型
 pub use runtime::JetCrabRuntime;
 pub use module::ModuleLoader;
+pub use module::ModuleInfo;
 pub use bridge::JetCrabBridge;
+pub use esm::ESMModuleLoader;
+pub use esm::ESMModuleInfo;
+pub use cpm::CPMManager;
+pub use cpm::PackageInfo;
+
+// 增强的 Web API
+pub use web_apis_enhanced::WebSocket;
+pub use web_apis_enhanced::WebSocketState;
+pub use web_apis_enhanced::WebSocketMessage;
+pub use web_apis_enhanced::LocalStorage;
+pub use web_apis_enhanced::SessionStorage;
+pub use web_apis_enhanced::XMLHttpRequest;
+
+// WASM 桥接
+pub use wasm_bridge::WasmLoader;
+pub use wasm_bridge::WasmModuleInfo;
+pub use wasm_bridge::WasmInstance;
+pub use wasm_bridge::JsFFIBridge;
