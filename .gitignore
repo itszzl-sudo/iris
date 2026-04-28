@@ -3,6 +3,9 @@ target/
 **/*.rs.bk
 Cargo.lock
 
+# Cargo 沙盒本地缓存（多项目隔离）
+.cargo-local/
+
 # IDE
 .vscode/
 .idea/
@@ -27,3 +30,7 @@ coverage/
 
 # Documentation
 doc/
+
+# Cargo 沙盒配置文件（保留示例）
+!.cargo-sandbox.env.example
+Set-CargoSandbox.ps1
