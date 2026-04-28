@@ -327,7 +327,7 @@ function generateDirectorySelectorPage() {
     <div class="file-input-wrapper">
       <label for="directory-input">Choose Vue Project Directory:</label>
       <label for="directory-input" class="browse-btn">📁 Browse Directory</label>
-      <input type="file" id="directory-input" webkitdirectory directory multiple>
+      <input type="file" id="directory-input" webkitdirectory directory>
     </div>
     
     <div id="status" class="status"></div>
