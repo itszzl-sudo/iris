@@ -1,0 +1,50 @@
+{
+  "name": "iris-runtime",
+  "version": "0.1.0",
+  "description": "Iris Runtime - Vue 3 development server powered by WebAssembly",
+  "type": "module",
+  "main": "pkg/iris_runtime.js",
+  "types": "pkg/iris_runtime.d.ts",
+  "bin": {
+    "iris-runtime": "./bin/iris-runtime.js"
+  },
+  "files": [
+    "pkg",
+    "bin",
+    "lib"
+  ],
+  "scripts": {
+    "build:wasm": "wasm-pack build --target nodejs --release",
+    "dev": "node bin/iris-runtime.js dev"
+  },
+  "keywords": [
+    "vue",
+    "dev-server",
+    "wasm",
+    "hmr",
+    "runtime",
+    "jetcrab"
+  ],
+  "author": "Iris Team",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "chalk": "^5.3.0",
+    "chokidar": "^3.5.3",
+    "ws": "^8.14.2",
+    "open": "^9.1.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "wasm-pack": "^0.12.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iris-engine/iris"
+  }
+}
