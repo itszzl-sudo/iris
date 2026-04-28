@@ -69,3 +69,13 @@ pub use wasm_bridge::WasmLoader;
 pub use wasm_bridge::WasmModuleInfo;
 pub use wasm_bridge::WasmInstance;
 pub use wasm_bridge::JsFFIBridge;
+
+/// Iris JetCrab 版本号
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// 初始化 JetCrab 运行时
+pub fn init() {
+    tracing::info!("Initializing Iris JetCrab Runtime v{}", VERSION);
+    // JetCrab 运行时初始化逻辑
+    tracing::info!("JetCrab Runtime initialized successfully");
+}

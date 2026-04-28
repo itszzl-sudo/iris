@@ -15,6 +15,9 @@ import chalk from 'chalk';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Iris Runtime 模板目录
+const TEMPLATE_DIR = resolve(__dirname, 'templates');
+
 /**
  * 检查端口是否被占用
  * 
@@ -91,6 +94,34 @@ function isVueProjectRoot(dirPath) {
       reason: 'Failed to parse package.json'
     };
   }
+}
+
+/**
+ * 生成 Iris Runtime 的 index.html
+ * 这个页面会加载 iris-jetcrab WASM 模块来运行 Vue 应用
+ * 
+ * @returns {string} - HTML 内容
+ */
+function generateIrisIndexHtml() {
+  const indexPath = resolve(TEMPLATE_DIR, 'index.html');
+  
+  if (existsSync(indexPath)) {
+    return readFileSync(indexPath, 'utf-8');
+  }
+  
+  // 如果模板文件不存在，返回错误提示
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iris Runtime - Template Missing</title>
+</head>
+<body>
+  <h1>⚠️ Iris Runtime index.html template is missing</h1>
+  <p>Please check the installation.</p>
+</body>
+</html>`;
 }
 
 /**
@@ -689,12 +720,50 @@ async function handleRequest(req, res, runtime, root) {
     return;
   }
 
-  // 默认返回 index.html
+  // 默认返回 iris-runtime 的 index.html（加载 JetCrab WASM）
   if (pathname === '/') {
-    pathname = '/index.html';
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(generateIrisIndexHtml());
+    return;
+  }
+  
+  // 如果是 Vue 项目，提供用户的 index.html
+  if (pathname === '/index.html' && projectCheck.isVueProject) {
+    const filePath = resolve(root, 'index.html');
+    if (existsSync(filePath)) {
+      const content = readFileSync(filePath);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(content);
+      return;
+    }
   }
 
   const filePath = resolve(root, pathname.substring(1));
+
+  // 提供 iris-jetcrab WASM 模块
+  if (pathname.startsWith('/@iris/')) {
+    const assetName = pathname.replace('/@iris/', '');
+    const assetPath = resolve(TEMPLATE_DIR, 'assets', assetName);
+    
+    if (!existsSync(assetPath)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end(`Asset not found: ${assetName}`);
+      return;
+    }
+    
+    const ext = extname(assetPath);
+    const mimeTypes = {
+      '.js': 'application/javascript',
+      '.wasm': 'application/wasm',
+      '.d.ts': 'application/typescript',
+    };
+    
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+    const content = readFileSync(assetPath);
+    res.writeHead(200, { 'Content-Type': contentType });
+    res.end(content);
+    return;
+  }
 
   // 检查文件是否存在
   if (!existsSync(filePath)) {

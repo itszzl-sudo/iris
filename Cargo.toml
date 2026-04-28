@@ -1,5 +1,18 @@
 [workspace]
-members = ["crates/*"]
+members = [
+  "crates/iris-core",
+  "crates/iris-cssom",
+  "crates/iris-gpu",
+  "crates/iris-layout",
+  "crates/iris-dom",
+  "crates/iris-js",
+  "crates/iris-sfc",
+  "crates/iris-app",
+  "crates/iris-engine",
+  "crates/iris-cli",
+  "crates/iris-jetcrab",
+  "crates/iris-jetcrab-engine",
+]
 resolver = "2"
 
 [workspace.package]
@@ -23,7 +36,7 @@ iris-engine = { path = "crates/iris-engine", version = "0.1.0" }
 iris-cli = { path = "crates/iris-cli", version = "0.1.0" }
 iris-cssom = { path = "crates/iris-cssom", version = "0.1.0" }
 iris-jetcrab = { path = "crates/iris-jetcrab", version = "0.1.0" }
-iris-runtime = { path = "crates/iris-runtime", version = "0.1.0" }
+iris-jetcrab-engine = { path = "crates/iris-jetcrab-engine", version = "0.1.0" }
 
 # External shared dependencies (to be expanded during development)
 tokio = { version = "1", features = ["full"] }

@@ -1,13 +1,38 @@
 //! Vue SFC 编译器
+//!
+//! 提供 Vue 单文件组件的编译、依赖解析和模块路径解析功能
 
-use crate::{CompiledModule, StyleBlock};
-use anyhow::Result;
+use anyhow::{Result, Context};
+use tracing::debug;
+use serde::{Serialize, Deserialize};
+
+/// 编译后的模块
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompiledModule {
+    /// 转换后的 JavaScript 代码
+    pub script: String,
+    /// 样式块列表
+    pub styles: Vec<StyleBlock>,
+    /// 依赖列表
+    pub deps: Vec<String>,
+}
+
+/// 样式块
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StyleBlock {
+    /// CSS 代码
+    pub code: String,
+    /// 是否启用作用域
+    pub scoped: bool,
+}
 
 /// 编译 Vue SFC 文件
 pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
+    debug!("Compiling SFC: {}", filename);
+
     // 使用 iris-sfc 进行编译
     let parsed = iris_sfc::compile_from_string(filename, source)
-        .map_err(|e| anyhow::anyhow!("Failed to parse {}: {}", filename, e))?;
+        .context(format!("Failed to parse {}", filename))?;
 
     // 提取 script 部分
     let script = parsed.script.clone();
@@ -34,6 +59,8 @@ pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
 
 /// 解析模块导入路径
 pub fn resolve_module(import_path: &str, importer: &str) -> Result<String> {
+    debug!("Resolving import: {} from {}", import_path, importer);
+
     // 如果是相对路径
     if import_path.starts_with('.') || import_path.starts_with('/') {
         // 简化处理：拼接路径
@@ -73,6 +100,16 @@ fn parse_dependencies(script: &str) -> Result<Vec<String>> {
                 }
             }
         }
+        
+        // 匹配: import(...) 动态导入
+        if line.contains("import(") {
+            if let Some(start) = line.find('\'') {
+                if let Some(end) = line[start+1..].find('\'') {
+                    let dep = &line[start + 1..start + 1 + end];
+                    deps.push(dep.to_string());
+                }
+            }
+        }
     }
 
     Ok(deps)
@@ -97,6 +134,16 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_dependencies_dynamic_import() {
+        let script = r#"
+            const module = await import('./lazy.vue');
+        "#;
+
+        let deps = parse_dependencies(script).unwrap();
+        assert!(deps.contains(&"./lazy.vue".to_string()));
+    }
+
+    #[test]
     fn test_resolve_module() {
         // 相对路径解析
         let resolved = resolve_module("./Foo.vue", "/src/App.vue").unwrap();
@@ -105,5 +152,12 @@ mod tests {
         // 裸模块名
         let resolved = resolve_module("vue", "/src/App.vue").unwrap();
         assert_eq!(resolved, "vue");
+    }
+
+    #[test]
+    fn test_resolve_module_adds_extension() {
+        // 没有扩展名时添加 .vue
+        let resolved = resolve_module("./Foo", "/src/App.vue").unwrap();
+        assert_eq!(resolved, "/src/Foo.vue");
     }
 }

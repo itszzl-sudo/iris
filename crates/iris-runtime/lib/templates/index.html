@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iris Runtime - Vue Application</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      background: #f5f5f5;
+    }
+
+    #app {
+      min-height: 100vh;
+    }
+
+    /* Loading 状态 */
+    #iris-loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      z-index: 9999;
+    }
+
+    #iris-loading.hidden {
+      display: none;
+    }
+
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .loading-subtext {
+      font-size: 14px;
+      opacity: 0.8;
+    }
+
+    /* Error 状态 */
+    #iris-error {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #fee;
+      padding: 40px;
+      overflow: auto;
+    }
+
+    #iris-error.visible {
+      display: block;
+    }
+
+    .error-container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .error-title {
+      color: #c33;
+      font-size: 24px;
+      margin-bottom: 15px;
+    }
+
+    .error-message {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+
+    .error-stack {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading 界面 -->
+  <div id="iris-loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Initializing Iris Runtime...</div>
+    <div class="loading-subtext">Loading WebAssembly modules</div>
+  </div>
+
+  <!-- Error 界面 -->
+  <div id="iris-error">
+    <div class="error-container">
+      <div class="error-title">❌ Runtime Initialization Failed</div>
+      <div class="error-message" id="error-message"></div>
+      <div class="error-stack" id="error-stack"></div>
+    </div>
+  </div>
+
+  <!-- Vue 应用挂载点 -->
+  <div id="app"></div>
+
+  <!-- 
+    Iris JetCrab Runtime
+    这个脚本会：
+    1. 加载 iris-jetcrab WASM 模块
+    2. 初始化 JavaScript 运行时
+    3. 读取 Vue 项目文件
+    4. 编译并执行 Vue SFC
+    5. 渲染到 #app 容器
+  -->
+  <script type="module">
+    // 导入 iris-jetcrab WASM 模块
+    import initJetCrab, { JetCrabRuntime } from '/@iris/jetcrab.js';
+
+    // 全局状态
+    window.__IRIS_STATE__ = {
+      initialized: false,
+      runtime: null,
+      projectRoot: '/src',
+      hmrEnabled: true
+    };
+
+    /**
+     * 初始化 Iris 运行时
+     */
+    async function initializeIris() {
+      const loadingEl = document.getElementById('iris-loading');
+      const errorEl = document.getElementById('iris-error');
+      const errorMessageEl = document.getElementById('error-message');
+      const errorStackEl = document.getElementById('error-stack');
+
+      try {
+        // 1. 加载 loading 子文本
+        updateLoading('Loading JetCrab WebAssembly module...');
+
+        // 2. 初始化 JetCrab WASM
+        await initJetCrab();
+        updateLoading('Creating JetCrab runtime...');
+
+        // 3. 创建运行时实例
+        const runtime = new JetCrabRuntime();
+        await runtime.init();
+
+        updateLoading('Scanning Vue project...');
+
+        // 4. 配置运行时
+        runtime.setProjectRoot('/src');
+        runtime.enableHMR(true);
+
+        // 5. 加载 Vue 入口文件
+        updateLoading('Loading Vue entry point...');
+        await runtime.loadEntry('/src/main.js');
+
+        // 6. 执行 Vue 应用
+        updateLoading('Starting Vue application...');
+        await runtime.startApp();
+
+        // 7. 初始化完成
+        window.__IRIS_STATE__.initialized = true;
+        window.__IRIS_STATE__.runtime = runtime;
+
+        // 隐藏 loading
+        loadingEl.classList.add('hidden');
+
+        console.log('✅ Iris Runtime initialized successfully');
+
+        // 8. 设置 HMR（如果启用）
+        if (window.__IRIS_STATE__.hmrEnabled) {
+          setupHMR(runtime);
+        }
+
+      } catch (error) {
+        console.error('❌ Iris Runtime initialization failed:', error);
+        
+        // 显示错误
+        loadingEl.classList.add('hidden');
+        errorEl.classList.add('visible');
+        errorMessageEl.textContent = error.message || 'Unknown error occurred';
+        errorStackEl.textContent = error.stack || '';
+      }
+    }
+
+    /**
+     * 更新 loading 文本
+     */
+    function updateLoading(text) {
+      const loadingSubtext = document.querySelector('.loading-subtext');
+      if (loadingSubtext) {
+        loadingSubtext.textContent = text;
+      }
+    }
+
+    /**
+     * 设置热模块替换（HMR）
+     */
+    function setupHMR(runtime) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/@hmr`;
+
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('🔌 HMR WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          handleHMRMessage(runtime, message);
+        } catch (error) {
+          console.error('HMR message parse error:', error);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('HMR WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('🔌 HMR WebSocket disconnected');
+        // 尝试重连
+        setTimeout(() => {
+          console.log('🔄 Reconnecting HMR...');
+          setupHMR(runtime);
+        }, 3000);
+      };
+    }
+
+    /**
+     * 处理 HMR 消息
+     */
+    async function handleHMRMessage(runtime, message) {
+      const { type, path, timestamp } = message;
+
+      switch (type) {
+        case 'vue-reload':
+          console.log(`🔥 Hot reloading: ${path}`);
+          try {
+            await runtime.reloadModule(path);
+          } catch (error) {
+            console.error(`Failed to reload ${path}:`, error);
+          }
+          break;
+
+        case 'full-reload':
+          console.log('🔄 Full page reload required');
+          window.location.reload();
+          break;
+
+        default:
+          console.log('Unknown HMR message type:', type);
+      }
+    }
+
+    // 启动初始化
+    initializeIris();
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+[package]
+name = "iris-jetcrab-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris JetCrab Engine —— Vue project runtime orchestration with JetCrab JS engine"
+keywords = ["gui", "webgpu", "vue", "runtime", "jetcrab"]
+categories = ["gui", "rendering", "wasm", "development-tools"]
+
+[dependencies]
+# 共享核心层
+iris-core.workspace = true
+iris-gpu.workspace = true
+iris-layout.workspace = true
+iris-dom.workspace = true
+iris-sfc.workspace = true
+iris-cssom.workspace = true
+
+# JetCrab 运行时
+iris-jetcrab.workspace = true
+
+# 工具库
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+
+# 文件监听
+notify = "6.1"
+walkdir = "2.4"
+
+# HTML 解析（用于解析 index.html）
+html5ever = "0.27"
+markup5ever_rcdom = "0.3"
+
+[lib]
+name = "iris_jetcrab_engine"
+path = "src/lib.rs"
