@@ -49,7 +49,7 @@ pub struct JetCrabRuntime {
     config: RuntimeConfig,
     /// 是否已初始化
     initialized: bool,
-    /// TODO: JetCrab 引擎实例
+    // TODO: JetCrab 引擎实例
     // engine: jetcrab::Engine,
 }
 

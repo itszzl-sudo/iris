@@ -6,22 +6,18 @@ use anyhow::Result;
 /// 编译 Vue SFC 文件
 pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
     // 使用 iris-sfc 进行编译
-    let parsed = iris_sfc::parse(source)
+    let parsed = iris_sfc::compile_from_string(filename, source)
         .map_err(|e| anyhow::anyhow!("Failed to parse {}: {}", filename, e))?;
 
     // 提取 script 部分
-    let script = if let Some(script_block) = &parsed.script {
-        script_block.content.clone()
-    } else {
-        "export default {}".to_string()
-    };
+    let script = parsed.script.clone();
 
     // 提取样式部分
     let styles: Vec<StyleBlock> = parsed
         .styles
         .iter()
         .map(|style| StyleBlock {
-            code: style.content.clone(),
+            code: style.css.clone(),
             scoped: style.scoped,
         })
         .collect();

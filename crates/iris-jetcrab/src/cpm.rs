@@ -23,7 +23,7 @@ pub struct PackageInfo {
 }
 
 /// package.json 结构
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct PackageJson {
     pub name: String,
     pub version: String,
@@ -106,8 +106,10 @@ impl CPMManager {
         // 解析包的 package.json
         let pkg_json_path = package_path.join("package.json");
         let pkg_info = if pkg_json_path.exists() {
-            let content = std::fs::read_to_string(&pkg_json_path)?;
-            let json: PackageJson = serde_json::from_str(&content)?;
+            let content = std::fs::read_to_string(&pkg_json_path)
+                .map_err(|e| format!("Failed to read package.json: {}", e))?;
+            let json: PackageJson = serde_json::from_str(&content)
+                .map_err(|e| format!("Failed to parse package.json: {}", e))?;
             
             PackageInfo {
                 name: json.name,
@@ -153,8 +155,10 @@ impl CPMManager {
                 dev_dependencies: HashMap::new(),
             };
 
-            let json_content = serde_json::to_string_pretty(&package_json)?;
-            std::fs::write(package_dir.join("package.json"), json_content)?;
+            let json_content = serde_json::to_string_pretty(&package_json)
+                .map_err(|e| format!("Failed to serialize package.json: {}", e))?;
+            std::fs::write(package_dir.join("package.json"), json_content)
+                .map_err(|e| format!("Failed to write package.json: {}", e))?;
         }
 
         Ok(package_dir)
