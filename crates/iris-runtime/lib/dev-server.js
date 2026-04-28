@@ -45,6 +45,336 @@ function isPortInUse(port) {
 }
 
 /**
+ * 检测是否为 Vue 项目根目录
+ * 
+ * @param {string} dirPath - 目录路径
+ * @returns {Object} - { isVueProject: boolean, reason: string }
+ */
+function isVueProjectRoot(dirPath) {
+  // 检查 package.json
+  const packageJsonPath = resolve(dirPath, 'package.json');
+  if (!existsSync(packageJsonPath)) {
+    return {
+      isVueProject: false,
+      reason: 'No package.json found'
+    };
+  }
+  
+  try {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+    
+    // 检查 Vue 依赖
+    const dependencies = {
+      ...packageJson.dependencies,
+      ...packageJson.devDependencies
+    };
+    
+    const hasVue = dependencies['vue'] || dependencies['vue3'];
+    const hasVite = dependencies['vite'] || dependencies['@vitejs/plugin-vue'];
+    const hasWebpack = dependencies['webpack'] || dependencies['vue-loader'];
+    
+    if (hasVue) {
+      return {
+        isVueProject: true,
+        reason: 'Vue dependency found',
+        buildTool: hasVite ? 'vite' : (hasWebpack ? 'webpack' : 'unknown')
+      };
+    }
+    
+    return {
+      isVueProject: false,
+      reason: 'No Vue dependency in package.json'
+    };
+  } catch (error) {
+    return {
+      isVueProject: false,
+      reason: 'Failed to parse package.json'
+    };
+  }
+}
+
+/**
+ * 生成目录选择页面
+ * 
+ * @returns {string} - HTML 内容
+ */
+function generateDirectorySelectorPage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iris Runtime - Select Vue Project</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 600px;
+      width: 100%;
+      padding: 40px;
+    }
+    
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+    
+    .current-path {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: #333;
+      word-break: break-all;
+    }
+    
+    .error-message {
+      background: #fee;
+      border-left: 4px solid #c33;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    
+    .error-message h3 {
+      color: #c33;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    
+    .error-message p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    
+    .file-input-wrapper {
+      margin: 30px 0;
+    }
+    
+    .file-input-wrapper label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    
+    .file-input-wrapper input[type="file"] {
+      display: none;
+    }
+    
+    .file-input-wrapper .browse-btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 30px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .file-input-wrapper .browse-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .tips {
+      background: #f0f7ff;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 4px;
+    }
+    
+    .tips h4 {
+      color: #1976D2;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    
+    .tips ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    .tips li {
+      color: #555;
+      font-size: 13px;
+      padding: 5px 0;
+      padding-left: 20px;
+      position: relative;
+    }
+    
+    .tips li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    
+    .status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      display: none;
+    }
+    
+    .status.success {
+      background: #e8f5e9;
+      border-left: 4px solid #4CAF50;
+      display: block;
+    }
+    
+    .status.error {
+      background: #fee;
+      border-left: 4px solid #c33;
+      display: block;
+    }
+    
+    .status h4 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    
+    .status.success h4 {
+      color: #2e7d32;
+    }
+    
+    .status.error h4 {
+      color: #c33;
+    }
+    
+    .status p {
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 Select Vue Project</h1>
+    <p class="subtitle">Please select the root directory of your Vue project</p>
+    
+    <div class="current-path">
+      <strong>Current Path:</strong><br>
+      ${process.cwd()}
+    </div>
+    
+    <div class="error-message">
+      <h3>⚠️ Not a Vue Project</h3>
+      <p>The current directory does not appear to be a Vue project root. Please navigate to your Vue project directory.</p>
+    </div>
+    
+    <div class="file-input-wrapper">
+      <label for="directory-input">Choose Vue Project Directory:</label>
+      <label for="directory-input" class="browse-btn">📁 Browse Directory</label>
+      <input type="file" id="directory-input" webkitdirectory directory multiple>
+    </div>
+    
+    <div id="status" class="status"></div>
+    
+    <div class="tips">
+      <h4>💡 Vue Project Root Should Contain:</h4>
+      <ul>
+        <li>package.json with vue dependency</li>
+        <li>src/ directory with .vue files</li>
+        <li>index.html or public/index.html</li>
+        <li>Configuration files (vite.config.js, vue.config.js, etc.)</li>
+      </ul>
+    </div>
+  </div>
+  
+  <script>
+    const fileInput = document.getElementById('directory-input');
+    const statusDiv = document.getElementById('status');
+    
+    fileInput.addEventListener('change', async (e) => {
+      const files = e.target.files;
+      if (files.length === 0) return;
+      
+      // 从选中的文件中推断目录路径
+      const firstFile = files[0];
+      const path = firstFile.webkitRelativePath || firstFile.relativePath || firstFile.name;
+      const directoryPath = path.split('/')[0];
+      
+      statusDiv.className = 'status';
+      statusDiv.innerHTML = '<h4>🔍 Validating...</h4><p>Checking if this is a valid Vue project...</p>';
+      statusDiv.style.display = 'block';
+      
+      // 发送验证请求到服务器
+      try {
+        const response = await fetch('/api/validate-project', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ path: directoryPath })
+        });
+        
+        const result = await response.json();
+        
+        if (result.isVueProject) {
+          statusDiv.className = 'status success';
+          statusDiv.innerHTML = \`
+            <h4>✅ Vue Project Detected!</h4>
+            <p>Build tool: \${result.buildTool || 'Unknown'}</p>
+            <p>Redirecting to your application...</p>
+          \`;
+          
+          // 重定向到实际页面
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1500);
+        } else {
+          statusDiv.className = 'status error';
+          statusDiv.innerHTML = \`
+            <h4>❌ Not a Vue Project</h4>
+            <p>\${result.reason}</p>
+            <p>Please select a different directory.</p>
+          \`;
+        }
+      } catch (error) {
+        statusDiv.className = 'status error';
+        statusDiv.innerHTML = \`
+          <h4>❌ Validation Failed</h4>
+          <p>\${error.message}</p>
+        \`;
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+
+/**
  * 查找可用端口
  * 
  * @param {number} startPort - 起始端口
@@ -209,6 +539,21 @@ export async function startDevServer(runtime, config) {
     
     process.exit(1);
   }
+  
+  // 检测当前目录是否为 Vue 项目
+  const projectCheck = isVueProjectRoot(root);
+  
+  if (!projectCheck.isVueProject) {
+    console.log();
+    console.log(chalk.yellow('⚠️  Warning: Current directory is not a Vue project'));
+    console.log(chalk.yellow('   Reason: ' + projectCheck.reason));
+    console.log();
+    console.log(chalk.cyan('A directory selection page will be shown in the browser.'));
+    console.log();
+  } else {
+    console.log(chalk.green('✓ Vue project detected') + chalk.dim(` (${projectCheck.buildTool})`));
+    console.log();
+  }
 
   // 创建 HTTP 服务器
   const server = createServer(async (req, res) => {
@@ -308,6 +653,41 @@ export async function startDevServer(runtime, config) {
 async function handleRequest(req, res, runtime, root) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   let pathname = url.pathname;
+
+  // API: 验证项目目录
+  if (pathname === '/api/validate-project' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        const { path: projectPath } = JSON.parse(body);
+        const resolvedPath = resolve(root, projectPath);
+        const result = isVueProjectRoot(resolvedPath);
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          isVueProject: false,
+          reason: 'Invalid request: ' + error.message
+        }));
+      }
+    });
+    return;
+  }
+
+  // 检查当前目录是否为 Vue 项目
+  const projectCheck = isVueProjectRoot(root);
+  
+  // 如果不是 Vue 项目且访问根路径，显示目录选择页面
+  if (!projectCheck.isVueProject && pathname === '/index.html') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(generateDirectorySelectorPage());
+    return;
+  }
 
   // 默认返回 index.html
   if (pathname === '/') {
