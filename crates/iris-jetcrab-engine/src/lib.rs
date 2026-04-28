@@ -63,6 +63,7 @@ pub mod project_scanner;
 pub mod module_graph;
 pub mod hmr;
 pub mod sfc_compiler;
+pub mod wasm_api;
 
 // 重新导出常用类型
 pub use engine::JetCrabEngine;
@@ -72,6 +73,7 @@ pub use project_scanner::ProjectInfo;
 pub use module_graph::ModuleGraph;
 pub use hmr::HMRManager;
 pub use sfc_compiler::{CompiledModule, StyleBlock, compile_sfc, resolve_module};
+pub use wasm_api::IrisEngine;
 
 /// Iris JetCrab Engine 版本号
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -22,6 +22,13 @@ iris-cssom.workspace = true
 # JetCrab 运行时
 iris-jetcrab.workspace = true
 
+# WASM 绑定
+wasm-bindgen = "0.2.89"
+wasm-bindgen-futures = "0.4.39"
+serde-wasm-bindgen = "0.6.3"
+js-sys = "0.3.66"
+console_error_panic_hook = { version = "0.1.7", optional = true }
+
 # 工具库
 tracing = "0.1"
 tracing-subscriber = "0.3"
@@ -43,3 +50,14 @@ markup5ever_rcdom = "0.3"
 [lib]
 name = "iris_jetcrab_engine"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+wasm = ["console_error_panic_hook"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

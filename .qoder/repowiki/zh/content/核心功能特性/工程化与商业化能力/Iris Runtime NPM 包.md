@@ -7,34 +7,17 @@
 - [install.js](file://iris-runtime/scripts/install.js)
 - [prepare-binaries.js](file://iris-runtime/scripts/prepare-binaries.js)
 - [README.md](file://iris-runtime/README.md)
-- [Cargo.toml](file://Cargo.toml)
-- [Cargo.toml](file://crates/iris-cli/Cargo.toml)
-- [Cargo.toml](file://crates/iris-engine/Cargo.toml)
-- [Cargo.toml](file://crates/iris-gpu/Cargo.toml)
-- [main.rs](file://crates/iris-cli/src/main.rs)
-- [lib.rs](file://crates/iris-engine/src/lib.rs)
-- [orchestrator.rs](file://crates/iris-engine/src/orchestrator.rs)
-- [lib.rs](file://crates/iris-core/src/lib.rs)
-- [lib.rs](file://crates/iris-gpu/src/lib.rs)
-- [lib.rs](file://crates/iris-layout/src/lib.rs)
-- [lib.rs](file://crates/iris-dom/src/lib.rs)
-- [lib.rs](file://crates/iris-sfc/src/lib.rs)
 - [package.json](file://crates/iris-runtime/package.json)
-- [README.md](file://crates/iris-runtime/README.md)
-- [Cargo.toml](file://crates/iris-runtime/Cargo.toml)
-- [lib.rs](file://crates/iris-runtime/src/lib.rs)
-- [compiler.rs](file://crates/iris-runtime/src/compiler.rs)
-- [hmr.rs](file://crates/iris-runtime/src/hmr.rs)
-- [dev-server.js](file://crates/iris-runtime/lib/dev-server.js)
 - [iris-runtime.js](file://crates/iris-runtime/bin/iris-runtime.js)
+- [dev-server.js](file://crates/iris-runtime/lib/dev-server.js)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 简化README文档，聚焦Vue和桌面开发者使用场景
-- 减少复杂的CLI选项说明，突出核心使用场景
-- 强调npx iris-runtime dev和npx iris-runtime build等基础命令
-- 优化文档结构，使其更适合新用户快速上手
+- 重新定位 iris-runtime 为纯 NPM 包，专注于 CLI 工具、开发服务器和 HTML 模板管理
+- 移除 Rust 编译器功能，改为包装 iris-cli Rust 二进制文件
+- 简化文档结构，聚焦用户友好的使用场景
+- 强调零配置、零 Rust 依赖的开发体验
 
 ## 目录
 1. [简介](#简介)
@@ -101,7 +84,7 @@ npx iris-runtime build
 # 3. 输出: Windows .exe / macOS .app / Linux 二进制文件
 ```
 
-**更新** 新增了更清晰的使用场景分类，分别面向Vue Web开发者和桌面应用开发者。
+**更新** 新增了更清晰的使用场景分类，分别面向 Vue Web 开发者和桌面应用开发者。
 
 ## 安装与配置
 
