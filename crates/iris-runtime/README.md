@@ -4,12 +4,31 @@ Vue 3 development server powered by WebAssembly.
 
 ## Quick Start
 
+### For Users (Vue Project)
+
 ```bash
-# Install
+# Install in your Vue project
 npm install -D iris-runtime
 
 # Start dev server
 npx iris-runtime dev
+```
+
+### For Developers (Build WASM)
+
+```bash
+# Build WASM module (requires wasm-pack)
+wasm-pack build --target nodejs --release
+
+# Or use the build script
+./build-wasm.sh          # Linux/macOS
+.\build-wasm.ps1         # Windows
+
+# Create npm package
+npm pack
+
+# Publish to npm
+npm publish --access public
 ```
 
 ## Features

@@ -1,51 +1,69 @@
 #!/usr/bin/env node
 
 /**
- * Iris Runtime CLI
- * 
- * Vue 3 development server powered by WebAssembly
+ * Iris Runtime - Vue 3 Development Server
  * 
  * Usage:
  *   npx iris-runtime dev
+ * 
+ * Options (via environment variables):
+ *   IRIS_PORT - Server port (default: 3000)
+ *   IRIS_HOST - Server host (default: localhost)
  */
 
 import { IrisRuntime } from '../pkg/iris_runtime.js';
 import { startDevServer } from '../lib/dev-server.js';
-import { program } from 'commander';
 import chalk from 'chalk';
+
+// 解析命令行参数
+const args = process.argv.slice(2);
+
+// 检查是否是 dev 命令
+if (args[0] !== 'dev') {
+  console.log(chalk.yellow('Usage: npx iris-runtime dev'));
+  console.log();
+  console.log(chalk.cyan('Options:'));
+  console.log('  --port <number>  Server port (default: 3000)');
+  console.log('  --host <string>  Server host (default: localhost)');
+  console.log('  --no-open        Do not open browser automatically');
+  console.log();
+  process.exit(0);
+}
+
+// 解析选项
+const options = {
+  port: 3000,
+  host: 'localhost',
+  open: true,
+};
+
+for (let i = 1; i < args.length; i++) {
+  if (args[i] === '--port' && args[i + 1]) {
+    options.port = parseInt(args[i + 1]);
+    i++;
+  } else if (args[i] === '--host' && args[i + 1]) {
+    options.host = args[i + 1];
+    i++;
+  } else if (args[i] === '--no-open') {
+    options.open = false;
+  }
+}
 
 // 创建 WASM 运行时实例
 const runtime = new IrisRuntime();
 
-program
-  .name('iris-runtime')
-  .description('Iris Runtime - Vue 3 development server')
-  .version(IrisRuntime.version());
+// 启动开发服务器
+const config = {
+  port: options.port,
+  host: options.host,
+  open: options.open,
+  root: process.cwd(),
+};
 
-// 唯一的命令：dev
-program
-  .command('dev')
-  .description('Start development server with HMR')
-  .option('-p, --port <port>', 'Server port', '3000')
-  .option('--host <host>', 'Server host', 'localhost')
-  .option('--open', 'Open browser automatically', true)
-  .action(async (options) => {
-    console.log(chalk.cyan('🚀 Starting Iris Runtime dev server...\n'));
-    
-    const config = {
-      port: parseInt(options.port),
-      host: options.host,
-      open: options.open,
-      root: process.cwd(),
-    };
+console.log(chalk.cyan('🚀 Starting Iris Runtime dev server...\n'));
 
-    try {
-      await startDevServer(runtime, config);
-    } catch (error) {
-      console.error(chalk.red('\n❌ Failed to start dev server:'));
-      console.error(error.message);
-      process.exit(1);
-    }
-  });
-
-program.parse();
+startDevServer(runtime, config).catch(error => {
+  console.error(chalk.red('\n❌ Failed to start dev server:'));
+  console.error(error.message);
+  process.exit(1);
+});
