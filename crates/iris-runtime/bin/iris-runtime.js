@@ -23,7 +23,7 @@ if (args[0] !== 'dev') {
   console.log(chalk.yellow('Usage: npx iris-runtime dev'));
   console.log();
   console.log(chalk.cyan('Options:'));
-  console.log('  --port <number>  Server port (default: 3000)');
+  console.log('  --port <number>  Server port (default: 3000, use 0 for auto)');
   console.log('  --host <string>  Server host (default: localhost)');
   console.log('  --no-open        Do not open browser automatically');
   console.log();
@@ -39,7 +39,9 @@ const options = {
 
 for (let i = 1; i < args.length; i++) {
   if (args[i] === '--port' && args[i + 1]) {
-    options.port = parseInt(args[i + 1]);
+    const portValue = args[i + 1];
+    // 支持 '0' 表示自动选择端口
+    options.port = portValue === '0' ? 0 : parseInt(portValue);
     i++;
   } else if (args[i] === '--host' && args[i + 1]) {
     options.host = args[i + 1];

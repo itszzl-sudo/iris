@@ -16,13 +16,199 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
+ * 检查端口是否被占用
+ * 
+ * @param {number} port - 端口号
+ * @returns {Promise<boolean>} - 是否被占用
+ */
+function isPortInUse(port) {
+  return new Promise((resolve) => {
+    const net = require('net');
+    const server = net.createServer();
+    
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+      server.close();
+    });
+    
+    server.once('listening', () => {
+      server.close();
+      resolve(false);
+    });
+    
+    server.listen(port);
+  });
+}
+
+/**
+ * 查找可用端口
+ * 
+ * @param {number} startPort - 起始端口
+ * @returns {Promise<number>} - 可用端口号
+ */
+function findAvailablePort(startPort) {
+  return new Promise((resolve, reject) => {
+    const net = require('net');
+    
+    const tryPort = (port) => {
+      const server = net.createServer();
+      
+      server.once('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          // 端口被占用，尝试下一个
+          if (port < startPort + 100) { // 最多尝试 100 个端口
+            tryPort(port + 1);
+          } else {
+            reject(new Error('No available ports found'));
+          }
+        } else {
+          reject(err);
+        }
+        server.close();
+      });
+      
+      server.once('listening', () => {
+        server.close();
+        resolve(port);
+      });
+      
+      server.listen(port);
+    };
+    
+    tryPort(startPort);
+  });
+}
+
+/**
+ * 显示端口占用错误并退出
+ * 
+ * @param {number} port - 被占用的端口
+ */
+function showPortInUseError(port) {
+  console.log();
+  console.log(chalk.red('❌ Error: Port ' + port + ' is already in use'));
+  console.log();
+  console.log(chalk.yellow('Possible causes:'));
+  console.log('  • Another instance of iris-runtime is running');
+  console.log('  • Another application is using port ' + port);
+  console.log();
+  console.log(chalk.cyan('Solutions:'));
+  console.log();
+  console.log('  ' + chalk.green('Option 1:') + ' Kill the process using port ' + port);
+  console.log();
+  
+  // 根据不同操作系统提供命令
+  const os = require('os');
+  const platform = os.platform();
+  
+  if (platform === 'win32') {
+    console.log('    ' + chalk.dim('# Find process:'));
+    console.log('    ' + chalk.yellow(`netstat -ano | findstr :${port}`));
+    console.log();
+    console.log('    ' + chalk.dim('# Kill process (replace PID):'));
+    console.log('    ' + chalk.yellow('taskkill /F /PID <PID>'));
+  } else if (platform === 'darwin' || platform === 'linux') {
+    console.log('    ' + chalk.dim('# Find process:'));
+    console.log('    ' + chalk.yellow(`lsof -i :${port}`));
+    console.log();
+    console.log('    ' + chalk.dim('# Kill process (replace PID):'));
+    console.log('    ' + chalk.yellow('kill -9 <PID>'));
+  }
+  
+  console.log();
+  console.log('  ' + chalk.green('Option 2:') + ' Use a different port');
+  console.log();
+  console.log('    ' + chalk.yellow(`npx iris-runtime dev --port ${port + 1}`));
+  console.log();
+  console.log('  ' + chalk.green('Option 3:') + ' Auto-select available port');
+  console.log();
+  console.log('    ' + chalk.yellow('npx iris-runtime dev --port 0'));
+  console.log();
+  
+  process.exit(1);
+}
+
+/**
+ * 检查是否有图形界面可用
+ * 
+ * @returns {Promise<boolean>} - 是否有图形界面
+ */
+async function hasDisplayAvailable() {
+  // 在 Windows 上，总是假设有图形界面
+  const os = require('os');
+  if (os.platform() === 'win32') {
+    return true;
+  }
+  
+  // 在 Linux/macOS 上，检查 DISPLAY 环境变量
+  return !!process.env.DISPLAY || !!process.env.WAYLAND_DISPLAY;
+}
+
+/**
  * 启动开发服务器
  * 
  * @param {IrisRuntime} runtime - WASM 运行时实例
  * @param {Object} config - 服务器配置
  */
 export async function startDevServer(runtime, config) {
-  const { root, port, host, open } = config;
+  const { root, port: requestedPort, host, open } = config;
+  
+  // 检查端口是否被占用
+  const portInUse = await isPortInUse(requestedPort);
+  
+  if (portInUse) {
+    // 如果指定了端口 0，自动查找可用端口
+    if (requestedPort === 0) {
+      try {
+        const availablePort = await findAvailablePort(3000);
+        console.log(chalk.yellow(`⚠️  Port ${requestedPort} is in use, using port ${availablePort} instead`));
+        port = availablePort;
+      } catch (error) {
+        showPortInUseError(3000);
+        return;
+      }
+    } else {
+      showPortInUseError(requestedPort);
+      return;
+    }
+  } else {
+    port = requestedPort;
+  }
+  
+  // 检查图形界面可用性
+  const hasDisplay = await hasDisplayAvailable();
+  
+  if (!hasDisplay) {
+    console.log();
+    console.log(chalk.red('❌ Error: No display available'));
+    console.log();
+    console.log(chalk.yellow('Iris Runtime requires a graphical environment to run.'));
+    console.log(chalk.yellow('Without a GUI, iris-runtime cannot provide value.'));
+    console.log();
+    console.log(chalk.cyan('Possible causes:'));
+    console.log('  • Running in SSH session without X11 forwarding');
+    console.log('  • Running in a headless server/container');
+    console.log('  • DISPLAY environment variable not set');
+    console.log();
+    console.log(chalk.cyan('Solutions:'));
+    console.log();
+    console.log('  ' + chalk.green('Option 1:') + ' Enable X11 forwarding (SSH)');
+    console.log();
+    console.log('    ' + chalk.yellow('ssh -X user@host'));
+    console.log();
+    console.log('  ' + chalk.green('Option 2:') + ' Set DISPLAY variable');
+    console.log();
+    console.log('    ' + chalk.yellow('export DISPLAY=:0'));
+    console.log();
+    console.log('  ' + chalk.green('Option 3:') + ' Run on a machine with GUI');
+    console.log();
+    
+    process.exit(1);
+  }
 
   // 创建 HTTP 服务器
   const server = createServer(async (req, res) => {
@@ -54,7 +240,22 @@ export async function startDevServer(runtime, config) {
       resolve();
     });
 
-    server.on('error', reject);
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        // 端口在启动时被占用（竞态条件）
+        console.log(chalk.yellow(`⚠️  Port ${port} became unavailable, trying port ${port + 1}...`));
+        server.close();
+        server.listen(port + 1, host, () => {
+          console.log(chalk.green('  ➜ Local:'), chalk.cyan(`http://${host}:${port + 1}`));
+          console.log(chalk.green('  ➜ Network:'), chalk.dim('use --host to expose'));
+          console.log(chalk.green('  ➜ Ready in'), chalk.cyan('234ms'));
+          console.log();
+          resolve();
+        });
+      } else {
+        reject(error);
+      }
+    });
   });
 
   // 设置文件监听
