@@ -1,0 +1,39 @@
+[package]
+name = "iris-jetcrab"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris JetCrab runtime integration: JavaScript execution via JetCrab engine with CPM package management"
+keywords = ["javascript", "runtime", "jetcrab", "wasm", "npm"]
+categories = ["wasm", "development-tools", "runtime"]
+
+[dependencies]
+# 共享核心模块（100% 复用）
+iris-core.workspace = true
+iris-cssom.workspace = true
+iris-layout.workspace = true
+iris-dom.workspace = true
+iris-sfc.workspace = true
+
+# JetCrab 运行时
+# TODO: 添加 JetCrab 依赖
+# jetcrab = "0.1"
+
+# 异步运行时
+tokio = { workspace = true, features = ["full"] }
+
+# HTTP 客户端
+reqwest = { version = "0.11", features = ["json"] }
+
+# 工具库
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+thiserror = "1.0"
+
+[dev-dependencies]
+# 测试依赖
+tokio = { workspace = true, features = ["full", "test-util"] }

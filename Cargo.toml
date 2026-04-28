@@ -22,6 +22,7 @@ iris-app = { path = "crates/iris-app", version = "0.1.0" }
 iris-engine = { path = "crates/iris-engine", version = "0.1.0" }
 iris-cli = { path = "crates/iris-cli", version = "0.1.0" }
 iris-cssom = { path = "crates/iris-cssom", version = "0.1.0" }
+iris-jetcrab = { path = "crates/iris-jetcrab", version = "0.1.0" }
 
 # External shared dependencies (to be expanded during development)
 tokio = { version = "1", features = ["full"] }
