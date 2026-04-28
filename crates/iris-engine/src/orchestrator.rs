@@ -28,10 +28,9 @@
 //! ```
 
 use iris_dom::vnode::VNode;
-use iris_dom::event::{EventDispatcher, Event, EventType, EventListener, MouseEventData, KeyboardEventData};
+use iris_dom::event::{EventDispatcher, Event, EventType, EventListener, MouseEventData};
 use iris_js::{
-    module::ModuleRegistry,
-    vue::{setup_complete_vue_environment, inject_render_helpers, execute_render_function},
+    vue::{setup_complete_vue_environment, inject_render_helpers},
     vm::JsRuntime,
 };
 use iris_layout::dom::DOMNode;
@@ -55,8 +54,6 @@ use tracing::{debug, info, warn};
 pub struct RuntimeOrchestrator {
     /// JavaScript 运行时
     js_runtime: JsRuntime,
-    /// 模块注册表
-    module_registry: ModuleRegistry,
     /// 当前根虚拟 DOM 节点（旧版）
     root_vnode: Option<VNode>,
     /// 当前虚拟 DOM 树（新版，从 SFC render 函数生成）
@@ -103,7 +100,6 @@ impl RuntimeOrchestrator {
     pub fn new() -> Self {
         Self {
             js_runtime: JsRuntime::new(),
-            module_registry: ModuleRegistry::new(),
             root_vnode: None,
             vtree: None,
             dom_tree: None,
@@ -287,8 +283,6 @@ impl RuntimeOrchestrator {
 
     /// 从 SFC 文件构建 VTree（避免 JavaScript 执行）
     fn build_vtree_from_file<P: AsRef<Path>>(&self, path: P) -> Result<VTree, String> {
-        use iris_layout::dom::DOMNode;
-        
         debug!("Building VTree from SFC file...");
         
         // 读取文件
@@ -308,7 +302,7 @@ impl RuntimeOrchestrator {
     fn simple_parse_template(&self, source: &str) -> Result<DOMNode, String> {
         use html5ever::tendril::{Tendril, TendrilSink};
         use html5ever::{local_name, namespace_url, ns, parse_fragment, ParseOpts, QualName};
-        use markup5ever_rcdom::{NodeData, RcDom};
+        use markup5ever_rcdom::RcDom;
         
         // 提取 <template> 内容
         let template_re = regex::Regex::new(r#"(?s)<template[^>]*>(.*?)</\s*template\s*>"#)
@@ -703,7 +697,8 @@ impl RuntimeOrchestrator {
     }
 
     /// 解析背景颜色
-    fn parse_background_color(&self, node: &DOMNode) -> Option<[f32; 4]> {
+    #[allow(dead_code)]
+    fn parse_background_color(&self, _node: &DOMNode) -> Option<[f32; 4]> {
         // 从样式中获取背景颜色
         // 简化实现：返回 None
         // 实际需要解析 CSS 颜色值
@@ -878,7 +873,7 @@ impl RuntimeOrchestrator {
     /// ```
     pub fn set_gpu_renderer(&mut self, renderer: Renderer) {
         // 加载默认字体
-        let mut renderer = self.load_default_font(renderer);
+        let renderer = self.load_default_font(renderer);
         
         self.gpu_renderer = Some(renderer);
         info!("GPU renderer attached to orchestrator");
@@ -2205,7 +2200,7 @@ console.log('Component loaded')
         
         // 当前实现返回空命令（因为没有背景颜色）
         // 这是预期的行为
-        assert!(commands.len() >= 0);
+        let _ = commands.len(); // 验证不 panic 即可
     }
 
     #[test]
