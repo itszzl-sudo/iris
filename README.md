@@ -34,35 +34,21 @@
 
 ---
 
-## 🖥️ Iris Runtime CLI
+## 🖥️ Iris Runtime
 
-**Build your existing Vue project into native desktop applications - Zero configuration, zero project templates.**
+**Two ways to use Iris:**
 
-### Commands
-
+### Web Development
 ```bash
-# Development mode with hot reload
+npm install -D iris-runtime
 npx iris-runtime dev
-
-# Production build to native desktop app
-npx iris-runtime build
 ```
 
-### Core Capabilities
-
-- 🔍 **Smart Detection** - Auto-detects Vite/Vue3 projects, reuses existing code
-- 🚫 **No WebView** - Pure native rendering with Rust + WebGPU, no browser engine
-- 📦 **Cross-Platform Builds**:
-  - **Windows**: `.exe` standalone / installer
-  - **macOS**: Native `.app` / `.dmg`
-  - **Linux**: Binary executable
-- ⚡ **Ultra Lightweight** - Rust binary, far smaller than Electron/Tauri
-- 🎨 **GPU Hardware Acceleration** - Vue styles → WebGPU render commands
-- 🔧 **Built-in Runtime** - Window manager, system calls, native tray/shortcuts/filesystem
-
-### One-Liner
-
-> **npx iris-runtime build** - Compile existing Vue projects into pure native desktop apps with Rust+WebGPU rendering engine. No WebView, zero templates, hardware acceleration, cross-platform.
+### Desktop Applications
+```bash
+npm install -D iris-runtime
+npx iris-runtime build
+```
 
 ---
 
@@ -199,17 +185,6 @@ const count = ref(0)
 </style>
 ```
 
-### Developer Testimonials
-
-> "I used to spend hours configuring Webpack, Babel, and PostCSS. Now I just run `iris run App.vue` - it's magical!"  
-> — Frontend Developer
-
-> "15x performance boost, animations are finally smooth. WebGPU is the future!"  
-> — Game Developer turned Frontend
-
-> "281 tests all passing, enterprise-grade quality. Rust's memory safety gives us peace of mind."  
-> — Tech Lead
-
 ---
 
 ## 🎨 Rendering Capabilities
@@ -339,35 +314,51 @@ The preview release will include:
 
 > ⚠️ **Note**: Iris Engine is currently in development. Preview release coming May 8, 2026.
 
+### For Vue Developers (Web Development)
+
+Build your Vue 3 projects with zero configuration using our WASM-powered development server.
+
+```bash
+# 1. Install in your Vue project
+npm install -D iris-runtime
+
+# 2. Start development server with hot reload
+npx iris-runtime dev
+
+# 3. Open browser at http://localhost:3000
+```
+
+**Features:**
+- ✅ Zero configuration - Works out of the box
+- ✅ Hot module replacement - Instant updates
+- ✅ WASM-powered Vue SFC compilation
+- ✅ Cross-platform - Same experience everywhere
+
+### For Desktop Developers (Native Apps)
+
+Transform your Vue projects into native desktop applications with Rust + WebGPU rendering.
+
+```bash
+# 1. Install in your Vue project
+npm install -D iris-runtime
+
+# 2. Build native desktop app
+npx iris-runtime build
+
+# Output: Native .exe (Windows) / .app (macOS) / binary (Linux)
+```
+
+**Features:**
+- ✅ No WebView - Pure native rendering
+- ✅ GPU hardware acceleration
+- ✅ Cross-platform builds
+- ✅ Ultra lightweight - Far smaller than Electron
+
 ### Requirements
 
-- Rust 1.75+
-- WebGPU-capable GPU
-- Windows 10+ / macOS 11+ / Linux
-
-### Installation (After Preview Release)
-
-```bash
-# Install Iris CLI
-cargo install iris-cli
-
-# Run a Vue component
-iris run App.vue
-
-# Build for production
-iris build App.vue
-```
-
-### Example Projects
-
-```bash
-# Clone examples
-git clone https://gitee.com/wanquanbuhuime/iris-examples.git
-
-# Run demo
-cd iris-examples/demo
-iris run
-```
+- Node.js >= 16.0.0
+- npm >= 7.0.0
+- WebGPU-capable GPU (for rendering)
 
 ---
 
