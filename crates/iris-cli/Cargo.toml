@@ -24,6 +24,13 @@ thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 walkdir = "2.4"
+winit = { workspace = true }
+pollster = "0.3"
+
+# Iris Engine 集成
+iris-engine.workspace = true
+iris-gpu.workspace = true
+iris-sfc.workspace = true
 
 [dev-dependencies]
 tempfile = "3.9"

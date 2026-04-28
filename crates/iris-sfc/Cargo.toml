@@ -11,6 +11,7 @@ description = "Iris SFC/TS instant transpilation layer: swc TS-to-JS, Vue SFC co
 [dependencies]
 iris-core.workspace = true
 iris-js.workspace = true
+iris-cssom.workspace = true
 tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

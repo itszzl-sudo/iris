@@ -198,7 +198,7 @@ impl TsCompiler {
                     skip_filename: false,
                 },
                 |handler| {
-                    // 4. 解析 TypeScript
+                    // 4. 解析 TypeScript（启用模块支持）
                     let program = self.compiler.parse_js(
                         fm,
                         handler,
@@ -208,7 +208,7 @@ impl TsCompiler {
                             decorators: self.config.keep_decorators,
                             ..Default::default()
                         }),
-                        swc::config::IsModule::Unknown,
+                        swc::config::IsModule::Bool(true),  // 关键：启用模块语法支持
                         None,
                     )?;
 

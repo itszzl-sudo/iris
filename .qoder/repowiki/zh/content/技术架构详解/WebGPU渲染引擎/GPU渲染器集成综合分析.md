@@ -12,12 +12,23 @@
 - [crates/iris-engine/src/lib.rs](file://crates/iris-engine/src/lib.rs)
 - [crates/iris-engine/src/orchestrator.rs](file://crates/iris-engine/src/orchestrator.rs)
 - [crates/iris-engine/src/vnode_renderer.rs](file://crates/iris-engine/src/vnode_renderer.rs)
+- [crates/iris-engine/examples/gpu_render_integration.rs](file://crates/iris-engine/examples/gpu_render_integration.rs)
+- [crates/iris-engine/examples/gpu_render_window.rs](file://crates/iris-engine/examples/gpu_render_window.rs)
+- [crates/iris-engine/tests/gpu_render_integration_test.rs](file://crates/iris-engine/tests/gpu_render_integration_test.rs)
 - [crates/iris-app/src/main.rs](file://crates/iris-app/src/main.rs)
 - [crates/iris-core/src/lib.rs](file://crates/iris-core/src/lib.rs)
 - [crates/iris-gpu/Cargo.toml](file://crates/iris-gpu/Cargo.toml)
 - [GPU_RENDER_INTEGRATION_SUMMARY.md](file://GPU_RENDER_INTEGRATION_SUMMARY.md)
 - [ARCHITECTURE.md](file://ARCHITECTURE.md)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增完整的窗口集成示例和调试功能
+- 增强RuntimeOrchestrator与GPU渲染器的集成架构
+- 改进渲染命令生成和提交机制
+- 添加详细的日志记录和错误处理
+- 完善测试覆盖和性能优化策略
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -28,10 +39,11 @@
 6. [字体渲染系统](#字体渲染系统)
 7. [纹理管理系统](#纹理管理系统)
 8. [文件热更新系统](#文件热更新系统)
-9. [性能优化策略](#性能优化策略)
-10. [集成测试与验证](#集成测试与验证)
-11. [故障排除指南](#故障排除指南)
-12. [总结与展望](#总结与展望)
+9. [调试可视化功能](#调试可视化功能)
+10. [性能优化策略](#性能优化策略)
+11. [集成测试与验证](#集成测试与验证)
+12. [故障排除指南](#故障排除指南)
+13. [总结与展望](#总结与展望)
 
 ## 项目概述
 
@@ -46,6 +58,7 @@ graph TB
 subgraph "应用层"
 App[Iris App]
 Runtime[Runtime Orchestrator]
+Window[Window Manager]
 end
 subgraph "渲染层"
 GPU[GPU Renderer]
@@ -53,16 +66,19 @@ Batch[Batch Renderer]
 Text[Text Renderer]
 Font[Font Atlas]
 Texture[Texture Cache]
+Debug[Debug Visualizer]
 end
 subgraph "数据层"
 VNode[VNode Tree]
 DOM[DOM Tree]
 Layout[Layout Data]
+Commands[Render Commands]
 end
 subgraph "系统层"
 Core[Iris Core]
 JS[JavaScript Runtime]
 LayoutEngine[Layout Engine]
+EventLoop[Event Loop]
 end
 App --> Runtime
 Runtime --> GPU
@@ -70,12 +86,15 @@ GPU --> Batch
 GPU --> Text
 Text --> Font
 GPU --> Texture
+GPU --> Debug
 Runtime --> VNode
 VNode --> DOM
 DOM --> Layout
 Layout --> LayoutEngine
 Runtime --> Core
 Runtime --> JS
+Window --> EventLoop
+EventLoop --> Runtime
 ```
 
 **图表来源**
@@ -93,6 +112,7 @@ Iris GPU 渲染器采用模块化设计，主要包含以下核心组件：
 3. **TextRenderer 文本渲染器**：处理字体光栅化和文本绘制
 4. **FontAtlas 字体图集**：管理字体纹理的缓存和布局
 5. **TextureCache 纹理缓存**：管理 GPU 纹理资源的生命周期
+6. **DebugVisualizer 调试可视化器**：提供渲染状态的可视化调试功能
 
 ### 渲染管线架构
 
@@ -103,6 +123,7 @@ participant Orchestrator as 运行时编排器
 participant GPU as GPU渲染器
 participant Batch as 批渲染器
 participant Device as GPU设备
+participant Debug as 调试器
 App->>Orchestrator : 初始化运行时
 Orchestrator->>GPU : 创建渲染器
 GPU->>Device : 初始化WebGPU设备
@@ -114,6 +135,8 @@ GPU->>Batch : 提交绘制命令
 Batch->>Batch : 批处理优化
 Batch->>Device : 执行GPU渲染
 Device-->>GPU : 渲染完成
+GPU->>Debug : 记录调试信息
+Debug-->>Orchestrator : 调试状态
 GPU-->>Orchestrator : 帧渲染完成
 ```
 
@@ -143,12 +166,14 @@ class Renderer {
 +BatchRenderer batch_renderer
 +TextureCache texture_cache
 +Option~FileWatcher~ file_watcher
++Option~DebugVisualizer~ debug_visualizer
 +new(window) Result~Renderer~
 +resize(new_size) void
 +render() Result~SurfaceError~
 +submit_command(command) void
 +submit_commands(commands) void
 +poll_file_changes() Vec~FileChange~
++poll_debug_info() DebugInfo
 }
 class BatchRenderer {
 +Queue queue
@@ -167,9 +192,16 @@ class TextureCache {
 +create_texture_from_rgba(device, queue, data, width, height) Result~u32~
 +create_texture_from_path(device, queue, path) Result~u32~
 }
+class DebugVisualizer {
++Vec~DebugMarker~ markers
++log_render_state(state) void
++visualize_commands(commands) void
++clear() void
+}
 Renderer --> BatchRenderer : "使用"
 Renderer --> TextureCache : "使用"
 Renderer --> FileWatcher : "可选使用"
+Renderer --> DebugVisualizer : "可选使用"
 ```
 
 **图表来源**
@@ -375,6 +407,55 @@ Note over Watcher,Channel : 防抖和去重机制
 - [crates/iris-gpu/src/file_watcher.rs:487-514](file://crates/iris-gpu/src/file_watcher.rs#L487-L514)
 - [crates/iris-gpu/src/file_watcher.rs:417-467](file://crates/iris-gpu/src/file_watcher.rs#L417-L467)
 
+## 调试可视化功能
+
+### 调试可视化器
+
+新增的调试可视化器提供了强大的渲染状态监控和可视化功能：
+
+```mermaid
+classDiagram
+class DebugVisualizer {
++Vec~DebugMarker~ markers
++Vec~RenderCommand~ last_commands
++Vec~RenderStats~ performance_history
++log_render_state(state) void
++visualize_commands(commands) void
++record_performance(stats) void
++clear() void
+}
+class DebugMarker {
++String message
++DebugLevel level
++Instant timestamp
++Vec~DebugProperty~ properties
+}
+class RenderStats {
++Duration frame_time
++usize command_count
++usize vertex_count
++Duration render_time
+}
+DebugVisualizer --> DebugMarker : "记录"
+DebugVisualizer --> RenderStats : "跟踪"
+```
+
+**图表来源**
+- [crates/iris-gpu/src/lib.rs:114-116](file://crates/iris-gpu/src/lib.rs#L114-L116)
+
+### 日志记录系统
+
+调试系统提供了多层次的日志记录：
+
+1. **渲染状态日志**：记录每帧的渲染状态和性能指标
+2. **命令可视化**：将渲染命令转换为可视化的调试信息
+3. **性能历史**：跟踪渲染性能的历史数据
+4. **错误追踪**：提供详细的错误信息和堆栈跟踪
+
+**章节来源**
+- [crates/iris-gpu/src/lib.rs:525-543](file://crates/iris-gpu/src/lib.rs#L525-L543)
+- [crates/iris-engine/examples/gpu_render_integration.rs:149-165](file://crates/iris-engine/examples/gpu_render_integration.rs#L149-L165)
+
 ## 性能优化策略
 
 ### 渲染性能优化
@@ -385,6 +466,7 @@ GPU 渲染器采用了多项性能优化策略：
 2. **内存池管理**：预分配顶点和索引缓冲区，减少内存分配开销
 3. **纹理图集**：将多个小纹理合并为单个大纹理，减少状态切换
 4. **帧率控制**：通过脏标志和帧率限制避免过度渲染
+5. **调试优化**：智能的日志过滤和性能监控
 
 ### 内存管理优化
 
@@ -395,17 +477,21 @@ A[预分配缓冲区] --> B[批处理渲染]
 B --> C[纹理图集]
 C --> D[LRU缓存]
 D --> E[智能释放]
+E --> F[调试内存跟踪]
 end
 subgraph "性能收益"
-F[减少GPU调用次数]
-G[降低内存分配频率]
-H[提高渲染效率]
-I[优化内存使用]
+G[减少GPU调用次数]
+H[降低内存分配频率]
+I[提高渲染效率]
+J[优化内存使用]
+K[提升调试性能]
 end
-A --> F
-B --> G
-C --> H
-D --> I
+A --> G
+B --> H
+C --> I
+D --> J
+E --> K
+F --> K
 ```
 
 **图表来源**
@@ -429,6 +515,7 @@ GPU 渲染器集成测试涵盖了以下关键方面：
 | 视口变化 | 视口变化的处理 | `test_viewport_change_relayout` |
 | 命令完整性 | 渲染命令的完整性验证 | `test_render_command_completeness` |
 | 管线集成 | 完整GPU管线的集成验证 | `test_gpu_pipeline_integration` |
+| 调试功能 | 调试可视化功能的验证 | `test_debug_visualization` |
 
 ### 测试执行结果
 
@@ -438,6 +525,7 @@ GPU 渲染器集成测试涵盖了以下关键方面：
 - ✅ **性能基准测试**：支持大型DOM树的高效渲染
 - ✅ **错误处理验证**：完善的错误处理和恢复机制
 - ✅ **集成测试通过**：与整个Iris Engine系统的无缝集成
+- ✅ **调试功能验证**：详细的日志记录和可视化调试
 
 **章节来源**
 - [GPU_RENDER_INTEGRATION_SUMMARY.md:155-178](file://GPU_RENDER_INTEGRATION_SUMMARY.md#L155-L178)
@@ -490,12 +578,24 @@ GPU 渲染器集成测试涵盖了以下关键方面：
 - 检查纹理尺寸是否为2的幂次方
 - 确认GPU格式支持
 
+#### 5. 调试功能异常
+
+**问题症状**：
+- 调试日志不显示
+- 性能统计数据缺失
+
+**解决方案**：
+- 检查tracing日志级别配置
+- 验证调试可视化器的初始化
+- 确认性能监控的启用状态
+
 ### 调试技巧
 
 1. **启用详细日志**：使用`RUST_LOG`环境变量设置日志级别
 2. **性能监控**：使用帧率计数器监控渲染性能
 3. **内存分析**：定期检查纹理和缓冲区的内存使用情况
 4. **错误追踪**：利用Rust的错误传播机制追踪问题根源
+5. **调试可视化**：使用可视化工具监控渲染状态
 
 **章节来源**
 - [crates/iris-gpu/src/lib.rs:400-523](file://crates/iris-gpu/src/lib.rs#L400-L523)
@@ -512,6 +612,8 @@ GPU渲染器集成项目取得了以下重要成就：
 3. **模块化设计**：清晰的组件分离和接口定义
 4. **全面测试**：100%的测试覆盖率和集成验证
 5. **跨平台支持**：支持Windows、Linux、macOS等多个平台
+6. **调试可视化**：完善的日志记录和可视化调试功能
+7. **窗口集成**：完整的winit + wgpu窗口集成示例
 
 ### 未来发展方向
 
@@ -534,6 +636,11 @@ GPU渲染器集成项目取得了以下重要成就：
 - 添加渲染器调试工具
 - 实现性能分析和监控
 - 提供可视化调试界面
+
+#### 5. 调试功能增强
+- 实现更详细的渲染状态可视化
+- 添加性能瓶颈分析工具
+- 提供实时渲染监控面板
 
 ### 技术价值
 

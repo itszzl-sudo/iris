@@ -9,7 +9,7 @@
 #![warn(missing_docs)]
 
 mod cache;
-mod css_modules;
+pub use iris_cssom::css_modules;
 mod scoped_css;
 mod scss_processor;
 mod script_setup;

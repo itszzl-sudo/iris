@@ -1,42 +1,24 @@
 <template>
   <div class="app">
     <header class="header">
-      <h1>Iris Runtime</h1>
-      <p class="subtitle">GPU Accelerated Vue 3 Rendering</p>
+      <h1>🎨 Iris Runtime</h1>
+      <p class="subtitle">Native Window Rendering with WebGPU</p>
     </header>
 
     <main class="content">
       <div class="card">
-        <h2>Features</h2>
+        <h2>✨ Features</h2>
         <ul>
-          <li>Rust + WebGPU Rendering</li>
-          <li>Vue 3 SFC Support</li>
-          <li>GPU Hardware Acceleration</li>
-          <li>Hot Module Replacement</li>
-          <li>Native Window Rendering</li>
+          <li>🚀 Rust + WebGPU 渲染</li>
+          <li>🎯 Vue 3 SFC 支持</li>
+          <li>⚡ 高性能 GPU 渲染管线</li>
+          <li>🔥 热重载支持</li>
+          <li>💻 原生窗口渲染</li>
         </ul>
       </div>
 
       <div class="card">
-        <h2>Performance</h2>
-        <div class="stats">
-          <div class="stat">
-            <span class="stat-value">5ms</span>
-            <span class="stat-label">Frame Time</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">60fps</span>
-            <span class="stat-label">Render FPS</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">75MB</span>
-            <span class="stat-label">Memory</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Tech Stack</h2>
+        <h2>📦 Tech Stack</h2>
         <div class="tech-grid">
           <span class="tech-badge">Rust</span>
           <span class="tech-badge">WebGPU</span>
@@ -46,17 +28,37 @@
           <span class="tech-badge">Boa JS</span>
         </div>
       </div>
+
+      <div class="card">
+        <h2>🎮 Interactive Demo</h2>
+        <p>Counter: <strong>{{ counter }}</strong></p>
+        <button @click="increment" class="btn">Increment</button>
+      </div>
     </main>
 
     <footer class="footer">
-      <p>Built with Rust + WebGPU + Vue 3</p>
+      <p>Built with ❤️ using Rust + WebGPU</p>
     </footer>
   </div>
 </template>
 
 <script>
-// Empty script - just template rendering
-console.log('App loaded')
+export default {
+  name: 'TestApp',
+  data() {
+    return {
+      counter: 0
+    }
+  },
+  methods: {
+    increment() {
+      this.counter++
+    }
+  },
+  mounted() {
+    console.log('TestApp mounted successfully!')
+  }
+}
 </script>
 
 <style>
@@ -88,8 +90,7 @@ console.log('App loaded')
 .content {
   max-width: 800px;
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 20px;
 }
 
@@ -109,35 +110,12 @@ console.log('App loaded')
 .card ul {
   margin: 0;
   padding-left: 20px;
+  list-style: none;
 }
 
 .card li {
   margin: 8px 0;
   font-size: 16px;
-}
-
-.stats {
-  display: flex;
-  gap: 20px;
-  justify-content: space-around;
-}
-
-.stat {
-  text-align: center;
-}
-
-.stat-value {
-  display: block;
-  font-size: 32px;
-  font-weight: 700;
-  color: #4ade80;
-}
-
-.stat-label {
-  display: block;
-  font-size: 14px;
-  opacity: 0.8;
-  margin-top: 4px;
 }
 
 .tech-grid {
@@ -152,6 +130,22 @@ console.log('App loaded')
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
+}
+
+.btn {
+  background: white;
+  color: #667eea;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.btn:hover {
+  transform: scale(1.05);
 }
 
 .footer {

@@ -12,6 +12,7 @@ description = "Iris JavaScript runtime: Boa Engine integration, ESM module syste
 iris-core.workspace = true
 iris-dom.workspace = true
 iris-layout.workspace = true
+iris-cssom.workspace = true
 boa_engine = "0.20"
 boa_gc = "0.20"
 serde = { version = "1.0", features = ["derive"] }

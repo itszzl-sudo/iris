@@ -17,10 +17,17 @@ iris-layout.workspace = true
 iris-dom.workspace = true
 iris-js.workspace = true
 iris-sfc.workspace = true
+iris-cssom.workspace = true
 tracing = "0.1"
 tracing-subscriber = "0.3"
 winit = { workspace = true }
 pollster = "0.3"
+regex = "1"
+html5ever = "0.27"
+markup5ever_rcdom = "0.3"
+fontdue = "0.9"
+notify = "6.1"
+tokio = { version = "1", features = ["full"] }
 
 [[example]]
 name = "gpu_render_integration"
@@ -28,4 +35,12 @@ required-features = []
 
 [[example]]
 name = "gpu_render_window"
+required-features = []
+
+[[example]]
+name = "radial_gradient_demo"
+required-features = []
+
+[[example]]
+name = "radial_gradient_window"
 required-features = []

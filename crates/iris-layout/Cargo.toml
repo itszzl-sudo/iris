@@ -6,12 +6,12 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Iris browser-grade layout & CSS engine: box model, Flex, selector matching, style inheritance"
+description = "Iris browser-grade layout engine: box model, Flex, and layout computation"
 
 [dependencies]
 iris-core.workspace = true
+iris-cssom.workspace = true
 # 移除 iris-gpu 依赖 - 布局引擎应该独立于渲染器
 html5ever.workspace = true
 markup5ever_rcdom.workspace = true
-cssparser.workspace = true
 seahash = "4.1"

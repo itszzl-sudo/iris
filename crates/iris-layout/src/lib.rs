@@ -24,8 +24,6 @@
 
 pub mod dom;
 pub mod html;
-pub mod css;
-pub mod style;
 pub mod layout;
 pub mod vdom;
 pub mod domtree;
@@ -35,6 +33,11 @@ pub mod grid;
 pub mod float_layout;
 pub mod table_layout;
 pub mod cache;
+
+// 重新导出 CSSOM 以保持向后兼容
+pub use iris_cssom;
+pub use iris_cssom::css;
+pub mod style;  // style 保留在 iris-layout 中，因为依赖 DOMNode
 
 // 重新导出常用类型
 pub use layout::{

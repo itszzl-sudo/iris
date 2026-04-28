@@ -586,6 +586,16 @@ impl Renderer {
     pub fn texture_cache(&self) -> &TextureCache {
         &self.texture_cache
     }
+    
+    /// 设置字体用于文本渲染。
+    pub fn set_font(&mut self, font: fontdue::Font, size: f32) {
+        self.batch_renderer.set_font(font, size);
+    }
+    
+    /// 获取队列引用用于刷新操作。
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
 }
 
 /// 兼容旧 API 的初始化函数。
