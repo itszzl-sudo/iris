@@ -16,6 +16,9 @@ use iris_jetcrab_engine::sfc_compiler::CompiledModule;
 use iris_jetcrab_engine::dependency_tree::DependencyTree;
 use anyhow::{Result, Context};
 use tracing::{info, debug, warn};
+use std::sync::Arc;
+use crate::server::hmr::WebSocketManager;
+use crate::server::hmr::HmrEvent;
 
 /// 编译器缓存
 pub struct CompilerCache {
@@ -31,6 +34,8 @@ pub struct CompilerCache {
     dependency_tree: Mutex<Option<DependencyTree>>,
     /// 模块依赖关系（模块 -> 依赖的 npm 包）
     module_dependencies: Mutex<HashMap<String, Vec<String>>>,
+    /// WebSocket 管理器（用于推送进度）
+    ws_manager: Option<Arc<WebSocketManager>>,
 }
 
 impl CompilerCache {
@@ -55,7 +60,14 @@ impl CompilerCache {
             is_compiled: Mutex::new(false),
             dependency_tree: Mutex::new(dependency_tree),
             module_dependencies: Mutex::new(HashMap::new()),
+            ws_manager: None,
         }
+    }
+
+    /// 设置 WebSocket 管理器
+    pub fn with_ws_manager(mut self, ws_manager: Arc<WebSocketManager>) -> Self {
+        self.ws_manager = Some(ws_manager);
+        self
     }
 
     /// 获取或编译模块
@@ -80,12 +92,59 @@ impl CompilerCache {
         {
             let result = self.compilation_result.lock().await;
             if let Some(ref compilation) = *result {
+                // 调试：输出所有已编译模块的路径
+                debug!("Available compiled modules: {:?}", compilation.compiled_modules.keys().collect::<Vec<_>>());
+                debug!("Looking for module: {}", module_path);
+                
+                // 尝试直接查找
                 if let Some(module) = compilation.compiled_modules.get(module_path) {
                     debug!("Module found in compilation result: {}", module_path);
-                    // 添加到缓存
                     let mut cache = self.compiled_modules.lock().await;
                     cache.insert(module_path.to_string(), module.clone());
                     return Ok(module.clone());
+                }
+                
+                // 尝试通过相对路径查找（支持 main.ts, src/main.ts 等格式）
+                debug!("Direct lookup failed, trying relative path matching for: {}", module_path);
+                
+                // 标准化请求路径（移除前缀斜杠）
+                let normalized_request = module_path.trim_start_matches('/');
+                
+                // 在已编译模块中查找匹配的路径
+                for (abs_path, module) in &compilation.compiled_modules {
+                    let abs_path_obj = std::path::Path::new(abs_path);
+                    
+                    // 调试：输出匹配尝试
+                    debug!("Trying to match: abs_path={}, normalized_request={}", abs_path, normalized_request);
+                    
+                    // 尝试多种匹配策略
+                    let matches = 
+                        // 策略 1: 完全匹配（相对于项目根目录）
+                        if let Ok(rel) = abs_path_obj.strip_prefix(&self.project_root) {
+                            let rel_str = rel.to_string_lossy();
+                            debug!("  Strategy 1 - relative path: {}", rel_str);
+                            rel_str == normalized_request
+                        } else {
+                            false
+                        } ||
+                        // 策略 2: 文件名匹配
+                        abs_path_obj.file_name().map(|n| n.to_string_lossy()) == Some(std::borrow::Cow::Borrowed(normalized_request)) ||
+                        // 策略 3: 路径后缀匹配（支持 src/main.ts 匹配 main.ts）
+                        abs_path.ends_with(&normalized_request.replace('/', std::path::MAIN_SEPARATOR_STR)) ||
+                        // 策略 4: 处理 /@vue/ 前缀（Vue 模块请求）
+                        if normalized_request.starts_with("@vue/") {
+                            let vue_module = &normalized_request[5..];
+                            abs_path.ends_with(&vue_module.replace('/', std::path::MAIN_SEPARATOR_STR))
+                        } else {
+                            false
+                        };
+                    
+                    if matches {
+                        debug!("Found module via path matching: {} -> {}", module_path, abs_path);
+                        let mut cache = self.compiled_modules.lock().await;
+                        cache.insert(module_path.to_string(), module.clone());
+                        return Ok(module.clone());
+                    }
                 }
             }
         }
@@ -147,6 +206,21 @@ impl CompilerCache {
         
         // 创建编译器
         let mut compiler = VueProjectCompiler::new(self.project_root.clone());
+        
+        // TODO: 设置进度回调（如果有 WebSocket 管理器）
+        // if let Some(ws_manager) = &self.ws_manager {
+        //     let ws_manager_clone = ws_manager.clone();
+        //     compiler = compiler.with_progress_callback(move |package: &str, version: &str, progress: u8, status: &str| {
+        //         let event = HmrEvent::NpmDownload {
+        //             package: package.to_string(),
+        //             version: version.to_string(),
+        //             progress,
+        //             status: status.to_string(),
+        //             error: None,
+        //         };
+        //         ws_manager_clone.broadcast(event);
+        //     });
+        // }
         
         // 编译项目
         let result = compiler.compile_project(&relative_entry).await?;

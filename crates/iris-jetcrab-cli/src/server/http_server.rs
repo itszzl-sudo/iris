@@ -41,12 +41,15 @@ pub async fn start(root: String, port: u16, open: bool, enable_hmr: bool, debug:
     }
     println!("{} {}", "✅ Vue:".bright_green(), "Project detected".bright_white());
 
-    // 创建编译器缓存（按需编译的核心）
-    let cache = Arc::new(Mutex::new(CompilerCache::new(project_root.clone())));
-
     // 创建 HMR 管理器
     let mut hmr_manager = HMRManager::new(project_root.clone(), enable_hmr);
     let ws_manager = hmr_manager.ws_manager();
+    
+    // 创建编译器缓存（按需编译的核心）
+    let cache = Arc::new(Mutex::new(
+        CompilerCache::new(project_root.clone())
+            .with_ws_manager(ws_manager.clone())
+    ));
     
     // 启动文件监听
     if enable_hmr {
@@ -59,8 +62,12 @@ pub async fn start(root: String, port: u16, open: bool, enable_hmr: bool, debug:
     let app = Router::new()
         // 主页
         .route("/", get(routes::index_handler))
-        // Vue 模块按需编译
+        // 源文件编译（/src/*path）- 返回可执行的 JavaScript 模块
+        .route("/src/*path", get(routes::source_file_handler))
+        // Vue 模块按需编译（API 接口）
         .route("/@vue/*path", get(routes::vue_module_handler))
+        // npm 包服务（/@npm/*path）
+        .route("/@npm/*path", get(routes::npm_package_handler))
         // 静态资源
         .route("/assets/*path", get(routes::static_handler))
         // 项目信息 API

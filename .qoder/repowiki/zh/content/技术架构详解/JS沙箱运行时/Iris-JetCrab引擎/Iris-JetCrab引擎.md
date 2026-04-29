@@ -25,17 +25,20 @@
 - [vue_compiler.rs](file://crates/iris-jetcrab-engine/src/vue_compiler.rs)
 - [project_scanner.rs](file://crates/iris-jetcrab-engine/src/project_scanner.rs)
 - [module_graph.rs](file://crates/iris-jetcrab-engine/src/module_graph.rs)
+- [dependency_tree.rs](file://crates/iris-jetcrab-engine/src/dependency_tree.rs)
+- [compiler_cache.rs](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs)
+- [DEPENDENCY_TREE_MANAGEMENT.md](file://docs/DEPENDENCY_TREE_MANAGEMENT.md)
+- [dependency_tree_test.rs](file://crates/iris-jetcrab-engine/tests/dependency_tree_test.rs)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增ProjectScanner模块，提供完整的Vue项目目录扫描和解析能力
-- 新增VueProjectCompiler，实现完整的项目级编译流程
-- 新增ModuleGraph模块，支持依赖图构建和循环依赖检测
-- 新增HMRManager模块，提供热更新补丁生成和管理
-- 新增WASM API导出，支持浏览器端直接调用引擎功能
-- 重构JetCrabEngine.run()方法，使用新的编译器架构
-- 新增完整的项目检测和配置工具，增强引擎自包含性
+- 新增DependencyTree模块，提供完整的npm依赖树管理功能
+- 新增编译工具过滤机制，智能排除构建工具类依赖
+- 新增依赖版本变化检测和按需重新编译功能
+- 新增编译器缓存集成，支持依赖变化时的增量编译
+- 新增完整的依赖树缓存机制，提升启动性能
+- 新增模块依赖映射功能，支持按需重新编译受影响模块
 
 ## 目录
 1. [简介](#简介)
@@ -43,18 +46,20 @@
 3. [核心组件](#核心组件)
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [WASM API功能](#wasm-api功能)
-7. [跨平台构建支持](#跨平台构建支持)
-8. [依赖关系分析](#依赖关系分析)
-9. [性能考虑](#性能考虑)
-10. [故障排除指南](#故障排除指南)
-11. [结论](#结论)
+6. [依赖树管理系统](#依赖树管理系统)
+7. [编译器缓存集成](#编译器缓存集成)
+8. [WASM API功能](#wasm-api功能)
+9. [跨平台构建支持](#跨平台构建支持)
+10. [依赖关系分析](#依赖关系分析)
+11. [性能考虑](#性能考虑)
+12. [故障排除指南](#故障排除指南)
+13. [结论](#结论)
 
 ## 简介
 
 Iris-JetCrab引擎是Iris跨平台UI框架中的JavaScript执行引擎，基于JetCrab Chitin引擎构建。该引擎提供了完整的npm包支持、ESM模块系统、Web API兼容层以及**WASM原生支持**，实现了从Vue SFC到JavaScript代码的完整执行链路。
 
-**更新**：引擎现已重构为完全的项目级编译架构，从简单的单文件执行升级为完整的Vue项目编译和运行时管理。新增的ProjectScanner模块负责项目检测和解析，VueProjectCompiler提供完整的项目编译能力，ModuleGraph支持依赖关系管理，HMRManager提供热更新支持，WASM API允许浏览器端直接调用引擎功能。
+**更新**：引擎现已重构为完全的项目级编译架构，从简单的单文件执行升级为完整的Vue项目编译和运行时管理。新增的DependencyTree模块负责npm依赖树管理，提供智能的编译工具过滤、版本变化检测和按需重新编译功能。新增的编译器缓存集成使得引擎能够在依赖变化时自动重新编译受影响的模块，显著提升了开发效率。
 
 该引擎的核心目标是在Rust生态系统中提供高性能的JavaScript执行环境，同时保持与现代Web标准的兼容性。通过模块化设计和项目级编译架构，Iris-JetCrab能够无缝集成到Iris的整体架构中，为开发者提供完整的Vue项目开发和运行时体验。
 
@@ -98,6 +103,8 @@ Q[HMRManager]
 R[编译缓存]
 S[依赖解析器]
 T[拓扑排序器]
+U[DependencyTree]
+V[编译器缓存集成]
 end
 A --> E
 A --> F
@@ -113,6 +120,8 @@ N --> Q
 N --> R
 N --> S
 N --> T
+N --> U
+V --> U
 ```
 
 **图表来源**
@@ -121,6 +130,8 @@ N --> T
 - [wasm_api.rs:13-47](file://crates/iris-jetcrab-engine/src/wasm_api.rs#L13-L47)
 - [engine.rs:13-15](file://crates/iris-jetcrab-engine/src/engine.rs#L13-L15)
 - [project_scanner.rs:10-40](file://crates/iris-jetcrab-engine/src/project_scanner.rs#L10-L40)
+- [dependency_tree.rs:1-375](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L1-375)
+- [compiler_cache.rs:1-223](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L1-223)
 
 **章节来源**
 - [lib.rs:1-82](file://crates/iris-jetcrab/src/lib.rs#L1-L82)
@@ -202,6 +213,11 @@ Q[拓扑排序器]
 R[构建工具检测]
 S[Vue版本识别]
 T[入口文件解析]
+U[DependencyTree]
+V[编译器缓存集成]
+W[依赖变化检测]
+X[按需重新编译]
+Y[依赖树缓存]
 end
 K --> L
 K --> M
@@ -209,9 +225,17 @@ K --> N
 K --> O
 K --> P
 K --> Q
+K --> U
+K --> V
 L --> R
 L --> S
 L --> T
+V --> W
+V --> X
+V --> Y
+U --> W
+U --> X
+U --> Y
 ```
 
 **图表来源**
@@ -604,6 +628,294 @@ JsFFIBridge --> WasmLoader : uses
 **章节来源**
 - [wasm_bridge.rs:1-369](file://crates/iris-jetcrab/src/wasm_bridge.rs#L1-L369)
 
+## 依赖树管理系统
+
+**新增**：DependencyTree模块是Iris-JetCrab引擎的核心依赖管理组件，负责解析和管理npm依赖树。
+
+### 核心功能概述
+
+DependencyTree模块实现了以下核心功能：
+
+1. **依赖解析**：从package.json解析所有npm依赖
+2. **编译工具过滤**：智能排除构建工具类依赖
+3. **版本变化检测**：通过哈希比较检测依赖版本变化
+4. **按需重新编译**：自动重新编译受影响的模块
+5. **依赖树缓存**：缓存依赖树以提升启动性能
+
+### DependencyTree 数据结构
+
+```mermaid
+classDiagram
+class DependencyTree {
+-project_root : PathBuf
+-dependencies : HashMap~String, DependencyInfo~
+-runtime_dependencies : HashMap~String, DependencyInfo~
+-dependency_hash : String
++from_package_json(project_root) Result~DependencyTree~
++is_build_tool(name) bool
++has_changed(other) bool
++get_changed_dependencies(other) Vec~ChangedDependency~
++get_modules_to_rebuild(changes, module_dependencies) Vec~String~
++save_to_cache() Result
++load_from_cache(project_root) Result~DependencyTree~
++calculate_hash(dependencies) String
+}
+class DependencyInfo {
+-name : String
+-version_req : String
+-installed_version : Option~String~
+-is_dev_dependency : bool
+-is_build_tool : bool
+-package_path : Option~PathBuf~
+-dependencies : Vec~String~
+}
+class ChangedDependency {
+-name : String
+-old_version : Option~String~
+-new_version : Option~String~
+-change_type : ChangeType
+}
+class ChangeType {
+<<enumeration>>
+Added
+Updated
+Removed
+}
+DependencyTree --> DependencyInfo : contains
+DependencyTree --> ChangedDependency : produces
+ChangedDependency --> ChangeType : uses
+```
+
+**图表来源**
+- [dependency_tree.rs:52-63](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L52-L63)
+- [dependency_tree.rs:33-50](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L33-L50)
+- [dependency_tree.rs:369-374](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L369-L374)
+
+### 编译工具过滤机制
+
+DependencyTree模块内置了智能的编译工具过滤机制，自动排除不需要编译到运行时的工具类依赖：
+
+**排除列表包含**：
+- **构建工具**：vite、webpack、rollup、esbuild、swc
+- **Babel相关**：babel-loader、@babel/core、@babel/preset-env
+- **TypeScript编译**：typescript、ts-loader、ts-node
+- **开发工具**：eslint、prettier、stylelint
+- **测试工具**：jest、vitest、mocha、chai
+- **其他开发依赖**：nodemon、concurrently、cross-env
+
+### 依赖版本变化检测
+
+通过计算依赖哈希来检测版本变化：
+
+```mermaid
+sequenceDiagram
+participant Dev as 开发者
+participant OldTree as 旧依赖树
+participant NewTree as 新依赖树
+participant Hasher as 哈希计算器
+Dev->>OldTree : 加载缓存的依赖树
+Dev->>NewTree : 解析新的package.json
+NewTree->>Hasher : 计算新哈希
+OldTree->>Hasher : 计算旧哈希
+Hasher-->>Dev : 比较哈希值
+alt 哈希不同
+Dev->>Dev : 检测到依赖变化
+Dev->>Dev : 生成变化列表
+Dev->>Dev : 重新编译受影响模块
+else 哈希相同
+Dev->>Dev : 无依赖变化
+Dev->>Dev : 使用缓存编译结果
+end
+```
+
+**图表来源**
+- [dependency_tree.rs:254-257](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L254-L257)
+- [dependency_tree.rs:260-301](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L260-L301)
+
+### 按需重新编译机制
+
+当检测到依赖变化时，自动重新编译受影响的模块：
+
+```mermaid
+flowchart TD
+A[检测到依赖变化] --> B{获取变化列表}
+B --> C[遍历变化的依赖]
+C --> D[查找依赖此包的所有模块]
+D --> E{模块是否已编译？}
+E --> |是| F[添加到重新编译列表]
+E --> |否| G[跳过]
+F --> H{还有更多模块？}
+G --> H
+H --> |是| D
+H --> |否| I[重新编译模块列表]
+I --> J[更新编译缓存]
+J --> K[保存新的依赖树]
+```
+
+**图表来源**
+- [dependency_tree.rs:303-328](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L303-L328)
+
+### 依赖树缓存机制
+
+依赖树会自动缓存到`.iris-cache/dependency-tree.json`：
+
+```mermaid
+classDiagram
+class CacheManager {
+-cache_dir : PathBuf
+-cache_file : PathBuf
++save_to_cache(tree) Result
++load_from_cache() Result~DependencyTree~
++cache_exists() bool
+}
+class DependencyTree {
+-dependency_hash : String
++save_to_cache() Result
++load_from_cache(project_root) Result~DependencyTree~
+}
+CacheManager --> DependencyTree : manages
+```
+
+**图表来源**
+- [dependency_tree.rs:330-356](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L330-L356)
+
+**更新**：依赖树缓存的优势包括：
+- 避免重复解析package.json
+- 快速检测依赖变化
+- 提升启动速度
+- 减少磁盘I/O操作
+
+**章节来源**
+- [dependency_tree.rs:1-375](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L1-L375)
+- [DEPENDENCY_TREE_MANAGEMENT.md:1-265](file://docs/DEPENDENCY_TREE_MANAGEMENT.md#L1-L265)
+- [dependency_tree_test.rs:1-113](file://crates/iris-jetcrab-engine/tests/dependency_tree_test.rs#L1-L113)
+
+## 编译器缓存集成
+
+**新增**：CompilerCache模块集成了DependencyTree功能，提供完整的按需编译和缓存管理。
+
+### 缓存架构设计
+
+```mermaid
+classDiagram
+class CompilerCache {
+-project_root : PathBuf
+-compiled_modules : HashMap~String, CompiledModule~
+-compilation_result : Option~CompilationResult~
+-is_compiled : bool
+-dependency_tree : Option~DependencyTree~
+-module_dependencies : HashMap~String, Vec~String~~
++new(project_root) CompilerCache
++get_or_compile(module_path) Result~CompiledModule~
++compile_project() Result
++find_entry_file() Result~PathBuf~
++invalidate(module_path) void
++rebuild() Result
++stats() (usize, bool)
+}
+class DependencyTree {
+-dependency_hash : String
++has_changed(other) bool
++get_changed_dependencies(other) Vec~ChangedDependency~
++get_modules_to_rebuild(changes, module_dependencies) Vec~String~
++save_to_cache() Result
++load_from_cache(project_root) Result~DependencyTree~
+}
+class VueProjectCompiler {
+-compiled_cache : HashMap
+-compiling : HashSet
+-compiled : HashSet
++compile_project(entry) Result~CompilationResult~
++build_dependency_graph(entry) Result
++topological_sort(graph) Result
+}
+CompilerCache --> DependencyTree : uses
+CompilerCache --> VueProjectCompiler : uses
+```
+
+**图表来源**
+- [compiler_cache.rs:20-59](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L20-L59)
+- [compiler_cache.rs:97-165](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L97-L165)
+
+### 按需编译工作流程
+
+```mermaid
+sequenceDiagram
+participant Client as 客户端
+participant Cache as CompilerCache
+participant DepTree as DependencyTree
+participant Compiler as VueProjectCompiler
+Client->>Cache : get_or_compile(module_path)
+Cache->>Cache : 检查模块缓存
+alt 缓存命中
+Cache-->>Client : 返回缓存模块
+else 缓存未命中
+Cache->>Cache : 检查项目缓存
+alt 项目已编译
+Cache->>Cache : 从编译结果获取模块
+Cache-->>Client : 返回模块
+else 项目未编译
+Cache->>DepTree : 加载缓存的依赖树
+DepTree-->>Cache : 返回依赖树
+Cache->>DepTree : 解析新的package.json
+DepTree-->>Cache : 返回新依赖树
+Cache->>DepTree : 比较依赖哈希
+alt 依赖变化
+Cache->>Compiler : 全量编译项目
+Compiler-->>Cache : 返回编译结果
+Cache->>DepTree : 保存新依赖树
+else 无依赖变化
+Cache->>Compiler : 使用缓存编译结果
+end
+Cache-->>Client : 返回模块
+end
+end
+```
+
+**图表来源**
+- [compiler_cache.rs:61-95](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L61-L95)
+- [compiler_cache.rs:97-165](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L97-L165)
+
+### 依赖变化检测集成
+
+CompilerCache模块与DependencyTree的深度集成：
+
+**更新**：在编译项目时的依赖变化检测流程：
+
+1. **加载缓存依赖树**：尝试从`.iris-cache/dependency-tree.json`加载
+2. **解析新依赖树**：从`package.json`解析当前依赖
+3. **比较依赖哈希**：使用`has_changed()`方法检测变化
+4. **生成变化列表**：使用`get_changed_dependencies()`获取详细变化
+5. **按需重新编译**：使用`get_modules_to_rebuild()`确定受影响模块
+
+### 缓存统计和监控
+
+CompilerCache提供了基本的缓存统计功能：
+
+```mermaid
+flowchart TD
+A[缓存操作] --> B{操作类型}
+B --> |get_or_compile| C[检查模块缓存]
+B --> |invalidate| D[失效指定模块]
+B --> |rebuild| E[清除所有缓存]
+C --> F{缓存命中？}
+F --> |是| G[返回缓存模块]
+F --> |否| H[检查项目缓存]
+H --> I{项目已编译？}
+I --> |是| J[从项目缓存获取]
+I --> |否| K[全量编译项目]
+J --> L[更新模块缓存]
+K --> M[保存编译结果]
+M --> N[保存依赖树]
+L --> O[返回模块]
+```
+
+**图表来源**
+- [compiler_cache.rs:202-222](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L202-L222)
+
+**章节来源**
+- [compiler_cache.rs:1-223](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L1-L223)
+
 ## WASM API功能
 
 **新增**：Iris引擎现已提供完整的WASM导出接口，允许浏览器端直接调用Vue SFC编译、模块解析和热更新功能。
@@ -753,22 +1065,26 @@ end
 subgraph "Iris-JetCrab 层"
 G[iris-jetcrab]
 H[iris-jetcrab-engine]
+I[iris-jetcrab-cli]
 end
 subgraph "外部依赖"
-I[Tokio]
-J[Reqwest]
-K[Serde]
-L[WASM Bindgen]
-M[wasm-pack]
-N[swc]
-O[grass]
-P[less-rs]
-Q[walkdir]
-R[html5ever]
-S[notify]
-T[tracing]
-U[anyhow]
-V[serde_json]
+J[Tokio]
+K[Reqwest]
+L[Serde]
+M[WASM Bindgen]
+N[wasm-pack]
+O[swc]
+P[grass]
+Q[less-rs]
+R[walkdir]
+S[html5ever]
+T[notify]
+U[tracing]
+V[anyhow]
+W[serde_json]
+X[console_error_panic_hook]
+Y[uuid]
+Z[regex]
 end
 G --> A
 G --> B
@@ -779,8 +1095,10 @@ G --> F
 G --> I
 G --> J
 G --> K
+G --> L
 H --> G
 H --> I
+H --> J
 H --> L
 H --> M
 H --> N
@@ -792,16 +1110,36 @@ H --> S
 H --> T
 H --> U
 H --> V
+I --> H
+I --> J
+I --> K
+I --> L
+I --> M
+I --> N
+I --> O
+I --> P
+I --> Q
+I --> R
+I --> S
+I --> T
+I --> U
+I --> V
+I --> W
+I --> X
+I --> Y
+I --> Z
 ```
 
 **图表来源**
 - [Cargo.toml:13-36](file://crates/iris-jetcrab/Cargo.toml#L13-L36)
 - [Cargo.toml:13-48](file://crates/iris-jetcrab-engine/Cargo.toml#L13-L48)
+- [Cargo.toml:13-48](file://crates/iris-jetcrab-cli/Cargo.toml#L13-L48)
 - [ARCHITECTURE.md:38-43](file://ARCHITECTURE.md#L38-L43)
 
 **章节来源**
 - [Cargo.toml:1-48](file://crates/iris-jetcrab/Cargo.toml#L1-L48)
 - [Cargo.toml:13-48](file://crates/iris-jetcrab-engine/Cargo.toml#L13-L48)
+- [Cargo.toml:13-48](file://crates/iris-jetcrab-cli/Cargo.toml#L13-L48)
 - [ARCHITECTURE.md:36-43](file://ARCHITECTURE.md#L36-L43)
 
 ## 性能考虑
@@ -834,12 +1172,19 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - **增量编译**：支持部分文件更新的增量编译
 - **并行编译**：TypeScript和CSS预处理器支持并行编译
 - **依赖图优化**：使用拓扑排序确保最优编译顺序
+- **依赖树缓存**：避免重复解析package.json
 
-### **新增**：ProjectScanner性能优化
-- **文件系统缓存**：项目检测结果缓存
-- **智能路径解析**：避免重复的文件系统查询
-- **渐进式检测**：优先使用成本较低的检测策略
-- **并行处理**：多个检测步骤可以并行执行
+### **新增**：DependencyTree性能优化
+- **哈希缓存**：依赖哈希计算结果缓存
+- **增量检测**：只在依赖变化时重新编译
+- **模块映射缓存**：模块依赖关系映射缓存
+- **并行处理**：多个依赖树操作可以并行执行
+
+### **新增**：CompilerCache性能优化
+- **懒加载**：首次请求时才编译整个项目
+- **模块级缓存**：单个模块的编译结果缓存
+- **项目级缓存**：整个项目的编译结果缓存
+- **依赖树缓存**：依赖树解析结果缓存
 
 ## 故障排除指南
 
@@ -885,12 +1230,30 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - **症状**：找不到入口文件
 - **解决**：确认src目录和入口文件存在
 
+**问题11：依赖树解析失败**
+- **症状**：DependencyTree.from_package_json()返回错误
+- **解决**：检查package.json格式和权限
+
+**问题12：依赖变化检测异常**
+- **症状**：依赖变化检测不准确
+- **解决**：检查依赖树缓存文件和哈希计算
+
+**问题13：按需重新编译失败**
+- **症状**：依赖变化后未重新编译模块
+- **解决**：检查模块依赖映射和变化检测逻辑
+
+**问题14：编译器缓存失效**
+- **症状**：CompilerCache无法正确缓存编译结果
+- **解决**：检查缓存目录权限和磁盘空间
+
 **章节来源**
 - [runtime.rs:108-121](file://crates/iris-jetcrab/src/runtime.rs#L108-L121)
 - [esm.rs:41-57](file://crates/iris-jetcrab/src/esm.rs#L41-L57)
 - [wasm_bridge.rs:132-162](file://crates/iris-jetcrab/src/wasm_bridge.rs#L132-L162)
 - [engine.rs:305-370](file://crates/iris-jetcrab-engine/src/engine.rs#L305-L370)
 - [project_scanner.rs:116-159](file://crates/iris-jetcrab-engine/src/project_scanner.rs#L116-L159)
+- [dependency_tree.rs:67-78](file://crates/iris-jetcrab-engine/src/dependency_tree.rs#L67-L78)
+- [compiler_cache.rs:36-59](file://crates/iris-jetcrab-cli/src/server/compiler_cache.rs#L36-L59)
 
 ## 结论
 
@@ -910,6 +1273,19 @@ Iris-JetCrab引擎作为Iris框架的重要组成部分，成功地将JetCrab Ja
 - **npm包支持**：自动解析和编译npm包依赖
 - **项目检测能力**：自动识别Vue项目结构和配置
 
+**新增的DependencyTree模块**为引擎提供了强大的依赖管理能力，包括：
+- **智能编译工具过滤**：自动排除构建工具，只关注运行时依赖
+- **精确的版本变化检测**：通过哈希比较确保依赖变化的准确性
+- **按需重新编译**：只在依赖变化时重新编译受影响的模块
+- **依赖树缓存**：避免重复解析package.json，提升启动速度
+- **模块依赖映射**：支持复杂的模块依赖关系管理
+
+**新增的编译器缓存集成**进一步提升了引擎的性能：
+- **懒加载机制**：首次请求时才编译整个项目
+- **模块级缓存**：单个模块的编译结果独立缓存
+- **项目级缓存**：整个项目的编译结果统一管理
+- **依赖树缓存**：依赖树解析结果持久化存储
+
 **新增的ProjectScanner模块**为引擎提供了强大的项目检测能力，包括：
 - **多策略项目检测**：结合package.json和文件系统检测Vue项目
 - **详细的项目信息**：提供根目录、入口文件、构建工具等详细信息
@@ -923,3 +1299,5 @@ Iris-JetCrab引擎作为Iris框架的重要组成部分，成功地将JetCrab Ja
 - **时间戳跟踪**：精确跟踪文件修改时间
 
 **新增的WASM API功能**使Iris引擎能够直接服务于浏览器端的Vue SFC编译需求，为现代Web开发提供了更加灵活和高效的解决方案。随着项目的不断发展，Iris-JetCrab引擎将继续演进，为构建现代化的跨平台应用提供强有力的支持。
+
+**新增的依赖树管理系统**代表了引擎架构的重大进步，它不仅提供了完整的npm依赖管理功能，更重要的是为整个编译系统奠定了智能化的基础。通过依赖树缓存、版本变化检测和按需重新编译机制，引擎能够在保证编译准确性的同时，最大化地提升开发效率和用户体验。

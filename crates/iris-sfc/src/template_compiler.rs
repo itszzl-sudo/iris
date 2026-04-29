@@ -293,6 +293,7 @@ pub fn parse_text(text: &str) -> (String, bool) {
 pub fn generate_render_fn(nodes: &[VNode]) -> String {
     info!(node_count = nodes.len(), "Generating render function");
 
+    // render 函数不接收参数，h 通过 import 导入
     let mut code = String::from("function render() {\n  return ");
 
     if nodes.is_empty() {
@@ -334,9 +335,11 @@ fn generate_vnode(node: &VNode) -> String {
             is_interpolation,
         } => {
             if *is_interpolation {
-                format!("text({})", content)
+                // 插值表达式：直接返回变量
+                format!("{}", content)
             } else {
-                format!("text({:?})", content)
+                // 静态文本：在 Vue 3 中直接用字符串
+                format!("{:?}", content)
             }
         }
         VNode::Comment { content } => {

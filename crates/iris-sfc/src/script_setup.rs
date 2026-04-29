@@ -589,10 +589,38 @@ fn wrap_as_setup(script: &str, exposed_vars: &[String]) -> String {
         )
     };
 
+    // 提取 import 语句，放在 export default 之前
+    let (imports, rest) = extract_imports(script);
+    
     format!(
-        "export default {{\n  setup(props, {{ emit }}) {{{}\n{}\n  }}\n}}",
-        script, return_stmt
+        "{}\nexport default {{\n  setup(props, {{ emit }}) {{{}\n{}\n  }}\n}}",
+        imports, rest, return_stmt
     )
+}
+
+/// 从脚本中提取所有 import 语句
+fn extract_imports(script: &str) -> (String, String) {
+    let mut imports = Vec::new();
+    let mut rest_lines = Vec::new();
+    
+    for line in script.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("import ") || trimmed.starts_with("export ") {
+            imports.push(line.to_string());
+        } else {
+            rest_lines.push(line.to_string());
+        }
+    }
+    
+    let imports_str = if imports.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", imports.join("\n"))
+    };
+    
+    let rest_str = rest_lines.join("\n");
+    
+    (imports_str, rest_str)
 }
 
 #[cfg(test)]

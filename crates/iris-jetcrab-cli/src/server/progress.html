@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NPM Package Download Progress</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .status-bar {
+            background: #f7f7f7;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-icon {
+            font-size: 24px;
+        }
+
+        .status-text {
+            flex: 1;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .package-list {
+            margin-top: 30px;
+        }
+
+        .package-item {
+            background: #f9f9f9;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .package-item:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .package-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .package-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .package-version {
+            color: #667eea;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .progress-container {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 8px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+
+        .progress-text {
+            text-align: right;
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-resolving {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-downloading {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-extracting {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-installed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .empty-state-text {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .empty-state-subtext {
+            font-size: 14px;
+            color: #bbb;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="connection-status disconnected" id="connectionStatus">
+        🔴 Disconnected
+    </div>
+
+    <div class="container">
+        <h1>📦 NPM Package Download Progress</h1>
+        <p class="subtitle">Real-time monitoring of package downloads</p>
+
+        <div class="status-bar" id="overallStatus" style="display: none;">
+            <span class="status-icon" id="statusIcon">📥</span>
+            <span class="status-text" id="statusText">Downloading packages...</span>
+        </div>
+
+        <div class="package-list" id="packageList">
+            <div class="empty-state">
+                <div class="empty-state-icon">📦</div>
+                <div class="empty-state-text">No packages downloading</div>
+                <div class="empty-state-subtext">Waiting for compilation to start...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const packageList = document.getElementById('packageList');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const overallStatus = document.getElementById('overallStatus');
+        const statusIcon = document.getElementById('statusIcon');
+        const statusText = document.getElementById('statusText');
+
+        const packages = new Map();
+
+        function updateConnectionStatus(connected) {
+            if (connected) {
+                connectionStatus.className = 'connection-status connected';
+                connectionStatus.textContent = '🟢 Connected';
+            } else {
+                connectionStatus.className = 'connection-status disconnected';
+                connectionStatus.textContent = '🔴 Disconnected';
+            }
+        }
+
+        function updateOverallStatus() {
+            const activePackages = Array.from(packages.values()).filter(p => p.status !== 'installed' && p.status !== 'error');
+            
+            if (activePackages.length === 0 && packages.size > 0) {
+                overallStatus.style.display = 'none';
+                return;
+            }
+
+            if (activePackages.length > 0) {
+                overallStatus.style.display = 'flex';
+                statusIcon.textContent = '📥';
+                statusText.textContent = `Downloading ${activePackages.length} package${activePackages.length > 1 ? 's' : ''}...`;
+            }
+        }
+
+        function updatePackageList() {
+            if (packages.size === 0) {
+                packageList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📦</div>
+                        <div class="empty-state-text">No packages downloading</div>
+                        <div class="empty-state-subtext">Waiting for compilation to start...</div>
+                    </div>
+                `;
+                return;
+            }
+
+            packageList.innerHTML = '';
+            
+            Array.from(packages.entries()).reverse().forEach(([key, pkg]) => {
+                const packageItem = document.createElement('div');
+                packageItem.className = 'package-item';
+                
+                const statusClass = `status-${pkg.status}`;
+                
+                packageItem.innerHTML = `
+                    <div class="package-header">
+                        <span class="package-name">${pkg.package}</span>
+                        <span class="package-version">v${pkg.version}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="status-badge ${statusClass}">${pkg.status}</span>
+                        <span style="color: #666; font-size: 14px;">${pkg.progress}%</span>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar" style="width: ${pkg.progress}%"></div>
+                    </div>
+                    <div class="progress-text">${pkg.status === 'installed' ? '✅ Installed' : pkg.status === 'error' ? '❌ Failed' : '⏳ In progress...'}</div>
+                `;
+                
+                packageList.appendChild(packageItem);
+            });
+        }
+
+        function handleNpmDownload(data) {
+            const key = `${data.package}@${data.version}`;
+            
+            if (!packages.has(key)) {
+                packages.set(key, {
+                    package: data.package,
+                    version: data.version,
+                    progress: 0,
+                    status: 'pending'
+                });
+            }
+            
+            const pkg = packages.get(key);
+            pkg.progress = data.progress;
+            pkg.status = data.status;
+            
+            if (data.error) {
+                pkg.error = data.error;
+            }
+            
+            updatePackageList();
+            updateOverallStatus();
+        }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/@hmr`;
+            
+            const ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateConnectionStatus(true);
+            };
+            
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus(false);
+                
+                // 3秒后重连
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus(false);
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received event:', data);
+                    
+                    if (data.type === 'npm-download') {
+                        handleNpmDownload(data);
+                    }
+                } catch (error) {
+                    console.error('Failed to parse message:', error);
+                }
+            };
+        }
+
+        // 启动 WebSocket 连接
+        connectWebSocket();
+    </script>
+</body>
+</html>

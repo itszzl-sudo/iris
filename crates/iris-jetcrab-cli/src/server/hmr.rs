@@ -42,6 +42,21 @@ pub enum HmrEvent {
     CompileError {
         message: String,
     },
+    /// npm 包下载进度
+    #[serde(rename = "npm-download")]
+    NpmDownload {
+        /// 包名
+        package: String,
+        /// 版本号
+        version: String,
+        /// 进度百分比 (0-100)
+        progress: u8,
+        /// 状态: downloading | extracting | installed | error
+        status: String,
+        /// 错误信息（如果有）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 /// WebSocket 客户端管理器

@@ -1,0 +1,65 @@
+{
+  "project_root": "C:\\Users\\a\\Documents\\lingma\\leivueruntime\\examples\\vue-demo",
+  "dependencies": {
+    "@vitejs/plugin-vue": {
+      "name": "@vitejs/plugin-vue",
+      "version_req": "^5.0.0",
+      "installed_version": "5.2.4",
+      "is_dev_dependency": true,
+      "is_build_tool": false,
+      "package_path": "C:\\Users\\a\\Documents\\lingma\\leivueruntime\\examples\\vue-demo\\node_modules\\@vitejs\\plugin-vue",
+      "dependencies": []
+    },
+    "typescript": {
+      "name": "typescript",
+      "version_req": "^5.3.0",
+      "installed_version": "5.9.3",
+      "is_dev_dependency": true,
+      "is_build_tool": true,
+      "package_path": "C:\\Users\\a\\Documents\\lingma\\leivueruntime\\examples\\vue-demo\\node_modules\\typescript",
+      "dependencies": []
+    },
+    "vue": {
+      "name": "vue",
+      "version_req": "^3.4.0",
+      "installed_version": "3.5.33",
+      "is_dev_dependency": false,
+      "is_build_tool": false,
+      "package_path": "C:\\Users\\a\\Documents\\lingma\\leivueruntime\\examples\\vue-demo\\node_modules\\vue",
+      "dependencies": [
+        "@vue/compiler-dom",
+        "@vue/compiler-sfc",
+        "@vue/runtime-dom",
+        "@vue/server-renderer",
+        "@vue/shared"
+      ]
+    }
+  },
+  "runtime_dependencies": {
+    "vue": {
+      "name": "vue",
+      "version_req": "^3.4.0",
+      "installed_version": "3.5.33",
+      "is_dev_dependency": false,
+      "is_build_tool": false,
+      "package_path": "C:\\Users\\a\\Documents\\lingma\\leivueruntime\\examples\\vue-demo\\node_modules\\vue",
+      "dependencies": [
+        "@vue/compiler-dom",
+        "@vue/compiler-sfc",
+        "@vue/runtime-dom",
+        "@vue/server-renderer",
+        "@vue/shared"
+      ]
+    },
+    "@vitejs/plugin-vue": {
+      "name": "@vitejs/plugin-vue",
+      "version_req": "^5.0.0",
+      "installed_version": "5.2.4",
+      "is_dev_dependency": true,
+      "is_build_tool": false,
+      "package_path": "C:\\Users\\a\\Documents\\lingma\\leivueruntime\\examples\\vue-demo\\node_modules\\@vitejs\\plugin-vue",
+      "dependencies": []
+    }
+  },
+  "dependency_hash": "771182f097f6026f"
+}

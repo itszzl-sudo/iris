@@ -34,8 +34,47 @@ pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
     let parsed = iris_sfc::compile_from_string(filename, source)
         .context(format!("Failed to parse {}", filename))?;
 
-    // 提取 script 部分
-    let script = parsed.script.clone();
+    // 合并 render 函数到 script 中
+    let script = if !parsed.render_fn.is_empty() {
+        // 如果 script 为空，创建完整的组件导出
+        let script_with_render = if parsed.script.is_empty() || parsed.script.trim() == "export default {}" {
+            format!(
+                "export default {{\n  render: {}\n}}",
+                parsed.render_fn
+            )
+        } else {
+            // 将 render 函数添加到已有的 export default 中
+            // 查找 export default { 并注入 render
+            if parsed.script.contains("export default {") {
+                parsed.script.replace(
+                    "export default {",
+                    &format!("export default {{\n  render: {},", parsed.render_fn)
+                )
+            } else if parsed.script.contains("export default") {
+                // 如果是 export default { ... } 格式
+                format!(
+                    "{{\n  render: {}\n}}\n{}",
+                    parsed.render_fn, parsed.script
+                )
+            } else {
+                // 没有 export default，添加一个
+                format!(
+                    "export default {{\n  render: {},\n  ...{}\n}}",
+                    parsed.render_fn, parsed.script
+                )
+            }
+        };
+        
+        // 添加 h 函数的导入（如果还没有的话）
+        if !script_with_render.contains("import { h }") && !script_with_render.contains("import {h}") {
+            debug!("Adding h function import from vue");
+            format!("import {{ h }} from 'vue';\n{}", script_with_render)
+        } else {
+            script_with_render
+        }
+    } else {
+        parsed.script.clone()
+    };
 
     // 提取样式部分
     let styles: Vec<StyleBlock> = parsed

@@ -139,9 +139,10 @@ impl VueProjectCompiler {
         let dependency_graph = self.build_dependency_graph(&entry_path)?;
         info!("Dependency graph built with {} modules", dependency_graph.len());
 
-        // 3. 拓扑排序（确保依赖先编译）
-        let compilation_order = self.topological_sort(&dependency_graph)?;
-        debug!("Compilation order: {:?}", compilation_order);
+        // 3. 直接使用依赖图中的所有模块（DFS 构建时已经是正确的依赖顺序）
+        let compilation_order: Vec<String> = dependency_graph.keys().cloned().collect();
+        info!("Compilation order: {:?}", compilation_order);
+        debug!("Dependency graph keys: {:?}", dependency_graph.keys().collect::<Vec<_>>());
 
         // 4. 按顺序编译所有模块
         let mut compiled_modules = HashMap::new();

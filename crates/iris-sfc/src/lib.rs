@@ -650,7 +650,17 @@ fn compile_script(
             column: 1,
         })?
     } else {
-        script.to_string()
+        // 普通 <script>，检查是否有 export default
+        if !script.contains("export default") {
+            debug!("No export default found in <script>, wrapping with export default");
+            // 将原始代码包装到 export default 的 setup 函数中
+            format!(
+                "export default {{\n  setup() {{\n    {}\n  }}\n}}",
+                script
+            )
+        } else {
+            script.to_string()
+        }
     };
 
     // 2. 使用全局编译器实例编译 TypeScript

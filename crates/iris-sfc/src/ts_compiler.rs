@@ -199,6 +199,7 @@ impl TsCompiler {
                 },
                 |handler| {
                     // 4. 解析 TypeScript（启用模块支持）
+                    // 使用 Unknown 模式，swc 会自动检测 import/export 并识别为模块
                     let program = self.compiler.parse_js(
                         fm,
                         handler,
@@ -208,7 +209,7 @@ impl TsCompiler {
                             decorators: self.config.keep_decorators,
                             ..Default::default()
                         }),
-                        swc::config::IsModule::Bool(true),  // 关键：启用模块语法支持
+                        swc::config::IsModule::Unknown,  // 自动检测模块
                         None,
                     )?;
 
