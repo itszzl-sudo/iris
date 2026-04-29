@@ -29,11 +29,13 @@
 
 ## 更新摘要
 **变更内容**
-- 更新编译流程说明，反映从直接执行entry文件到使用VueProjectCompiler进行完整项目编译的重构
-- 新增VueProjectCompiler详细分析，包括依赖图构建和拓扑排序
-- 更新JetCrabEngine.run()方法实现，展示完整的项目编译执行流程
-- 新增项目扫描器和模块图管理器的功能说明
-- 更新架构图以反映新的编译流程
+- 新增ProjectScanner模块，提供完整的Vue项目目录扫描和解析能力
+- 新增VueProjectCompiler，实现完整的项目级编译流程
+- 新增ModuleGraph模块，支持依赖图构建和循环依赖检测
+- 新增HMRManager模块，提供热更新补丁生成和管理
+- 新增WASM API导出，支持浏览器端直接调用引擎功能
+- 重构JetCrabEngine.run()方法，使用新的编译器架构
+- 新增完整的项目检测和配置工具，增强引擎自包含性
 
 ## 目录
 1. [简介](#简介)
@@ -52,17 +54,17 @@
 
 Iris-JetCrab引擎是Iris跨平台UI框架中的JavaScript执行引擎，基于JetCrab Chitin引擎构建。该引擎提供了完整的npm包支持、ESM模块系统、Web API兼容层以及**WASM原生支持**，实现了从Vue SFC到JavaScript代码的完整执行链路。
 
-**更新**：引擎现已重构编译流程，从直接执行单个entry文件改为使用VueProjectCompiler进行完整项目编译，支持复杂的依赖关系解析和模块管理。
+**更新**：引擎现已重构为完全的项目级编译架构，从简单的单文件执行升级为完整的Vue项目编译和运行时管理。新增的ProjectScanner模块负责项目检测和解析，VueProjectCompiler提供完整的项目编译能力，ModuleGraph支持依赖关系管理，HMRManager提供热更新支持，WASM API允许浏览器端直接调用引擎功能。
 
-该引擎的核心目标是在Rust生态系统中提供高性能的JavaScript执行环境，同时保持与现代Web标准的兼容性。通过模块化设计，Iris-JetCrab能够无缝集成到Iris的整体架构中，为开发者提供流畅的开发体验。
+该引擎的核心目标是在Rust生态系统中提供高性能的JavaScript执行环境，同时保持与现代Web标准的兼容性。通过模块化设计和项目级编译架构，Iris-JetCrab能够无缝集成到Iris的整体架构中，为开发者提供完整的Vue项目开发和运行时体验。
 
 ## 项目结构
 
-Iris-JetCrab引擎采用模块化架构，主要包含以下核心模块：
+Iris-JetCrab引擎采用高度模块化的架构，主要包含以下核心模块：
 
 ```mermaid
 graph TB
-subgraph "Iris-JetCrab 引擎"
+subgraph "Iris-JetCrab 引擎核心"
 A[JetCrabRuntime] --> B[模块系统]
 A --> C[Web API 兼容层]
 A --> D[WASM 桥接]
@@ -93,6 +95,9 @@ N[VueProjectCompiler]
 O[ProjectScanner]
 P[ModuleGraph]
 Q[HMRManager]
+R[编译缓存]
+S[依赖解析器]
+T[拓扑排序器]
 end
 A --> E
 A --> F
@@ -105,6 +110,9 @@ J --> M
 N --> O
 N --> P
 N --> Q
+N --> R
+N --> S
+N --> T
 ```
 
 **图表来源**
@@ -112,6 +120,7 @@ N --> Q
 - [Cargo.toml:13-36](file://crates/iris-jetcrab/Cargo.toml#L13-L36)
 - [wasm_api.rs:13-47](file://crates/iris-jetcrab-engine/src/wasm_api.rs#L13-L47)
 - [engine.rs:13-15](file://crates/iris-jetcrab-engine/src/engine.rs#L13-L15)
+- [project_scanner.rs:10-40](file://crates/iris-jetcrab-engine/src/project_scanner.rs#L10-L40)
 
 **章节来源**
 - [lib.rs:1-82](file://crates/iris-jetcrab/src/lib.rs#L1-L82)
@@ -187,10 +196,22 @@ K[VueProjectCompiler]
 L[ProjectScanner]
 M[ModuleGraph]
 N[HMRManager]
+O[编译缓存]
+P[依赖解析器]
+Q[拓扑排序器]
+R[构建工具检测]
+S[Vue版本识别]
+T[入口文件解析]
 end
 K --> L
 K --> M
 K --> N
+K --> O
+K --> P
+K --> Q
+L --> R
+L --> S
+L --> T
 ```
 
 **图表来源**
@@ -211,7 +232,7 @@ K --> N
 
 ### JetCrabEngine 类设计
 
-**更新**：JetCrabEngine现在提供完整的Vue项目编译和执行能力，不再直接执行单个entry文件，而是使用VueProjectCompiler进行完整项目编译。
+**更新**：JetCrabEngine现在提供完整的Vue项目编译和执行能力，使用全新的编译器架构。
 
 ```mermaid
 classDiagram
@@ -376,11 +397,74 @@ class ModuleGraph {
 - **拓扑排序**：确保依赖先于使用者出现
 - **依赖查询**：快速获取模块的依赖列表
 
+### HMRManager 热更新管理器
+
+**新增**：HMRManager提供Vue组件的热更新补丁生成和管理功能。
+
+```mermaid
+classDiagram
+class HMRManager {
+-file_timestamps : HashMap~String, u64~
+-pending_patches : Vec~HMRPatch~
++new() HMRManager
++check_file_change(file_path, timestamp) bool
++generate_vue_reload_patch(file_path, content) HMRPatch
++generate_css_update_patch(file_path, content) HMRPatch
++generate_full_reload_patch(reason) HMRPatch
++get_pending_patches() Vec~HMRPatch~
++clear_patches() void
++clear_timestamps() void
++get_file_timestamp(file_path) Option~u64~
++set_file_timestamp(file_path, timestamp) void
+}
+class HMRPatch {
+-patch_type : PatchType
+-file_path : String
+-timestamp : u64
+-content : Option~String~
+}
+class PatchType {
+<<enumeration>>
+VueReload
+CSSUpdate
+FullReload
+}
+HMRManager --> HMRPatch : manages
+HMRPatch --> PatchType : uses
+```
+
+**图表来源**
+- [hmr.rs:34-150](file://crates/iris-jetcrab-engine/src/hmr.rs#L34-L150)
+- [hmr.rs:10-32](file://crates/iris-jetcrab-engine/src/hmr.rs#L10-L32)
+
+**更新**：HMRManager的主要功能包括：
+- **文件变更检测**：监控文件修改时间和生成相应补丁
+- **补丁生成**：支持Vue组件重载、CSS更新、完整页面重载三种类型
+- **补丁队列管理**：维护待处理的热更新补丁
+- **时间戳缓存**：跟踪文件最后修改时间
+
+### 编译缓存系统
+
+**新增**：VueProjectCompiler内置了智能编译缓存系统：
+- 自动缓存编译结果，避免重复编译
+- 支持缓存清理和统计功能
+- 提供缓存统计功能
+- 支持批量编译优化
+
+### 依赖解析器
+
+**新增**：支持多种文件格式的依赖解析：
+- **Vue SFC文件**：使用iris-sfc编译器解析
+- **JavaScript/TypeScript文件**：解析import和require语句
+- **npm包依赖**：自动解析和编译npm包
+- **静态资源**：支持CSS、SCSS、Less等预处理器
+
 **章节来源**
 - [engine.rs:305-370](file://crates/iris-jetcrab-engine/src/engine.rs#L305-L370)
 - [vue_compiler.rs:128-165](file://crates/iris-jetcrab-engine/src/vue_compiler.rs#L128-L165)
 - [project_scanner.rs:41-93](file://crates/iris-jetcrab-engine/src/project_scanner.rs#L41-L93)
 - [module_graph.rs:14-155](file://crates/iris-jetcrab-engine/src/module_graph.rs#L14-L155)
+- [hmr.rs:67-150](file://crates/iris-jetcrab-engine/src/hmr.rs#L67-L150)
 
 ### ESM 模块加载器
 
@@ -679,6 +763,12 @@ M[wasm-pack]
 N[swc]
 O[grass]
 P[less-rs]
+Q[walkdir]
+R[html5ever]
+S[notify]
+T[tracing]
+U[anyhow]
+V[serde_json]
 end
 G --> A
 G --> B
@@ -696,6 +786,12 @@ H --> M
 H --> N
 H --> O
 H --> P
+H --> Q
+H --> R
+H --> S
+H --> T
+H --> U
+H --> V
 ```
 
 **图表来源**
@@ -739,6 +835,12 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - **并行编译**：TypeScript和CSS预处理器支持并行编译
 - **依赖图优化**：使用拓扑排序确保最优编译顺序
 
+### **新增**：ProjectScanner性能优化
+- **文件系统缓存**：项目检测结果缓存
+- **智能路径解析**：避免重复的文件系统查询
+- **渐进式检测**：优先使用成本较低的检测策略
+- **并行处理**：多个检测步骤可以并行执行
+
 ## 故障排除指南
 
 ### 常见问题及解决方案
@@ -775,11 +877,20 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - **症状**：VueProjectCompiler无法解析npm包
 - **解决**：确认node_modules目录存在且包已安装
 
+**问题9：项目检测失败**
+- **症状**：ProjectScanner检测不到Vue项目
+- **解决**：检查项目目录结构和文件存在性
+
+**问题10：入口文件查找失败**
+- **症状**：找不到入口文件
+- **解决**：确认src目录和入口文件存在
+
 **章节来源**
 - [runtime.rs:108-121](file://crates/iris-jetcrab/src/runtime.rs#L108-L121)
 - [esm.rs:41-57](file://crates/iris-jetcrab/src/esm.rs#L41-L57)
 - [wasm_bridge.rs:132-162](file://crates/iris-jetcrab/src/wasm_bridge.rs#L132-L162)
 - [engine.rs:305-370](file://crates/iris-jetcrab-engine/src/engine.rs#L305-L370)
+- [project_scanner.rs:116-159](file://crates/iris-jetcrab-engine/src/project_scanner.rs#L116-L159)
 
 ## 结论
 
@@ -792,10 +903,23 @@ Iris-JetCrab引擎作为Iris框架的重要组成部分，成功地将JetCrab Ja
 5. **跨平台构建支持**：简化WASM模块的部署流程
 6. **优秀的性能表现**：通过缓存和并发优化提升执行效率
 
-**更新**：**重构的编译流程**使Iris引擎能够处理复杂的Vue项目，从单个文件编译升级为完整的项目编译，包括：
+**更新**：**重构的编译架构**使Iris引擎能够处理复杂的Vue项目，从单个文件编译升级为完整的项目编译，包括：
 - **完整的依赖解析**：支持Vue SFC、TypeScript、CSS预处理器等多种文件格式
 - **智能缓存机制**：避免重复编译，提升开发效率
 - **拓扑排序优化**：确保模块按正确的依赖顺序编译
 - **npm包支持**：自动解析和编译npm包依赖
+- **项目检测能力**：自动识别Vue项目结构和配置
+
+**新增的ProjectScanner模块**为引擎提供了强大的项目检测能力，包括：
+- **多策略项目检测**：结合package.json和文件系统检测Vue项目
+- **详细的项目信息**：提供根目录、入口文件、构建工具等详细信息
+- **构建工具识别**：支持Vite和Vue CLI检测
+- **Vue版本检测**：自动检测Vue 2或Vue 3
+
+**新增的HMRManager模块**为引擎提供了完整的热更新支持：
+- **文件变更监控**：实时检测文件修改
+- **补丁生成**：支持Vue组件重载、CSS更新、完整页面重载
+- **补丁队列管理**：维护待处理的热更新补丁
+- **时间戳跟踪**：精确跟踪文件修改时间
 
 **新增的WASM API功能**使Iris引擎能够直接服务于浏览器端的Vue SFC编译需求，为现代Web开发提供了更加灵活和高效的解决方案。随着项目的不断发展，Iris-JetCrab引擎将继续演进，为构建现代化的跨平台应用提供强有力的支持。

@@ -1,0 +1,53 @@
+[package]
+name = "iris-jetcrab-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris JetCrab CLI - Vue project development server (runtime on-demand compilation)"
+keywords = ["cli", "vue", "dev-server", "webgpu", "browser"]
+categories = ["command-line-utilities", "development-tools", "web-programming"]
+
+[[bin]]
+name = "iris-jetcrab"
+path = "src/main.rs"
+
+[dependencies]
+# JetCrab Engine (与 iris-engine 对等)
+iris-jetcrab-engine = { path = "../iris-jetcrab-engine" }
+
+# 共享核心层
+iris-core.workspace = true
+iris-sfc.workspace = true
+
+# CLI 框架
+clap = { version = "4.4", features = ["derive"] }
+anyhow = "1.0"
+colored = "2.1"
+
+# HTTP 服务器
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+
+# 异步工具
+futures-util = "0.3"
+
+# 文件监听
+notify = "6.1"
+walkdir = "2.4"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# 工具
+open = "5.0"
+chrono = "0.4"

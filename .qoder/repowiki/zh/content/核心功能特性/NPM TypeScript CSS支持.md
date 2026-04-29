@@ -17,7 +17,15 @@
 - [package.json](file://examples/vue-demo/package.json)
 - [tsconfig.json](file://examples/vue-demo/tsconfig.json)
 - [main.ts](file://examples/vue-demo/src/main.ts)
+- [template_compiler.rs](file://crates/iris-sfc/src/template_compiler.rs)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 更新TypeScript支持为完整的SWC编译器实现，支持泛型、接口、装饰器、TSX
+- 更新SCSS支持为完整的grass编译器实现，替代之前的简化实现
+- 增强CSS模块和作用域CSS处理能力
+- 完善模板编译器的Vue指令支持
 
 ## 目录
 1. [简介](#简介)
@@ -81,7 +89,7 @@ end
 
 ### TypeScript 编译器 (SWC 集成)
 
-Iris Engine 使用 SWC 62 高层 Compiler API 提供稳定的 TypeScript 到 JavaScript 转译功能：
+Iris Engine 已升级为使用 SWC 62 高层 Compiler API 提供完整的 TypeScript 到 JavaScript 转译功能：
 
 ```mermaid
 classDiagram
@@ -120,9 +128,16 @@ TsCompiler --> TypeCheckConfig
 - [ts_compiler.rs:132-150](file://crates/iris-sfc/src/ts_compiler.rs#L132-L150)
 - [ts_compiler.rs:26-64](file://crates/iris-sfc/src/ts_compiler.rs#L26-L64)
 
+**更新** 完整的TypeScript支持现已实现，包括：
+- **泛型支持** - 完整的泛型类型擦除和转换
+- **接口支持** - 接口声明的类型擦除
+- **装饰器支持** - 可配置的装饰器保留
+- **TSX支持** - JSX/TSX语法转换
+- **类型检查** - 集成tsc进行类型验证
+
 ### SCSS/Less 样式处理器
 
-支持多种样式预处理语言的编译：
+Iris Engine 已升级为使用完整的 grass 编译器提供多语言样式预处理：
 
 ```mermaid
 flowchart TD
@@ -145,6 +160,13 @@ K --> L[最终样式]
 - [scss_processor.rs:88-120](file://crates/iris-sfc/src/scss_processor.rs#L88-L120)
 - [css_modules.rs:64-122](file://crates/iris-sfc/src/css_modules.rs#L64-L122)
 - [scoped_css.rs:64-137](file://crates/iris-sfc/src/scoped_css.rs#L64-L137)
+
+**更新** SCSS支持已升级为完整的grass编译器实现：
+- **完整SCSS功能** - 支持变量、嵌套、mixin、函数
+- **SASS缩进语法** - 完整的SASS语法支持
+- **Less增强支持** - 基础变量替换和语法支持
+- **压缩输出** - 生产环境CSS压缩
+- **错误处理** - 详细的编译错误诊断
 
 **章节来源**
 - [ts_compiler.rs:1-100](file://crates/iris-sfc/src/ts_compiler.rs#L1-L100)
@@ -243,6 +265,13 @@ I --> D
 **图表来源**
 - [ts_compiler.rs:151-249](file://crates/iris-sfc/src/ts_compiler.rs#L151-L249)
 
+**更新** TypeScript编译已升级为完整实现：
+- **SWC集成** - 使用最新的swc 62编译器
+- **类型擦除** - 完整的TypeScript类型擦除
+- **装饰器支持** - 可配置的装饰器保留
+- **JSX转换** - TSX到JSX的完整转换
+- **SourceMap生成** - 可选的SourceMap支持
+
 ### 样式编译管道
 
 样式处理采用多阶段管道，支持多种预处理语言：
@@ -262,6 +291,13 @@ H --> I[最终样式]
 
 **图表来源**
 - [lib.rs:676-756](file://crates/iris-sfc/src/lib.rs#L676-L756)
+
+**更新** 样式编译已升级为完整grass实现：
+- **SCSS编译** - 使用grass 0.13进行完整编译
+- **SASS支持** - 完整的缩进语法支持
+- **Less增强** - 基础变量替换和语法支持
+- **CSS Modules** - 类名作用域化和映射
+- **Scoped CSS** - 组件级样式隔离
 
 **章节来源**
 - [NPM_TYPESCRIPT_CSS_SUPPORT.md:12-133](file://docs/NPM_TYPESCRIPT_CSS_SUPPORT.md#L12-L133)
@@ -302,6 +338,53 @@ VueProjectCompiler --> ModuleGraph
 - [module_graph.rs:1-100](file://crates/iris-jetcrab-engine/src/module_graph.rs#L1-L100)
 - [lib.rs:1-50](file://crates/iris-jetcrab-engine/src/lib.rs#L1-L50)
 
+### 模板编译器
+
+Iris Engine 的模板编译器支持完整的 Vue 指令系统：
+
+```mermaid
+classDiagram
+class TemplateCompiler {
++parse_template(html) Result~Vec~VNode~~
++generate_render_fn(nodes) String
++extract_directives(attrs) (Vec~Directive~, Vec~(String, String)~)
+}
+class VNode {
+<<enumeration>>
++Element
++Text
++Comment
+}
+class Directive {
+<<enumeration>>
++VIf
++VFor
++VBind
++VOn
++VModel
++VSlot
++VOnce
++VPre
++VCloak
++VMemo
++VText
++VHtml
++VShow
+}
+TemplateCompiler --> VNode
+TemplateCompiler --> Directive
+```
+
+**图表来源**
+- [template_compiler.rs:8-66](file://crates/iris-sfc/src/template_compiler.rs#L8-L66)
+
+**更新** 模板编译器已增强：
+- **完整指令支持** - v-if, v-for, v-bind, v-on, v-model, v-slot
+- **新指令支持** - v-once, v-pre, v-cloak, v-memo, v-text, v-html, v-show
+- **文本插值** - {{ expression }} 支持
+- **注释处理** - HTML注释保留
+- **渲染函数生成** - 完整的JavaScript渲染函数
+
 ## 依赖关系分析
 
 ### 核心依赖关系
@@ -329,6 +412,12 @@ end
 **图表来源**
 - [Cargo.toml:21-42](file://crates/iris-sfc/Cargo.toml#L21-L42)
 - [package.json:11-17](file://examples/vue-demo/package.json#L11-L17)
+
+**更新** 依赖关系已优化：
+- **SWC 62** - 最新的TypeScript编译器
+- **grass 0.13** - 完整的SCSS编译器
+- **html5ever** - 高性能HTML解析
+- **xxhash-rust** - 快速哈希计算
 
 ### 性能优化策略
 
@@ -363,6 +452,12 @@ Iris Engine 在性能方面表现出色：
 2. **全局编译器实例** - 复用内部缓存和 SourceMap
 3. **智能缓存策略** - 基于源码哈希的LRU缓存
 4. **增量编译** - 只处理变更的文件
+
+**更新** 性能优化已增强：
+- **SWC编译器** - 高性能TypeScript编译
+- **grass编译器** - 快速SCSS编译
+- **模板编译优化** - 预编译正则表达式
+- **CSS处理优化** - 哈希计算和缓存
 
 ## 故障排除指南
 
@@ -403,14 +498,15 @@ Iris Engine 的 NPM TypeScript CSS 支持系统展现了现代前端开发的最
 
 ### 主要成就
 
-1. **完整的 TypeScript 支持** - 基于 SWC 的高性能编译
-2. **多语言样式处理** - SCSS、Less、CSS 的统一处理
+1. **完整的 TypeScript 支持** - 基于 SWC 的高性能编译，支持泛型、接口、装饰器、TSX
+2. **完整的样式处理** - SCSS、SASS、Less 的统一处理，支持CSS Modules和Scoped CSS
 3. **智能依赖管理** - 自动解析和缓存 npm 包
 4. **高性能渲染** - GPU 加速的 WebGPU 渲染管线
+5. **完整的模板编译** - 支持所有Vue指令和新指令
 
 ### 未来发展方向
 
-1. **增强 TypeScript 功能** - 完整的装饰器和泛型支持
+1. **增强TypeScript功能** - 完整的装饰器和泛型支持
 2. **扩展样式预处理器** - Stylus 和其他语言的支持
 3. **优化编译性能** - 更智能的增量编译策略
 4. **改进开发工具** - 更丰富的调试和性能分析工具
