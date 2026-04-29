@@ -14,11 +14,10 @@ use tokio::sync::Mutex;
 use iris_jetcrab_engine::vue_compiler::{VueProjectCompiler, CompilationResult};
 use iris_jetcrab_engine::sfc_compiler::CompiledModule;
 use iris_jetcrab_engine::dependency_tree::DependencyTree;
-use anyhow::{Result, Context};
+use anyhow::Result;
 use tracing::{info, debug, warn};
 use std::sync::Arc;
 use crate::server::hmr::WebSocketManager;
-use crate::server::hmr::HmrEvent;
 
 /// 编译器缓存
 pub struct CompilerCache {

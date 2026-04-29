@@ -815,17 +815,17 @@ impl BatchRenderer {
             panic!("Vertex count exceeds u16 indexing limit (65535). Current: {}", self.vertices.len());
         }
 
-        let center_x = x + width / 2.0;
-        let center_y = y + height / 2.0;
+        let _center_x = x + width / 2.0;
+        let _center_y = y + height / 2.0;
 
         // 圆角分段数（越多越平滑）
         let segments = 16;
 
         // 中心矩形（不包含圆角部分）
         let rect_left = x + radius;
-        let rect_right = x + width - radius;
+        let _rect_right = x + width - radius;
         let rect_top = y + radius;
-        let rect_bottom = y + height - radius;
+        let _rect_bottom = y + height - radius;
 
         // 绘制中心矩形
         self.add_rect(rect_left, rect_top, width - 2.0 * radius, height, color, color);

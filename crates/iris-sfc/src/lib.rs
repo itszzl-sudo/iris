@@ -219,7 +219,7 @@ impl SfcError {
     pub fn format_pretty(&self, use_color: bool) -> String {
         let reset = if use_color { "\x1b[0m" } else { "" };
         let red = if use_color { "\x1b[31m" } else { "" };
-        let yellow = if use_color { "\x1b[33m" } else { "" };
+        let _yellow = if use_color { "\x1b[33m" } else { "" };
         let cyan = if use_color { "\x1b[36m" } else { "" };
 
         format!(

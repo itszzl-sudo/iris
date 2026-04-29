@@ -708,12 +708,12 @@ fn compute_children_precise_height(
     node: &mut DOMNode, 
     children_indices: &[usize], 
     container_width: f32,
-    container: &FlexContainer,
+    _container: &FlexContainer,
 ) -> f32 {
     let mut max_height: f32 = 0.0;
     
     for &child_idx in children_indices {
-        if let Some(child) = node.children.get_mut(child_idx) {
+        if let Some(_child) = node.children.get_mut(child_idx) {
             // 获取子元素的样式
             let styles = ComputedStyles::new();
             
@@ -812,7 +812,7 @@ fn compute_cross_axis_position(
 fn compute_flex_row(
     node: &mut DOMNode,
     children_indices: &[usize],
-    container: &FlexContainer,
+    _container: &FlexContainer,
     container_box: &mut LayoutBox,
     _parent_width: f32,
 ) {
@@ -829,7 +829,7 @@ fn compute_flex_row(
 fn compute_flex_row_single_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    container: &FlexContainer,
+    _container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1048,7 +1048,7 @@ fn compute_flex_row_single_line(
 fn compute_flex_column(
     node: &mut DOMNode,
     children_indices: &[usize],
-    container: &FlexContainer,
+    _container: &FlexContainer,
     container_box: &mut LayoutBox,
     _parent_height: f32,
 ) {
@@ -1065,7 +1065,7 @@ fn compute_flex_column(
 fn compute_flex_column_single_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    container: &FlexContainer,
+    _container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1161,7 +1161,7 @@ fn compute_flex_column_single_line(
 fn compute_flex_column_multi_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    container: &FlexContainer,
+    _container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1182,7 +1182,7 @@ fn compute_flex_column_multi_line(
     let mut current_column = FlexLine::new();
     let mut current_column_size = 0.0;
     
-    for (item_idx, &child_idx) in children_indices.iter().enumerate() {
+    for (_item_idx, &child_idx) in children_indices.iter().enumerate() {
         // 获取子元素的样式
         let styles = if let Some(child) = node.children.get(child_idx) {
             child.computed_styles().unwrap_or_else(ComputedStyles::new)
@@ -1308,7 +1308,7 @@ fn compute_flex_column_multi_line(
         let mut current_y = container_padding_top;
         
         for &child_idx in &column_item_indices {
-            if let Some(child) = node.children.get_mut(child_idx) {
+            if let Some(_child) = node.children.get_mut(child_idx) {
                 // 获取子元素的样式
                 let styles = if let Some(s) = child.computed_styles() {
                     s
@@ -1374,12 +1374,12 @@ fn compute_children_precise_width(
     node: &mut DOMNode,
     children_indices: &[usize],
     container_height: f32,
-    container: &FlexContainer,
+    _container: &FlexContainer,
 ) -> f32 {
     let mut max_width: f32 = 0.0;
     
     for &child_idx in children_indices {
-        if let Some(child) = node.children.get_mut(child_idx) {
+        if let Some(_child) = node.children.get_mut(child_idx) {
             // 获取子元素的样式
             let styles = ComputedStyles::new();
             
@@ -1414,7 +1414,7 @@ fn compute_children_precise_width(
 fn compute_flex_row_multi_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    container: &FlexContainer,
+    _container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1550,7 +1550,7 @@ fn compute_flex_row_multi_line(
         let mut current_x = container_padding_left;
         
         for &child_idx in &line_item_indices {
-            if let Some(child) = node.children.get_mut(child_idx) {
+            if let Some(_child) = node.children.get_mut(child_idx) {
                 // 获取子元素的样式
                 let styles = if let Some(s) = child.computed_styles() {
                     s

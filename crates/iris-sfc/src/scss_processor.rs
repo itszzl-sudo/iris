@@ -252,6 +252,7 @@ fn remove_css_comments(css: &str) -> String {
 /// # 返回
 ///
 /// 样式类型
+#[allow(dead_code)]
 pub fn detect_style_type(lang: &str) -> StyleType {
     match lang.to_lowercase().as_str() {
         "scss" => StyleType::Scss,
@@ -263,6 +264,7 @@ pub fn detect_style_type(lang: &str) -> StyleType {
 }
 
 /// 样式类型枚举
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum StyleType {
     /// 普通 CSS
@@ -277,6 +279,7 @@ pub enum StyleType {
 
 impl StyleType {
     /// 是否需要编译
+    #[allow(dead_code)]
     pub fn needs_compilation(&self) -> bool {
         matches!(self, StyleType::Scss | StyleType::Sass | StyleType::Less)
     }

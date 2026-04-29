@@ -2,7 +2,7 @@
 //!
 //! 将文本字符串转换为 GPU 可渲染的顶点数据，使用字体图集进行渲染。
 
-use crate::font_atlas::{FontAtlas, GlyphInfo};
+use crate::font_atlas::FontAtlas;
 use crate::batch_renderer::DrawCommand;
 
 /// 文本渲染器

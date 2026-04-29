@@ -4,7 +4,7 @@ use clap::Args;
 use anyhow::Result;
 use colored::Colorize;
 use crate::config::IrisConfig;
-use crate::utils::{self, print_success, print_info, print_warning};
+use crate::utils::{self, print_success, print_warning};
 
 /// 项目信息命令参数
 #[derive(Args)]

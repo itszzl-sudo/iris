@@ -3,12 +3,11 @@
 //! 提供浏览器端可调用的 Vue SFC 编译和 HMR 功能
 
 use wasm_bindgen::prelude::*;
-use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use tracing::debug;
 
-use crate::sfc_compiler::{self, CompiledModule, StyleBlock};
-use crate::hmr::{self, HMRManager, PatchType};
+use crate::sfc_compiler::{self, CompiledModule};
+use crate::hmr::HMRManager;
 
 /// Iris 引擎核心
 ///
@@ -140,7 +139,7 @@ impl IrisEngine {
     #[wasm_bindgen(js_name = generateHmrPatch)]
     pub fn generate_hmr_patch(
         &mut self,
-        old_source: &str,
+        _old_source: &str,
         new_source: &str,
         filename: &str,
     ) -> Result<String, JsError> {

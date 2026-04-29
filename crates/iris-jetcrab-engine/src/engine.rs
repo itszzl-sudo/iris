@@ -244,7 +244,7 @@ impl JetCrabEngine {
         match ext {
             Some("vue") => {
                 // 编译 Vue SFC
-                let compiled = iris_sfc::compile_from_string(
+                let _compiled = iris_sfc::compile_from_string(
                     &file_path.to_string_lossy(),
                     &content
                 )?;

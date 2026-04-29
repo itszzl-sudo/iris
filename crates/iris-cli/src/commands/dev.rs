@@ -140,13 +140,13 @@ impl DevCommand {
         vue_files: &[PathBuf],
         config: &IrisConfig,
     ) -> Result<()> {
-        use winit::application::ApplicationHandler;
-        use winit::event::{Event, WindowEvent};
-        use winit::event_loop::{ActiveEventLoop, EventLoop};
-        use winit::window::{Window, WindowId};
-        use iris_engine::orchestrator::RuntimeOrchestrator;
+        
+        
+        use winit::event_loop::EventLoop;
+        
+        
         use tracing::info;
-        use std::time::Instant;
+        
         
         print_success("Starting native window renderer...");
         print_info("This will create native windows with WebGPU rendering");
@@ -217,7 +217,7 @@ impl DevApp {
     
     /// 创建新窗口
     fn create_window(&mut self, event_loop: &ActiveEventLoop, vue_file: &PathBuf) -> Result<()> {
-        let window_id = self.window_counter;
+        let _window_id = self.window_counter;
         self.window_counter += 1;
         
         info!("Creating window for: {}", vue_file.display());

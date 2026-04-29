@@ -136,7 +136,7 @@ impl BuildCommand {
     }
     
     fn copy_assets(&self, project_root: &std::path::Path, config: &IrisConfig) -> Result<()> {
-        let src_dir = project_root.join(&config.src_dir);
+        let _src_dir = project_root.join(&config.src_dir);
         let out_dir = project_root.join(&config.out_dir);
         
         // 复制 public 目录

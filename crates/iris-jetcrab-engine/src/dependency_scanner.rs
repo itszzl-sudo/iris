@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use anyhow::Result;
-use tracing::{info, debug, warn};
+use tracing::{info, debug};
 use serde::{Serialize, Deserialize};
 
 /// 依赖问题类型
@@ -382,7 +382,7 @@ impl DependencyScanner {
     }
 
     /// 解析 import 路径为实际文件路径
-    fn resolve_import_path(&self, import_path: &str, importer: &Path, src_root: &Path) -> Option<PathBuf> {
+    fn resolve_import_path(&self, import_path: &str, importer: &Path, _src_root: &Path) -> Option<PathBuf> {
         if import_path.starts_with('/') {
             // 绝对路径（相对于项目根目录）
             Some(self.project_root.join(&import_path[1..]))

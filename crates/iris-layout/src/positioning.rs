@@ -7,7 +7,6 @@
 //! - fixed（固定定位）
 //! - sticky（粘性定位）
 
-use crate::dom::DOMNode;
 use crate::style::ComputedStyles;
 
 /// 定位类型

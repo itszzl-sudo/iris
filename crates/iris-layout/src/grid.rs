@@ -70,7 +70,7 @@ impl GridTrackSize {
     }
 
     /// 解析 repeat() 函数
-    fn parse_repeat(css: &str) -> Vec<GridTrackSize> {
+    fn parse_repeat(_css: &str) -> Vec<GridTrackSize> {
         // 简化实现：解析 repeat(3, 1fr) -> [1fr, 1fr, 1fr]
         // 完整实现需要正则表达式
         let tracks = Vec::new();

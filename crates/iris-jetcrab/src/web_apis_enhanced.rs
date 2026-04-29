@@ -3,8 +3,7 @@
 //! 实现完整的浏览器标准 API，包括 WebSocket、LocalStorage 等。
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// WebSocket 连接状态
 #[derive(Debug, Clone, PartialEq)]
@@ -300,7 +299,7 @@ impl XMLHttpRequest {
     }
 
     /// 发送请求（同步模拟）
-    pub fn send(&mut self, body: Option<&str>) -> Result<(), String> {
+    pub fn send(&mut self, _body: Option<&str>) -> Result<(), String> {
         info!("XHR sending: {} {}", self.method, self.url);
 
         // 实际应该发送 HTTP 请求

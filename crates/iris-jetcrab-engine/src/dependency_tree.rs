@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use anyhow::{Result, Context};
-use tracing::{info, debug, warn};
+use tracing::{info, debug};
 
 /// 编译工具类依赖（需要排除）
 const BUILD_TOOLS: &[&str] = &[

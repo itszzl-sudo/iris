@@ -2,7 +2,7 @@
 //!
 //! 提供完整的 DOM 树操作，包括需要父节点上下文的方法。
 
-use crate::dom::{DOMNode, NodeType};
+use crate::dom::DOMNode;
 use std::collections::HashMap;
 
 /// DOM 路径（用于定位节点）

@@ -40,7 +40,7 @@ impl LayoutCacheKey {
 
     /// 创建带内容哈希的缓存键（用于文本节点）
     pub fn with_content(tag: &str, style_hash: u64, children_count: usize, content: &str) -> Self {
-        let mut hasher = seahash::hash(content.as_bytes());
+        let hasher = seahash::hash(content.as_bytes());
         Self {
             tag: tag.to_string(),
             style_hash,

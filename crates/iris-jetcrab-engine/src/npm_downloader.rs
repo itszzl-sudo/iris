@@ -10,7 +10,6 @@
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
-use std::env;
 
 use flate2::read::GzDecoder;
 use tar::Archive;

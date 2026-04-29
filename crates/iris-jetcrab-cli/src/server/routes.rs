@@ -9,7 +9,6 @@ use axum::http::{StatusCode, header};
 use serde_json::json;
 use std::sync::Arc;
 use std::collections::HashMap;
-use tokio::sync::Mutex;
 use tokio::sync::broadcast;
 use futures_util::SinkExt;
 use tracing::{info, debug, warn};
@@ -45,7 +44,7 @@ pub async fn vue_module_handler(
     
     // 获取或编译模块
     let module = {
-        let mut cache_lock = cache.lock().await;
+        let cache_lock = cache.lock().await;
         cache_lock.get_or_compile(&path).await
     };
     
@@ -1578,7 +1577,7 @@ pub async fn source_file_handler(
     
     // 编译模块
     let compile_result = {
-        let mut cache_lock = cache.lock().await;
+        let cache_lock = cache.lock().await;
         cache_lock.get_or_compile(&path).await
     };
     

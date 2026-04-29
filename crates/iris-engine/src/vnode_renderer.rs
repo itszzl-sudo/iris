@@ -138,7 +138,7 @@ impl VNodeRenderer {
             } => {
                 // 如果有布局信息，渲染元素
                 if let Some(layout_box) = layout {
-                    let box_model = &layout_box.box_model;
+                    let _box_model = &layout_box.box_model;
                     
                     // 计算绝对位置
                     let x = parent_x + layout_box.x;

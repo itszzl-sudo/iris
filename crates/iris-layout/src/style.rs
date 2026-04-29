@@ -2,7 +2,7 @@
 //!
 //! 实现 CSS 选择器匹配、样式层叠和继承。
 
-use crate::css::{parse_stylesheet, Selector, Stylesheet};
+use crate::css::{Selector, Stylesheet};
 use crate::dom::DOMNode;
 use std::collections::HashMap;
 

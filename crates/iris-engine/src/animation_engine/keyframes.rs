@@ -294,7 +294,7 @@ impl KeyframeAnimation {
         let mut iteration_count: Option<u32> = Some(1);
         let mut direction = AnimationDirection::Normal;
         let mut fill_mode = FillMode::None;
-        let mut easing = EasingFunction::EaseInOut;
+        let mut _easing = EasingFunction::EaseInOut;
         let mut first_time_found = false;
 
         for part in &parts {

@@ -9,7 +9,7 @@
 //! - Less: less-rs
 
 use anyhow::{Result, Context};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tracing::{info, debug, warn};
 
@@ -272,7 +272,7 @@ impl VueProjectCompiler {
     }
 
     /// 从 JavaScript 代码中提取 import 语句
-    fn extract_imports(&self, script: &str, current_path: &Path) -> Result<Vec<String>> {
+    fn extract_imports(&self, script: &str, _current_path: &Path) -> Result<Vec<String>> {
         let mut imports = Vec::new();
 
         for line in script.lines() {
