@@ -199,6 +199,7 @@ pub fn compute_tree_styles(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::css::parse_stylesheet;
 
     #[test]
     fn test_matches_id_selector() {

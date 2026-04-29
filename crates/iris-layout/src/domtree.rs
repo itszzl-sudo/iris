@@ -319,6 +319,7 @@ impl DOMTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dom::NodeType;
 
     #[test]
     fn test_dom_tree_creation() {

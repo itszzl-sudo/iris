@@ -313,10 +313,10 @@ impl KeyframeAnimation {
                 }
             } else {
                 match *part {
-                    "linear" => easing = EasingFunction::Linear,
-                    "ease" | "ease-in-out" => easing = EasingFunction::EaseInOut,
-                    "ease-in" => easing = EasingFunction::EaseIn,
-                    "ease-out" => easing = EasingFunction::EaseOut,
+                    "linear" => _easing = EasingFunction::Linear,
+                    "ease" | "ease-in-out" => _easing = EasingFunction::EaseInOut,
+                    "ease-in" => _easing = EasingFunction::EaseIn,
+                    "ease-out" => _easing = EasingFunction::EaseOut,
                     "normal" => direction = AnimationDirection::Normal,
                     "reverse" => direction = AnimationDirection::Reverse,
                     "alternate" => direction = AnimationDirection::Alternate,

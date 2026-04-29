@@ -812,7 +812,7 @@ fn compute_cross_axis_position(
 fn compute_flex_row(
     node: &mut DOMNode,
     children_indices: &[usize],
-    _container: &FlexContainer,
+    container: &FlexContainer,
     container_box: &mut LayoutBox,
     _parent_width: f32,
 ) {
@@ -829,7 +829,7 @@ fn compute_flex_row(
 fn compute_flex_row_single_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    _container: &FlexContainer,
+    container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1048,7 +1048,7 @@ fn compute_flex_row_single_line(
 fn compute_flex_column(
     node: &mut DOMNode,
     children_indices: &[usize],
-    _container: &FlexContainer,
+    container: &FlexContainer,
     container_box: &mut LayoutBox,
     _parent_height: f32,
 ) {
@@ -1065,7 +1065,7 @@ fn compute_flex_column(
 fn compute_flex_column_single_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    _container: &FlexContainer,
+    container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1161,7 +1161,7 @@ fn compute_flex_column_single_line(
 fn compute_flex_column_multi_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    _container: &FlexContainer,
+    container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1308,7 +1308,7 @@ fn compute_flex_column_multi_line(
         let mut current_y = container_padding_top;
         
         for &child_idx in &column_item_indices {
-            if let Some(_child) = node.children.get_mut(child_idx) {
+            if let Some(child) = node.children.get_mut(child_idx) {
                 // 获取子元素的样式
                 let styles = if let Some(s) = child.computed_styles() {
                     s
@@ -1414,7 +1414,7 @@ fn compute_children_precise_width(
 fn compute_flex_row_multi_line(
     node: &mut DOMNode,
     children_indices: &[usize],
-    _container: &FlexContainer,
+    container: &FlexContainer,
     container_box: &mut LayoutBox,
 ) {
     let container_width = container_box.width;
@@ -1430,7 +1430,7 @@ fn compute_flex_row_multi_line(
     let mut current_line = FlexLine::new();
     let mut current_line_size = 0.0;
     
-    for (item_idx, &child_idx) in children_indices.iter().enumerate() {
+    for (_item_idx, &child_idx) in children_indices.iter().enumerate() {
         // 获取子元素的样式
         let styles = if let Some(child) = node.children.get(child_idx) {
             child.computed_styles().unwrap_or_else(ComputedStyles::new)
@@ -1550,7 +1550,7 @@ fn compute_flex_row_multi_line(
         let mut current_x = container_padding_left;
         
         for &child_idx in &line_item_indices {
-            if let Some(_child) = node.children.get_mut(child_idx) {
+            if let Some(child) = node.children.get_mut(child_idx) {
                 // 获取子元素的样式
                 let styles = if let Some(s) = child.computed_styles() {
                     s
@@ -1920,7 +1920,7 @@ mod tests {
         let mut container = DOMNode::new_element("div");
         
         // 添加 Flex 项目
-        for i in 0..3 {
+        for _i in 0..3 {
             let item = DOMNode::new_element("span");
             container.append_child(item);
         }
@@ -2296,7 +2296,7 @@ mod tests {
         let container_height = 500.0;
         let row_height = 100.0;
         let row_count = 3;
-        let gap = 10.0;
+        let _gap = 10.0;
         
         let total_rows_height = row_height * row_count as f32;
         let remaining = container_height - total_rows_height;
@@ -2562,7 +2562,7 @@ mod tests {
         let container_width: f32 = 500.0;
         let column_width: f32 = 100.0;
         let column_count = 3;
-        let gap: f32 = 10.0;
+        let _gap: f32 = 10.0;
         
         let total_columns_width = column_width * column_count as f32;
         let remaining = container_width - total_columns_width;
@@ -2625,7 +2625,7 @@ mod tests {
         parent.set_attribute("style", "display: flex; flex-direction: row-reverse; width: 400px;");
         
         // 添加 3 个子元素
-        for i in 1..=3 {
+        for _i in 1..=3 {
             let mut child = DOMNode::new_element("span");
             child.set_attribute("style", &format!("width: 100px; height: 50px;"));
             parent.children.push(child);
@@ -2644,7 +2644,7 @@ mod tests {
         parent.set_attribute("style", "display: flex; flex-direction: column-reverse; height: 300px;");
         
         // 添加 3 个子元素
-        for i in 1..=3 {
+        for _i in 1..=3 {
             let mut child = DOMNode::new_element("span");
             child.set_attribute("style", &format!("width: 100px; height: 80px;"));
             parent.children.push(child);

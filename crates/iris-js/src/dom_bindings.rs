@@ -7,7 +7,6 @@ use boa_engine::{
     Context, JsValue, Source, js_string,
     property::Attribute,
 };
-use iris_layout::dom::DOMNode;
 use iris_layout::domtree::DOMTree;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -449,6 +448,7 @@ impl DOMBindings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iris_layout::dom::DOMNode;
 
     #[test]
     fn test_create_dom_bindings() {
