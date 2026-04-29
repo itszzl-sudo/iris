@@ -3,7 +3,6 @@
 //! 将 Vue 3 runtime-core 和 runtime-dom 注入到 JS 环境。
 
 use crate::vm::JsRuntime;
-use boa_engine::JsValue;
 use iris_layout::vdom::{VElement, VNode, VTree};
 use std::cell::RefCell;
 use std::collections::HashMap;

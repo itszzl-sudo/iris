@@ -2,10 +2,9 @@
 //!
 //! 提供 fetch、XMLHttpRequest、真实定时器等 Web API 的 Rust 实现。
 
-use boa_engine::{Context, JsValue, Source, js_string, property::Attribute};
+use boa_engine::{Context, Source, js_string, property::Attribute};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use std::sync::atomic::AtomicU32;
 
 /// 定时器 ID 计数器
 static TIMER_ID: AtomicU32 = AtomicU32::new(1);
