@@ -26,6 +26,66 @@ pub struct StyleBlock {
     pub scoped: bool,
 }
 
+/// 将 render 函数注入到 setup 函数中
+/// 替换 `return { ... };` 为 `return render_fn;`
+/// 这样 render 作为闭包可以访问 setup 中的局部变量（如 Pinia store）
+/// Vue 3 支持 setup 返回函数作为渲染函数
+fn inject_render_into_setup_return(script: &str, render_fn: &str) -> String {
+    if !script.contains("return {") {
+        // 没有 return 语句，回退到在 export default 层添加 render
+        return script.replace(
+            "export default {",
+            &format!("export default {{\n  render: {},", render_fn)
+        );
+    }
+    
+    // 找到最后一个 "return {"（应该是 setup 的 return）
+    if let Some(return_pos) = script.rfind("return {") {
+        let before = &script[..return_pos];
+        let after_return = &script[return_pos + 8..]; // 跳过 "return {"
+        
+        // 查找匹配的 }
+        let mut depth = 1i32;
+        let mut end_idx: Option<usize> = None;
+        for (i, ch) in after_return.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_idx = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        if let Some(end) = end_idx {
+            // after_stmt = "};..." or "}..."
+            let after_stmt = &after_return[end..];
+            // 跳过 } 和可选的 ;
+            let after_close = &after_stmt[1..]; // 跳过 }
+            let after_close = if after_close.starts_with(';') {
+                &after_close[1..] // 跳过 ;
+            } else {
+                after_close
+            };
+            
+            // 替换整个 "return { ... };" 为 "return render_fn"
+            format!("{}return {}{}", before, render_fn, after_close)
+        } else {
+            // 无法找到匹配的 }，回退
+            script.replace(
+                "export default {",
+                &format!("export default {{\n  render: {},", render_fn)
+            )
+        }
+    } else {
+        script.to_string()
+    }
+}
+
 /// 编译 Vue SFC 文件
 pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
     debug!("Compiling SFC: {}", filename);
@@ -43,13 +103,10 @@ pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
                 parsed.render_fn
             )
         } else {
-            // 将 render 函数添加到已有的 export default 中
-            // 查找 export default { 并注入 render
+            // 将 render 函数注入到 setup 的 return 语句中
+            // 这样 render 作为闭包可以访问 setup 中的局部变量（如 Pinia store）
             if parsed.script.contains("export default {") {
-                parsed.script.replace(
-                    "export default {",
-                    &format!("export default {{\n  render: {},", parsed.render_fn)
-                )
+                inject_render_into_setup_return(&parsed.script, &parsed.render_fn)
             } else if parsed.script.contains("export default") {
                 // 如果是 export default { ... } 格式
                 format!(
@@ -102,17 +159,44 @@ pub fn resolve_module(import_path: &str, importer: &str) -> Result<String> {
 
     // 如果是相对路径
     if import_path.starts_with('.') || import_path.starts_with('/') {
-        // 简化处理：拼接路径
-        if let Some(pos) = importer.rfind('/') {
-            let base_dir = &importer[..pos + 1];
-            let resolved = format!("{}{}", base_dir, import_path.trim_start_matches("./"));
-            
-            // 添加默认扩展名
-            if !resolved.ends_with(".vue") && !resolved.ends_with(".js") {
-                return Ok(format!("{}.vue", resolved));
+        // 使用 Path::parent() 获取导入者所在的目录，兼容 Windows 和 Unix 路径
+        let importer_path = std::path::Path::new(importer);
+        if let Some(parent_dir) = importer_path.parent() {
+            // 使用 Path::join 正确处理 ../ 和 ./ 路径（Windows 上用 \, Unix 上用 /）
+            let resolved = parent_dir.join(import_path);
+            let resolved_path = resolved.as_path();
+
+            // 1. 如果路径已存在且是文件，直接返回
+            if resolved_path.is_file() {
+                return Ok(resolved.to_string_lossy().to_string());
             }
-            
-            return Ok(resolved);
+
+            // 2. 尝试常见扩展名
+            let extensions = [".vue", ".ts", ".tsx", ".js", ".jsx", ".mjs"];
+            for ext in &extensions {
+                let with_ext_str = format!("{}{}", resolved.to_string_lossy(), ext);
+                if std::path::Path::new(&with_ext_str).is_file() {
+                    return Ok(with_ext_str);
+                }
+            }
+
+            // 3. 如果是目录，尝试 index 文件
+            if resolved_path.is_dir() {
+                let index_files = ["index.ts", "index.js", "index.tsx", "index.jsx", "index.mjs"];
+                for index_file in &index_files {
+                    let index_path = resolved_path.join(index_file);
+                    if index_path.is_file() {
+                        return Ok(index_path.to_string_lossy().to_string());
+                    }
+                }
+            }
+
+            // 4. 所有尝试都失败，回退到添加 .vue 后缀
+            let resolved_str = resolved.to_string_lossy();
+            if !resolved_str.ends_with(".vue") && !resolved_str.ends_with(".js") {
+                return Ok(format!("{}.vue", resolved_str));
+            }
+            return Ok(resolved_str.to_string());
         }
     }
 

@@ -1,4 +1,4 @@
-//! 编译器缓存管理
+﻿//! 编译器缓存管理
 //! 
 //! 负责按需编译 Vue 模块并缓存结果
 //! 
@@ -130,7 +130,9 @@ impl CompilerCache {
                         // 策略 2: 文件名匹配
                         abs_path_obj.file_name().map(|n| n.to_string_lossy()) == Some(std::borrow::Cow::Borrowed(normalized_request)) ||
                         // 策略 3: 路径后缀匹配（支持 src/main.ts 匹配 main.ts）
+                        // 检查两种分隔符形式，因为缓存键中可能混用 / 和 \
                         abs_path.ends_with(&normalized_request.replace('/', std::path::MAIN_SEPARATOR_STR)) ||
+                        abs_path.ends_with(normalized_request) ||
                         // 策略 4: 处理 /@vue/ 前缀（Vue 模块请求）
                         if normalized_request.starts_with("@vue/") {
                             let vue_module = &normalized_request[5..];
@@ -146,7 +148,68 @@ impl CompilerCache {
                         return Ok(module.clone());
                     }
                 }
+
+                // 策略 5: 尝试添加扩展名匹配
+                // 当请求路径没有扩展名时，尝试添加常见扩展名匹配已编译模块
+                if !normalized_request.contains('.') {
+                    let extensions = [".ts", ".tsx", ".vue", ".js", ".jsx", ".mjs"];
+                    for ext in &extensions {
+                        let with_ext = format!("{}{}", normalized_request, ext);
+                        let with_ext_sep = with_ext.replace('/', std::path::MAIN_SEPARATOR_STR);
+                        let with_ext_slash = with_ext.replace(std::path::MAIN_SEPARATOR_STR, "/");
+                        for (abs_path, module) in &compilation.compiled_modules {
+                            if abs_path.ends_with(&with_ext_sep) || abs_path.ends_with(&with_ext_slash) {
+                                debug!("Found module via extension append: {} -> {}", module_path, abs_path);
+                                let mut cache = self.compiled_modules.lock().await;
+                                cache.insert(module_path.to_string(), module.clone());
+                                return Ok(module.clone());
+                            }
+                        }
+                    }
+                }
+                
+                // 策略 6: 目录索引文件解析
+                // 当请求路径匹配一个目录时，尝试查找 index 文件
+                let src_dir = self.project_root.join("src");
+                let candidate_dir = src_dir.join(normalized_request);
+                if candidate_dir.is_dir() {
+                    let index_files = ["index.ts", "index.js", "index.tsx", "index.jsx", "index.mjs"];
+                    for index_file in &index_files {
+                        let index_path = candidate_dir.join(index_file);
+                        if index_path.is_file() {
+                            let index_path_str = index_path.to_string_lossy().to_string();
+                            // 遍历所有已编译模块，查找路径以 index 文件结尾的
+                            for (abs_path, module) in &compilation.compiled_modules {
+                                // 支持混合路径分隔符（Windows 上可能混用 \ 和 /）
+                                let suffix_sep = format!("{}\\{}", normalized_request, index_file);
+                                let suffix_slash = format!("{}/{}", normalized_request, index_file);
+                                if *abs_path == index_path_str
+                                    || abs_path.ends_with(&suffix_sep)
+                                    || abs_path.ends_with(&suffix_slash) {
+                                    debug!("Found module via directory index: {} -> {}", module_path, abs_path);
+                                    let mut cache = self.compiled_modules.lock().await;
+                                    cache.insert(module_path.to_string(), module.clone());
+                                    return Ok(module.clone());
+                                }
+                            }
+                        }
+                    }
+                }
             }
+        }
+
+        // 对缺失的 CSS/SCSS/LESS 文件：返回空桩模块，不报 500 错误
+        if module_path.ends_with(".css") || module_path.ends_with(".scss")
+            || module_path.ends_with(".sass") || module_path.ends_with(".less") {
+            warn!("Creating stub for missing CSS/SCSS module: {}", module_path);
+            let stub = CompiledModule {
+                script: format!("// Stub for missing CSS module: {}", module_path),
+                styles: vec![],
+                deps: vec![],
+            };
+            let mut cache = self.compiled_modules.lock().await;
+            cache.insert(module_path.to_string(), stub.clone());
+            return Ok(stub);
         }
 
         // 模块不存在

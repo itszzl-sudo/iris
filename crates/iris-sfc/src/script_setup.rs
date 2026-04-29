@@ -1,4 +1,4 @@
-//! Vue 3 编译器宏转换器
+﻿//! Vue 3 编译器宏转换器
 //!
 //! 支持 `<script setup>` 语法和编译器宏：
 //! - `defineProps<T>()` - 定义组件 props
@@ -195,28 +195,35 @@ pub fn transform_script_setup(script: &str) -> Result<String, String> {
 
     // 如果没有宏，直接返回原脚本
     if macros.props.is_none() && macros.emits.is_none() {
-        return Ok(wrap_as_setup(script, &[]));
+        return Ok(wrap_as_setup(script, &macros.exposed_vars));
     }
 
     // 构建标准组件
-    let mut component = String::from("export default {\n");
+    let (imports, setup_fn) = generate_setup_function(&macros.transformed_script, &macros.exposed_vars);
+    
+    let mut result = String::new();
+    if !imports.is_empty() {
+        result.push_str(&imports);
+        result.push('\n');
+    }
+    
+    result.push_str("export default {\n");
 
     // 添加 props
     if let Some(props_def) = &macros.props {
-        component.push_str(&format!("  props: {},\n", props_def));
+        result.push_str(&format!("  props: {},\n", props_def));
     }
 
     // 添加 emits
     if let Some(emits_def) = &macros.emits {
-        component.push_str(&format!("  emits: {},\n", emits_def));
+        result.push_str(&format!("  emits: {},\n", emits_def));
     }
 
-    // 添加 setup 函数（直接生成，不需要 remove export default）
-    let setup_fn = generate_setup_function(&macros.transformed_script, &macros.exposed_vars);
-    component.push_str(&setup_fn);
-    component.push_str("}\n");
+    // 添加 setup 函数
+    result.push_str(&setup_fn);
+    result.push_str("}\n");
 
-    Ok(component)
+    Ok(result)
 }
 
 /// 解析脚本中的编译器宏
@@ -237,7 +244,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
         // 移除宏调用
         transformed = WITH_DEFAULTS_RE
-            .replace(&transformed, "/* props with defaults injected */")
+            .replace(&transformed, "null; // props with defaults injected")
             .to_string();
     }
 
@@ -252,7 +259,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
             // 移除整行（包括变量声明）
             transformed = PROPS_TYPE_FULL_RE
-                .replace(&transformed, &format!("const {} = /* props injected */", var_name))
+                .replace(&transformed, &format!("const {} = null; // props injected", var_name))
                 .to_string();
         }
         // 解析 defineProps - 数组形式（包含变量声明）
@@ -264,7 +271,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
             // 移除整行（包括变量声明）
             transformed = PROPS_ARRAY_RE
-                .replace(&transformed, &format!("const {} = /* props injected */", var_name))
+                .replace(&transformed, &format!("const {} = null; // props injected", var_name))
                 .to_string();
         }
         // 解析 defineProps - 无变量声明形式（TypeScript 泛型）
@@ -275,7 +282,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
             // 移除宏调用
             transformed = PROPS_TYPE_NO_VAR_RE
-                .replace(&transformed, "/* props injected */")
+                .replace(&transformed, "null; // props injected")
                 .to_string();
         }
         // 解析 defineProps - 运行时对象形式（不常见但支持）
@@ -286,7 +293,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
             // 移除宏调用，保留变量声明（但标记为已注入）
             transformed = PROPS_RUNTIME_RE
-                .replace(&transformed, &format!("const {} = /* props injected */", var_name))
+                .replace(&transformed, &format!("const {} = null; // props injected", var_name))
                 .to_string();
         }
     }
@@ -300,7 +307,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
         // 移除整行（包括变量声明）
         transformed = EMITS_TYPE_FULL_RE
-            .replace(&transformed, &format!("const {} = /* emits injected */", var_name))
+            .replace(&transformed, &format!("const {} = null; // emits injected", var_name))
             .to_string();
     }
     // 解析 defineEmits - 数组形式（包含变量声明）
@@ -312,7 +319,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
         // 移除整行（包括变量声明）
         transformed = EMITS_ARRAY_RE
-            .replace(&transformed, &format!("const {} = /* emits injected */", var_name))
+            .replace(&transformed, &format!("const {} = null; // emits injected", var_name))
             .to_string();
     }
     // 解析 defineEmits - 无变量声明形式（TypeScript 泛型）
@@ -323,7 +330,7 @@ fn parse_macros(script: &str) -> Result<MacroResult, String> {
 
         // 移除宏调用
         transformed = EMITS_TYPE_NO_VAR_RE
-            .replace(&transformed, "/* emits injected */")
+            .replace(&transformed, "null; // emits injected")
             .to_string();
     }
 
@@ -555,45 +562,130 @@ fn extract_lifecycle_hooks(script: &str) -> Vec<String> {
 }
 
 /// 生成 setup 函数（不包含 export default）
-fn generate_setup_function(script: &str, exposed_vars: &[String]) -> String {
-    let return_stmt = if exposed_vars.is_empty() {
+fn generate_setup_function(script: &str, exposed_vars: &[String]) -> (String, String) {
+    // 提取 imports，放在模块级
+    let (imports, rest) = extract_imports(script);
+    let return_stmt = generate_return_stmt(exposed_vars);
+    
+    // 所有代码保持在 setup() 内部
+    let setup_fn = format!(
+        "  setup(props, {{ emit }}) {{\n{}
+{}
+  }}\n",
+        rest, return_stmt
+    );
+    
+    (imports, setup_fn)
+}
+
+/// 生成 return 语句字符串
+fn generate_return_stmt(exposed_vars: &[String]) -> String {
+    if exposed_vars.is_empty() {
         String::new()
     } else {
         format!(
             "\n    return {{\n        {}\n    }};",
             exposed_vars.join(",\n        ")
         )
-    };
+    }
+}
 
-    // 注入生命周期钩子的初始化代码（可选）
-    let lifecycle_init = r#"
-    // Lifecycle hooks are automatically managed by the Vue runtime
-    // onMounted, onUpdated, onUnmounted, etc. will be called at appropriate times"#;
+/// 提取顶层声明中的变量名
+fn extract_first_name(script: &str) -> Option<String> {
+    let trimmed = script.trim();
+    if trimmed.starts_with("const ") || trimmed.starts_with("let ") || trimmed.starts_with("var ") {
+        let start = if trimmed.starts_with("const ") { 6 } else if trimmed.starts_with("let ") { 4 } else { 4 };
+        let rest = &trimmed[start..];
+        if let Some(eq_pos) = rest.find(|c: char| c == '=' || c == '(' || c == ';' || c == ':') {
+            let name = rest[..eq_pos].trim();
+            if !name.is_empty() && !name.starts_with('{') && !name.starts_with('[') {
+                return Some(name.to_string());
+            }
+        }
+    } else if trimmed.starts_with("function ") {
+        if let Some(paren_pos) = trimmed[9..].find('(') {
+            let name = trimmed[9..9+paren_pos].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
 
-    format!(
-        "  setup(props, {{ emit }}) {{\n{}\n{}\n{}\n  }}\n",
-        lifecycle_init,
-        script,
-        return_stmt
-    )
+/// 将绑定声明（const/let/var/function xxx）从脚本中提取出来放到模块级
+/// 这样 setup() 和 render() 都能访问这些绑定
+fn extract_bindings_to_module(script: &str, exposed_vars: &[String]) -> (String, String) {
+    let mut bindings = Vec::new();
+    let mut body = Vec::new();
+    let mut in_binding = false;
+    let mut current_binding = Vec::new();
+    let mut brace_depth: i32 = 0;
+    
+    for line in script.lines() {
+        let trimmed = line.trim();
+        
+        if in_binding {
+            current_binding.push(line.to_string());
+            let open = (trimmed.matches('{').count() + trimmed.matches('[').count() + trimmed.matches('(').count()) as i32;
+            let close = (trimmed.matches('}').count() + trimmed.matches(']').count() + trimmed.matches(')').count()) as i32;
+            brace_depth += open - close;
+            if brace_depth <= 0 {
+                in_binding = false;
+                bindings.push(current_binding.join("\n"));
+                current_binding.clear();
+            }
+            continue;
+        }
+        
+        // 检查这一行是否开始一个绑定声明
+        if let Some(name) = extract_first_name(trimmed) {
+            if exposed_vars.contains(&name) {
+                let open_braces = trimmed.matches('{').count() as i32;
+                let close_braces = trimmed.matches('}').count() as i32;
+                let open_brackets = trimmed.matches('[').count() as i32;
+                let close_brackets = trimmed.matches(']').count() as i32;
+                let open_parens = trimmed.matches('(').count() as i32;
+                let close_parens = trimmed.matches(')').count() as i32;
+                
+                let total_open = open_braces + open_brackets + open_parens;
+                let total_close = close_braces + close_brackets + close_parens;
+                
+                if total_open > total_close {
+                    // 多行声明（const/let/var/function 都可能跨多行）
+                    in_binding = true;
+                    current_binding.clear();
+                    current_binding.push(line.to_string());
+                    brace_depth = total_open - total_close;
+                } else {
+                    // 单行绑定
+                    bindings.push(line.to_string());
+                }
+                continue;
+            }
+        }
+        
+        body.push(line.to_string());
+    }
+    
+    if in_binding {
+        bindings.push(current_binding.join("\n"));
+    }
+    
+    (bindings.join("\n"), body.join("\n"))
 }
 
 /// 包装为 setup 函数（用于无宏的场景）
 fn wrap_as_setup(script: &str, exposed_vars: &[String]) -> String {
-    let return_stmt = if exposed_vars.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "\n    return {{\n        {}\n    }};",
-            exposed_vars.join(",\n        ")
-        )
-    };
+    let return_stmt = generate_return_stmt(exposed_vars);
 
     // 提取 import 语句，放在 export default 之前
     let (imports, rest) = extract_imports(script);
     
+    // 所有代码保持在 setup() 内部
     format!(
-        "{}\nexport default {{\n  setup(props, {{ emit }}) {{{}\n{}\n  }}\n}}",
+        "{}\nexport default {{\n  setup(props, {{ emit }}) {{{}\n{}
+  }}\n}}",
         imports, rest, return_stmt
     )
 }
@@ -868,8 +960,8 @@ onMounted(() => {
         assert!(result.contains("setup("));
         
         // 验证宏被移除并注入注释
-        assert!(result.contains("/* props injected */"));
-        assert!(result.contains("/* emits injected */"));
+        assert!(result.contains("// props injected"));
+        assert!(result.contains("// emits injected"));
         
         // 验证 return 语句
         assert!(result.contains("return {"));

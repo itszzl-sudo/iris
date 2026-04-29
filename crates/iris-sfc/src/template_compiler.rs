@@ -352,15 +352,7 @@ fn generate_vnode(node: &VNode) -> String {
 fn generate_element(tag: &str, attrs: &[(String, String)], children: &[VNode]) -> String {
     let mut code = format!("h({:?}, ", tag);
 
-    if attrs.is_empty() {
-        code.push_str("null");
-    } else {
-        code.push_str("{ ");
-        for (key, value) in attrs {
-            code.push_str(&format!("{:?}: {:?}, ", key, value));
-        }
-        code.push_str("}");
-    }
+    code.push_str(&render_attrs(attrs));
 
     if children.is_empty() {
         code.push_str(")");
@@ -488,13 +480,89 @@ fn generate_directives(
     }
 
     // Handle v-on: add event listeners
+    // Parse event modifiers (.prevent, .stop, .once, .capture, .self, .passive)
     for directive in directives
         .iter()
         .filter(|d| matches!(d, Directive::VOn { .. }))
     {
         if let Directive::VOn { event, handler } = directive {
-            let event_name = format!("on{}", capitalize(event));
-            final_attrs.push((event_name, handler.clone()));
+            // Split event name on '.' to extract modifiers
+            let parts: Vec<&str> = event.split('.').collect();
+            let base_event = parts[0];
+            let modifiers: Vec<&str> = parts[1..].to_vec();
+            
+            let event_name = format!("on{}", capitalize(base_event));
+            
+            // Generate the handler expression
+            let handler_expr = if modifiers.is_empty() {
+                // No modifiers: use the handler directly (it's a function reference)
+                if handler.is_empty() {
+                    // No handler and no modifier - this is a no-op
+                    String::new()
+                } else {
+                    handler.clone()
+                }
+            } else {
+                // With modifiers: wrap in arrow function
+                let mut expr = String::from("($event) => ");
+                
+                if !handler.is_empty() {
+                    // Both modifiers and handler
+                    let mut body_parts = Vec::new();
+                    for m in &modifiers {
+                        match *m {
+                            "prevent" => body_parts.push("$event.preventDefault()"),
+                            "stop" => body_parts.push("$event.stopPropagation()"),
+                            "capture" => {} // handled at event binding level
+                            "once" => {} // handled at event binding level
+                            "self" => body_parts.push("$event.target !== $event.currentTarget ? null : "),
+                            "passive" => {} // hint only
+                            _ => {}
+                        }
+                    }
+                    body_parts.push(&handler);
+                    // Simple comma approach: works if handler is a call expression like handler($event)
+                    // or if chained via comma operator
+                    if body_parts.len() == 1 {
+                        expr.push_str(body_parts[0]);
+                    } else {
+                        expr.push_str("{");
+                        for bp in &body_parts {
+                            if *bp == body_parts.last().copied().unwrap_or("") {
+                                // Last one - call handler with $event
+                                if bp.contains("($event)") || bp.contains('(') {
+                                    expr.push_str(&format!(" {} ", bp));
+                                } else {
+                                    expr.push_str(&format!(" {}.call(this, $event); ", bp));
+                                }
+                            } else {
+                                expr.push_str(&format!(" {}; ", bp));
+                            }
+                        }
+                        expr.push_str("}");
+                    }
+                } else {
+                    // Modifier only (e.g., @click.prevent with no handler)
+                    expr.push_str("{");
+                    for m in &modifiers {
+                        match *m {
+                            "prevent" => expr.push_str(" $event.preventDefault(); "),
+                            "stop" => expr.push_str(" $event.stopPropagation(); "),
+                            "capture" => {}
+                            "once" => {}
+                            "self" => expr.push_str(" /* self modifier */ "),
+                            "passive" => {}
+                            _ => {}
+                        }
+                    }
+                    expr.push_str("}");
+                }
+                expr
+            };
+            
+            if !handler_expr.is_empty() {
+                final_attrs.push((event_name, handler_expr));
+            }
         }
     }
 
@@ -572,18 +640,49 @@ fn capitalize(s: &str) -> String {
     }
 }
 
+/// Check if an attribute key represents a Vue event handler (starts with "on" + uppercase)
+fn is_event_handler_attr(key: &str) -> bool {
+    if key.len() < 4 || !key.starts_with("on") {
+        return false;
+    }
+    // After "on", the next character should be uppercase
+    let rest = &key[2..];
+    rest.starts_with(|c: char| c.is_uppercase())
+}
+
+/// Render attributes for h() calls.
+/// Event handler attributes (onClick, onInput, etc.) get their values rendered as raw
+/// JavaScript expressions, while regular attributes get quoted string values.
+fn render_attrs(attrs: &[(String, String)]) -> String {
+    if attrs.is_empty() {
+        return "null".to_string();
+    }
+    let mut code = "{ ".to_string();
+    let pairs: Vec<String> = attrs
+        .iter()
+        .map(|(k, v)| {
+            if is_event_handler_attr(k) || v.starts_with("/* dynamic: */") {
+                // Event handler or dynamic binding: value is raw JavaScript expression
+                let stripped = v.strip_prefix("/* dynamic: */").unwrap_or(v);
+                format!("{:?}: {}", k, stripped.trim())
+            } else {
+                // Static attribute: value is a string
+                format!("{:?}: {:?}", k, v)
+            }
+        })
+        .collect();
+    code.push_str(&pairs.join(", "));
+    code.push_str(" }");
+    code
+}
+
 /// Generate element code with attributes only (no children)
 fn generate_element_with_attrs(tag: &str, attrs: &[(String, String)]) -> String {
     let mut code = format!("h(\"{}\"", tag);
 
     if !attrs.is_empty() {
-        code.push_str(", {");
-        let attr_strs: Vec<String> = attrs
-            .iter()
-            .map(|(k, v)| format!("\"{}\": {:?}", k, v))
-            .collect();
-        code.push_str(&attr_strs.join(", "));
-        code.push_str("}");
+        code.push_str(", ");
+        code.push_str(&render_attrs(attrs));
     }
 
     code.push_str(")");

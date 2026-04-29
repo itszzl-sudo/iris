@@ -243,13 +243,36 @@ async fn handle_websocket(socket: WebSocket, ws_manager: Arc<WebSocketManager>) 
 fn generate_index_html(project_root: &std::path::PathBuf) -> String {
     // 尝试读取项目的 index.html
     let project_index = project_root.join("index.html");
-    if project_index.exists() {
+    let html = if project_index.exists() {
         if let Ok(content) = std::fs::read_to_string(&project_index) {
-            return content;
+            content
+        } else {
+            default_index_html()
         }
-    }
+    } else {
+        default_index_html()
+    };
     
-    // 默认模板
+    // 注入 Vue 特性标志（避免 esm-bundler 版本警告）
+    // 这些标志需要在 Vue 初始化前定义，用于 tree-shaking
+    // 在浏览器中，常规 script 标签中使用 var 定义全局变量
+    let feature_flags = "<script>var __VUE_OPTIONS_API__=true;var __VUE_PROD_DEVTOOLS__=false;var __VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false;</script>";
+    
+    // 在 </head> 前注入（所有浏览器兼容）
+    if let Some(pos) = html.find("</head>") {
+        let mut result = String::with_capacity(html.len() + feature_flags.len());
+        result.push_str(&html[..pos]);
+        result.push_str(&feature_flags);
+        result.push_str(&html[pos..]);
+        result
+    } else {
+        // 如果没有 </head>，追加到开头
+        format!("{}\n{}", feature_flags, html)
+    }
+}
+
+/// 生成默认 index.html 模板
+fn default_index_html() -> String {
     r#"<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1266,9 +1289,22 @@ pub async fn npm_package_handler(
     let project_root = &cache_lock.project_root;
     
     // 解析包名和子路径
+    // 注意：scoped package（如 @vue/devtools-api）的 URL 路径格式为 @vue/devtools-api
+    // splitn(2, '/') 会把 scoped package 名分成 ["@vue", "devtools-api"]
+    // 需要额外处理来重建完整包名
     let parts: Vec<&str> = path.splitn(2, '/').collect();
-    let package_name = parts[0];
-    let sub_path = if parts.len() > 1 { parts[1] } else { "" };
+    let (full_package_name, sub_path) = if parts[0].starts_with('@') && parts.len() > 1 {
+        // Scoped package：第一个 / 后的第一部分是包名后半部分
+        // 检查是否有更深层的子路径
+        let remaining = parts[1];
+        let inner_parts: Vec<&str> = remaining.splitn(2, '/').collect();
+        let scoped_full = format!("@{}/{}", &parts[0][1..], inner_parts[0]);
+        (scoped_full, if inner_parts.len() > 1 { inner_parts[1] } else { "" })
+    } else {
+        (parts[0].to_string(), if parts.len() > 1 { parts[1] } else { "" })
+    };
+    
+    let package_name = &full_package_name;
     
     // 构建 node_modules 中的路径
     let node_modules_path = project_root.join("node_modules");
@@ -1300,12 +1336,21 @@ pub async fn npm_package_handler(
                             );
                             
                             // 重写 npm 包内部的裸模块导入
-                            let rewritten_js = rewrite_bare_imports(&js_with_env);
+                            let rewritten_js = rewrite_bare_imports(&js_with_env, "");
+                            
+                            // 如果入口文件在子目录中，重写相对导入为完整 /@npm/ 路径
+                            let entry_path_obj = std::path::Path::new(entry_file);
+                            let entry_dir = entry_path_obj.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                            let final_js = if !entry_dir.is_empty() {
+                                rewrite_npm_relative_imports(&rewritten_js, package_name, &entry_dir)
+                            } else {
+                                rewritten_js
+                            };
                             
                             // 返回 JavaScript 模块
                             return (axum::http::StatusCode::OK, [
                                 (header::CONTENT_TYPE, "application/javascript"),
-                            ], rewritten_js).into_response();
+                            ], final_js).into_response();
                         }
                     }
                 }
@@ -1325,7 +1370,7 @@ pub async fn npm_package_handler(
                     "process.env.NODE_ENV",
                     "'development'"
                 );
-                rewrite_bare_imports(&js_with_env)
+                rewrite_bare_imports(&js_with_env, "")
             } else {
                 content
             };
@@ -1353,46 +1398,170 @@ fn base64_encode(data: &[u8]) -> String {
     result
 }
 
+/// 重写 npm 包入口文件的相对导入路径
+/// 
+/// 当入口文件在子目录中时（如 lib/esm/index.js），
+/// 将内部的 ./env.js 重写为 /@npm/pkg/lib/esm/env.js，
+/// 以便浏览器能正确请求到子目录中的模块。
+/// 
+/// 例如：
+/// - `from './env.js'` → `from '/@npm/@vue/devtools-api/lib/esm/env.js'`
+/// - `import('./proxy.js')` → `import('/@npm/@vue/devtools-api/lib/esm/proxy.js')`
+/// - `from '../other/file.js'` → `from '/@npm/pkg/other/file.js'`
+fn rewrite_npm_relative_imports(script: &str, package_name: &str, subdir: &str) -> String {
+    use regex::Regex;
+    use std::sync::LazyLock;
+    
+    // 将子目录中的 / 转为系统路径分隔符以规范化 ../ 解析
+    // 但保持 URL 格式使用 /
+    let subdir_normalized = subdir.replace(std::path::MAIN_SEPARATOR_STR, "/");
+    
+    // 匹配 from './xxx'、from '../xxx'、import('./xxx')、import('../xxx')
+    // 捕获前缀（from ' 或 import('）、相对路径（./ 或 ../）、路径内容
+    static RELATIVE_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?:from\s+['"]|import\(['"])(\.\.?/)([^'"]+)['"]"#).unwrap()
+    });
+    
+    RELATIVE_IMPORT_RE.replace_all(script, |caps: &regex::Captures| {
+        let full_match = &caps[0];
+        let relative_prefix = &caps[1]; // "./" or "../"
+        let import_path = &caps[2];     // the rest of the path after ./ or ../
+        
+        let resolved_path = if relative_prefix == "./" {
+            // ./xxx → 拼接到子目录之后
+            format!("/@npm/{}/{}/{}", package_name, subdir_normalized, import_path)
+        } else {
+            // ../xxx → 从子目录回退一级再拼接
+            // 例如 subdir="lib/esm", ../xxx → lib/xxx → /@npm/pkg/lib/xxx
+            let parent_dir = std::path::Path::new(&subdir_normalized)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if parent_dir.is_empty() {
+                // 子目录只有一层，../ 回到根目录
+                format!("/@npm/{}/{}", package_name, import_path)
+            } else {
+                format!("/@npm/{}/{}/{}", package_name, parent_dir, import_path)
+            }
+        };
+        
+        // 根据匹配的前缀决定使用 from '...' 还是 import('...') 包装
+        if full_match.starts_with("import") {
+            format!("import('{}')", resolved_path)
+        } else {
+            format!("from '{}'", resolved_path)
+        }
+    }).to_string()
+}
+
 /// 重写裸模块导入（bare module imports）为 /@npm/ 路径
 /// 
 /// 例如：
 /// - `import { ref } from 'vue'` → `import { ref } from '/@npm/vue'`
 /// - `import { defineStore } from 'pinia'` → `import { defineStore } from '/@npm/pinia'`
-fn rewrite_bare_imports(script: &str) -> String {
+/// - `import('../views/X.vue')` → `import('/src/views/X.vue')`
+/// 
+/// module_path: 源文件的请求路径（如 "router", "main.ts"），用于正确解析 ../ 相对路径
+fn rewrite_bare_imports(script: &str, module_path: &str) -> String {
     use regex::Regex;
     use std::sync::LazyLock;
     
     // 匹配 import ... from 'package' 或 import ... from "package"
-    // 不使用 lookahead，简单匹配所有 from 'xxx'
     static BARE_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"from\s+['"]([^'"]+)['"]"#).unwrap()
     });
     
-    BARE_IMPORT_RE.replace_all(script, |caps: &regex::Captures| {
-        let package_name = &caps[1];
-        
-        // 跳过相对路径和绝对路径
-        if package_name.starts_with("./") || 
-           package_name.starts_with("../") || 
-           package_name.starts_with("/") {
-            // 重写相对路径为 /src/ 路径
-            if package_name.starts_with("./") || package_name.starts_with("../") {
-                // 提取文件名，转换为 /src/ 路径
-                // 例如：./App.vue → /src/App.vue
-                let filename = if package_name.starts_with("./") {
-                    &package_name[2..]
+    // 匹配动态导入 import('path') 或 import("path")
+    static DYNAMIC_IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"import\(['"]([^'"]+)['"]\)"#).unwrap()
+    });
+    
+    // 获取源文件的目录路径（相对于 src/），用于解析 ../ 路径
+    // 对于目录索引路径（如 "router" 对应 router/index.ts），父目录就是 module_path 本身
+    let source_dir = {
+        let p = std::path::Path::new(module_path);
+        let parent = p.parent().map(|p| p.to_string_lossy().to_string());
+        match parent {
+            Some(dir) if !dir.is_empty() && dir != "." => dir,
+            _ => {
+                // 如果 module_path 是裸名称（无扩展名、无路径分隔符），
+                // 说明是目录索引请求（如 "router" → router/index.ts）
+                if !module_path.is_empty() && !module_path.contains('.') && !module_path.contains('/') && !module_path.contains('\\') {
+                    module_path.to_string()
                 } else {
-                    // 处理 ../ 的情况
-                    package_name.split('/').last().unwrap_or(package_name)
-                };
-                format!("from '/src/{}'", filename)
-            } else {
-                // 保持原样
-                caps[0].to_string()
+                    String::new()
+                }
             }
+        }
+    };
+    
+    // 解析相对路径为 /src/ 下的绝对路径
+    let is_npm_module = module_path.is_empty();
+    let resolve_to_src = |import_path: &str| -> String {
+        // npm 包模块：保留相对导入原样，让浏览器基于模块 URL 正确解析
+        // 只重写裸模块名（如 from 'vue' → from '/@npm/vue'）
+        if is_npm_module {
+            if import_path.starts_with("./") || import_path.starts_with("../") || import_path.starts_with('/') {
+                return import_path.to_string();
+            } else {
+                return format!("/@npm/{}", import_path);
+            }
+        }
+        
+        if import_path.starts_with("./") {
+            // ./xxx → 去掉 ./，直接拼接到 /src/
+            format!("/src/{}", &import_path[2..])
+        } else if import_path.starts_with("../") {
+            if source_dir.is_empty() {
+                // 源文件在 src/ 根目录，../ 会超出 src/
+                // 这种情况不应该发生，回退到直接使用文件名
+                let filename = import_path.split('/').last().unwrap_or(import_path);
+                format!("/src/{}", filename)
+            } else {
+                // 将相对路径与源文件目录拼接后归一化
+                let combined = format!("{}/{}", source_dir, import_path);
+                let p = std::path::Path::new(&combined);
+                let mut parts = Vec::new();
+                for component in p.components() {
+                    match component {
+                        std::path::Component::Normal(c) => {
+                            parts.push(c.to_string_lossy().to_string());
+                        }
+                        std::path::Component::ParentDir => {
+                            parts.pop();
+                        }
+                        _ => {}
+                    }
+                }
+                format!("/src/{}", parts.join("/"))
+            }
+        } else if import_path.starts_with('/') {
+            // 已经是绝对路径
+            import_path.to_string()
         } else {
-            // 重写为 /@npm/ 路径
-            format!("from '/@npm/{}'", package_name)
+            // 裸模块名（npm 包）
+            format!("/@npm/{}", import_path)
+        }
+    };
+    
+    // 1. 先处理静态导入: from '...'
+    let result = BARE_IMPORT_RE.replace_all(script, |caps: &regex::Captures| {
+        let import_path = &caps[1];
+        let resolved = resolve_to_src(import_path);
+        format!("from '{}'", resolved)
+    });
+    
+    // 2. 再处理动态导入: import('...')
+    DYNAMIC_IMPORT_RE.replace_all(&result, |caps: &regex::Captures| {
+        let import_path = &caps[1];
+        
+        // 只重写相对路径（./ 和 ../），不处理裸模块
+        if import_path.starts_with("./") || import_path.starts_with("../") {
+            let resolved = resolve_to_src(import_path);
+            format!("import('{}')", resolved)
+        } else {
+            // 保持原样（包括 npm 包动态导入）
+            caps[0].to_string()
         }
     }).to_string()
 }
@@ -1427,7 +1596,7 @@ pub async fn source_file_handler(
             js_code.push_str("}\n\n");
             
             // 重写裸模块导入（bare imports）为 /@npm/ 路径
-            let rewritten_script = rewrite_bare_imports(&module.script);
+            let rewritten_script = rewrite_bare_imports(&module.script, &path);
             
             // 添加编译后的脚本
             js_code.push_str(&rewritten_script);
