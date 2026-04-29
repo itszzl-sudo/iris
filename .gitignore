@@ -13,6 +13,9 @@ Cargo.lock
 *.swo
 *~
 
+# Iris Cache
+.iris-cache/
+
 # OS
 .DS_Store
 Thumbs.db
