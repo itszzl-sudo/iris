@@ -1,9 +1,9 @@
 # 🗺️ Iris Engine 完整开发路线图与进度追踪
 
 > **创建时间**: 2026-02-24  
-> **最后更新**: 2026-04-27  
-> **状态**: 🎉 核心功能全部完成 + 测试验证完成  
-> **总体进度**: 100%（核心 Phase 完成）+ 窗口示例已完成 + **543 测试全部通过**  
+> **最后更新**: 2026-04-29  
+> **状态**: 🎉 核心功能全部完成 + Phase 9 开发中  
+> **总体进度**: 93%（核心 Phase 100% + Phase 9 70%）  
 > **自动更新**: ✅ Phase 标题将根据子阶段完成状态自动更新（全部完成 = 100%）
 
 ---
@@ -516,6 +516,83 @@
 **状态**: ✅ Phase 8 完成（100%）  
 **代码量**: 1,544+ 行
 
+---
+
+## 🦀 Phase 9: Iris JetCrab CLI 开发服务器（70% 完成）🔄
+
+> **架构文档**: [IRIS_JETCRAB_CLI_ARCHITECTURE.md](docs/IRIS_JETCRAB_CLI_ARCHITECTURE.md)  
+> **测试客户端**: [test-hmr-client.html](test-hmr-client.html)
+
+### 9.1 基础架构 ✅
+- [x] 创建 iris-jetcrab-cli crate
+- [x] Workspace 集成
+- [x] 依赖配置（axum、tokio、clap、notify）
+- [x] CLI 入口（clap 派生）
+- [x] 命令支持：`dev`、`info`
+
+### 9.2 HTTP 服务器 ✅
+- [x] Axum 路由系统
+- [x] CORS 支持
+- [x] 自动打开浏览器
+- [x] 彩色终端输出
+- [x] 可配置端口（默认 3000）
+
+### 9.3 路由处理器 ✅
+- [x] `GET /` - 主页（index.html）
+- [x] `GET /@vue/*path` - Vue 模块按需编译
+- [x] `GET /assets/*path` - 静态资源服务
+- [x] `GET /api/project-info` - 项目信息 API
+- [x] `GET /@hmr` - HMR WebSocket
+
+### 9.4 编译缓存管理 ✅
+- [x] CompilerCache 结构体
+- [x] tokio::sync::Mutex 异步安全
+- [x] 首次请求编译整个项目
+- [x] 后续请求使用缓存
+- [x] 缓存失效和重建
+
+### 9.5 HMR 热模块替换 ✅
+- [x] notify 文件监听（src/ 目录）
+- [x] 300ms 防抖机制
+- [x] WebSocket 广播频道
+- [x] WebSocketManager 多客户端支持
+- [x] HMR 事件类型（4 种）
+  - [x] `connected` - 连接成功
+  - [x] `file-changed` - 文件变更
+  - [x] `rebuild-complete` - 重新编译完成
+  - [x] `compile-error` - 编译错误
+- [x] 自动重新编译和推送
+- [x] HMR 测试客户端（test-hmr-client.html）
+
+### 9.6 工具函数 ✅
+- [x] find_project_root - 查找项目根目录
+- [x] is_vue_project - 检测 Vue 项目
+- [x] find_entry_file - 查找入口文件
+- [x] count_vue_files - 统计 Vue 文件数量
+
+**测试覆盖**: 编译验证通过  
+**状态**: 🔄 Phase 9 进行中（70%）  
+**代码量**: 600+ 行
+
+### 9.7 待实现功能 ⏳
+
+#### 🔴 高优先级
+- [ ] 增量编译（只编译变化的模块）
+- [ ] 模块热替换（不刷新页面）
+- [ ] 编译进度实时推送
+- [ ] 错误提示优化（源码映射）
+
+#### 🟡 中优先级
+- [ ] 自定义监听路径配置
+- [ ] 多项目工作区支持
+- [ ] 编译性能分析工具
+- [ ] 浏览器 DevTools 集成
+
+#### 🟢 低优先级
+- [ ] 生产模式构建（iris-jetcrab build）
+- [ ] 代码分割和懒加载
+- [ ] Tree-shaking 优化
+- [ ] 服务端渲染（SSR）支持
 
 ---
 
@@ -552,8 +629,9 @@
 | Phase 6: Vue SFC 编译器 | 100% ✅ | 已完成 |
 | Phase 7: 集成与优化 | 100% ✅ | 已完成 |
 | Phase 8: SFC 编译与渲染集成 | 100% ✅ | 已完成（新增） |
+| Phase 9: Iris JetCrab CLI | 70% 🔄 | 进行中（新增） |
 
-**总体完成度**: 约 100% 🎉（核心功能全部完成，进入新功能开发阶段）
+**总体完成度**: 约 93% 🎉（核心 Phase 100% 完成，Phase 9 开发中）
 
 ---
 
@@ -572,6 +650,15 @@
 ### 下一步发展方向
 
 #### 🔴 核心功能完善（建议优先）
+
+**Phase 9 完成（最推荐）**
+- [ ] 增量编译优化
+- [ ] 模块热替换（HMR）
+- [ ] 编译进度显示
+- [ ] 错误提示优化
+- [ ] 生产模式构建
+- **预计工作量**: 15-20 小时
+- **备注**: 完成 Vue 开发服务器，提供完整的开发体验
 
 1. **集成测试增强** ⭐ 最推荐
    - 添加端到端集成测试场景
@@ -985,6 +1072,24 @@
 - **原因**: 防止遗漏重要但不紧急的功能
 - **影响**: 确保长期开发的完整性
 
+### 2026-04-29: Phase 9 Iris JetCrab CLI 创建
+- **决策**: 创建 iris-jetcrab-cli 作为 Vue 项目开发服务器，采用运行时按需编译架构（方案 B）
+- **原因**: 提供与 iris-engine 对等的 Vue 专用编译引擎，支持现代开发工作流
+- **架构原则**:
+  - iris-jetcrab-engine 与 iris-engine 对等地位
+  - CLI 负责 HTTP 服务器和路由处理
+  - Engine 保持纯净，不依赖 HTTP/CLI
+  - 运行时按需编译 + 缓存优化
+- **影响**: 新增 Phase 9，当前完成度 70%，新增 600+ 行代码
+- **成果**:
+  - ✅ HTTP 服务器（axum）
+  - ✅ Vue 模块按需编译
+  - ✅ HMR 热模块替换（notify + WebSocket）
+  - ✅ 300ms 防抖机制
+  - ✅ 多客户端 WebSocket 广播
+  - ✅ 4 种 HMR 事件类型
+- **技术栈**: axum 0.7 (ws), tokio, notify 6.1, futures-util 0.3
+
 ---
 
 ## 📌 历史任务记录
@@ -1001,6 +1106,7 @@
 9. ✅ 垂直方向 flex-wrap 多列布局
 10. ✅ Row-Reverse/Column-Reverse 完整实现
 11. ✅ Wrap-Reverse 完整实现（Phase 1 完成）
+12. ✅ Phase 9 Iris JetCrab CLI 基础架构（进行中）
 
 ### 跳过的推荐（已记录在低优先级列表）
 - [ ] Grid 布局（记录在 #6）

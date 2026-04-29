@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HMR Test Client</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .events {
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .event {
+            padding: 8px;
+            margin: 5px 0;
+            border-left: 3px solid #007bff;
+            background: #f8f9fa;
+        }
+        .event.file-changed {
+            border-left-color: #ffc107;
+        }
+        .event.rebuild-complete {
+            border-left-color: #28a745;
+        }
+        .event.compile-error {
+            border-left-color: #dc3545;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>🦀 Iris JetCrab HMR Test</h1>
+    
+    <div id="status" class="status disconnected">
+        ❌ WebSocket Disconnected
+    </div>
+
+    <div>
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="clearEvents()">Clear Events</button>
+    </div>
+
+    <div class="events" id="events">
+        <h3>HMR Events</h3>
+    </div>
+
+    <script>
+        let ws = null;
+        let eventCount = 0;
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                console.log('Already connected');
+                return;
+            }
+
+            console.log('Connecting to HMR WebSocket...');
+            ws = new WebSocket('ws://localhost:3000/@hmr');
+
+            ws.onopen = function() {
+                console.log('✅ WebSocket connected');
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').innerHTML = '✅ WebSocket Connected';
+                addEvent('connected', 'WebSocket connected successfully');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('📨 HMR Event:', data);
+                    
+                    addEvent(data.type, data);
+                } catch (e) {
+                    console.error('Failed to parse event:', e);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('❌ WebSocket disconnected');
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').innerHTML = '❌ WebSocket Disconnected';
+                addEvent('disconnected', 'WebSocket disconnected');
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addEvent('error', 'WebSocket error occurred');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function addEvent(type, data) {
+            eventCount++;
+            const eventsDiv = document.getElementById('events');
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            eventDiv.innerHTML = `
+                <div class="timestamp">#${eventCount} - ${timestamp}</div>
+                <div><strong>${type}</strong></div>
+                <div><pre>${JSON.stringify(data, null, 2)}</pre></div>
+            `;
+            
+            eventsDiv.appendChild(eventDiv);
+            eventsDiv.scrollTop = eventsDiv.scrollHeight;
+        }
+
+        function clearEvents() {
+            const eventsDiv = document.getElementById('events');
+            eventsDiv.innerHTML = '<h3>HMR Events</h3>';
+            eventCount = 0;
+        }
+
+        // Auto connect on page load
+        window.addEventListener('load', connect);
+    </script>
+</body>
+</html>
