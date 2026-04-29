@@ -14,7 +14,7 @@ mod scoped_css;
 mod scss_processor;
 mod script_setup;
 mod template_compiler;
-mod ts_compiler;
+pub mod ts_compiler;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;

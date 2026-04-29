@@ -2,13 +2,19 @@
 //!
 //! 从 App.vue 开始反向解析依赖，按依赖顺序编译所有模块
 //! 支持 npm 包依赖、TypeScript、CSS 预处理器
+//!
+//! 使用成熟编译器：
+//! - TypeScript: swc (via iris-sfc::ts_compiler)
+//! - SCSS/SASS: grass
+//! - Less: less-rs
 
 use anyhow::{Result, Context};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use tracing::{info, debug, warn, error};
+use tracing::{info, debug, warn};
 
 use crate::sfc_compiler::{self, CompiledModule, resolve_module, StyleBlock};
+use iris_sfc::ts_compiler::{TsCompiler, TsCompilerConfig};
 
 /// npm 包信息
 #[derive(Debug, Clone)]
@@ -58,6 +64,8 @@ pub struct VueProjectCompiler {
     npm_packages: HashMap<String, PackageInfo>,
     /// package.json 中的依赖
     project_dependencies: HashMap<String, String>,
+    /// TypeScript 编译器
+    ts_compiler: TsCompiler,
 }
 
 impl VueProjectCompiler {
@@ -69,6 +77,9 @@ impl VueProjectCompiler {
         let project_dependencies = Self::load_package_dependencies(&project_root)
             .unwrap_or_default();
         
+        // 初始化 TypeScript 编译器
+        let ts_compiler = TsCompiler::new(TsCompilerConfig::default());
+        
         Self {
             project_root,
             node_modules_path,
@@ -77,6 +88,7 @@ impl VueProjectCompiler {
             compiled: HashSet::new(),
             npm_packages: HashMap::new(),
             project_dependencies,
+            ts_compiler,
         }
     }
 
@@ -539,8 +551,8 @@ impl VueProjectCompiler {
             // Vue SFC 文件
             sfc_compiler::compile_sfc(&content, module_path)?
         } else if module_path.ends_with(".ts") || module_path.ends_with(".tsx") {
-            // TypeScript 文件 - 移除类型注解后作为 JS 处理
-            let js_code = self.transpile_typescript(&content)?;
+            // TypeScript 文件 - 使用 swc 编译器
+            let js_code = self.compile_typescript(&content, module_path)?;
             CompiledModule {
                 script: js_code,
                 styles: vec![],
@@ -557,23 +569,23 @@ impl VueProjectCompiler {
                 deps: vec![],
             }
         } else if module_path.ends_with(".scss") || module_path.ends_with(".sass") {
-            // SCSS/SASS 文件 - TODO: 集成 sass 编译器
-            warn!("SCSS/SASS compilation not yet implemented: {}", module_path);
+            // SCSS/SASS 文件 - 使用 grass 编译器
+            let css_code = self.compile_scss(&content, module_path)?;
             CompiledModule {
                 script: format!("// SCSS module: {}\nexport default {{}}", module_path),
                 styles: vec![StyleBlock {
-                    code: content,
+                    code: css_code,
                     scoped: false,
                 }],
                 deps: vec![],
             }
         } else if module_path.ends_with(".less") {
-            // Less 文件 - TODO: 集成 less 编译器
-            warn!("Less compilation not yet implemented: {}", module_path);
+            // Less 文件 - TODO: 等待稳定的 Less 编译器
+            warn!("Less compilation not yet available (waiting for stable rust-less crate): {}", module_path);
             CompiledModule {
                 script: format!("// Less module: {}\nexport default {{}}", module_path),
                 styles: vec![StyleBlock {
-                    code: content,
+                    code: content, // 保留原始内容
                     scoped: false,
                 }],
                 deps: vec![],
@@ -594,37 +606,35 @@ impl VueProjectCompiler {
         Ok(compiled)
     }
 
-    /// TypeScript 转 JavaScript（简化版）
-    /// TODO: 使用 swc 进行完整的 TS 编译
-    fn transpile_typescript(&self, ts_code: &str) -> Result<String> {
-        let mut js_lines = Vec::new();
+    /// 使用 swc 编译 TypeScript
+    fn compile_typescript(&self, ts_code: &str, filename: &str) -> Result<String> {
+        debug!("Compiling TypeScript with swc: {}", filename);
         
-        for line in ts_code.lines() {
-            let trimmed = line.trim();
-            
-            // 跳过纯类型声明
-            if trimmed.starts_with("interface ") || 
-               trimmed.starts_with("type ") ||
-               trimmed.starts_with("declare ") {
-                js_lines.push(format!("// {}", line));
-                continue;
-            }
-            
-            // 移除类型注解（简化处理）
-            let mut js_line = line.to_string();
-            
-            // 移除变量类型注解: let x: number = 1 -> let x = 1
-            // 这里只做简单的处理，完整的需要 AST 解析
-            
-            // 移除 import type
-            if js_line.contains("import type ") {
-                js_line = format!("// {}", js_line);
-            }
-            
-            js_lines.push(js_line);
-        }
+        let result = self.ts_compiler.compile(ts_code, filename)
+            .map_err(|e| anyhow::anyhow!("Failed to compile TypeScript {}: {}", filename, e))?;
         
-        Ok(js_lines.join("\n"))
+        debug!(
+            "TypeScript compiled in {:.2}ms: {} -> {} bytes",
+            result.compile_time_ms,
+            ts_code.len(),
+            result.code.len()
+        );
+        
+        Ok(result.code)
+    }
+
+    /// 使用 grass 编译 SCSS/SASS
+    fn compile_scss(&self, scss_code: &str, filename: &str) -> Result<String> {
+        debug!("Compiling SCSS with grass: {}", filename);
+        
+        // 使用 grass 编译
+        let css = grass::from_string(
+            scss_code.to_string(),
+            &grass::Options::default()
+        ).context(format!("Failed to compile SCSS: {}", filename))?;
+        
+        debug!("SCSS compiled: {} -> {} bytes", scss_code.len(), css.len());
+        Ok(css)
     }
 
     /// 获取编译缓存统计

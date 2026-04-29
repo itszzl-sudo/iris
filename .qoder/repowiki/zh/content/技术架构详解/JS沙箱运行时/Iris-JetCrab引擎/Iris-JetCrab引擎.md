@@ -22,15 +22,18 @@
 - [sfc_compiler.rs](file://crates/iris-jetcrab-engine/src/sfc_compiler.rs)
 - [hmr.rs](file://crates/iris-jetcrab-engine/src/hmr.rs)
 - [engine.rs](file://crates/iris-jetcrab-engine/src/engine.rs)
+- [vue_compiler.rs](file://crates/iris-jetcrab-engine/src/vue_compiler.rs)
+- [project_scanner.rs](file://crates/iris-jetcrab-engine/src/project_scanner.rs)
+- [module_graph.rs](file://crates/iris-jetcrab-engine/src/module_graph.rs)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增WASM API功能模块，包含完整的IrisEngine类实现
-- 新增WASM_API.md完整API参考文档
-- 新增跨平台构建脚本支持（build-wasm-engine.sh和build-wasm-engine.ps1）
-- 新增iris-jetcrab-engine子项目，提供浏览器端Vue SFC编译能力
-- 新增热更新（HMR）支持和模块缓存机制
+- 更新编译流程说明，反映从直接执行entry文件到使用VueProjectCompiler进行完整项目编译的重构
+- 新增VueProjectCompiler详细分析，包括依赖图构建和拓扑排序
+- 更新JetCrabEngine.run()方法实现，展示完整的项目编译执行流程
+- 新增项目扫描器和模块图管理器的功能说明
+- 更新架构图以反映新的编译流程
 
 ## 目录
 1. [简介](#简介)
@@ -49,7 +52,7 @@
 
 Iris-JetCrab引擎是Iris跨平台UI框架中的JavaScript执行引擎，基于JetCrab Chitin引擎构建。该引擎提供了完整的npm包支持、ESM模块系统、Web API兼容层以及**WASM原生支持**，实现了从Vue SFC到JavaScript代码的完整执行链路。
 
-**新增功能**：引擎现已支持WASM导出接口，允许浏览器端直接调用Vue SFC编译、模块解析和热更新功能，为前端开发提供了更高效的工作流程。
+**更新**：引擎现已重构编译流程，从直接执行单个entry文件改为使用VueProjectCompiler进行完整项目编译，支持复杂的依赖关系解析和模块管理。
 
 该引擎的核心目标是在Rust生态系统中提供高性能的JavaScript执行环境，同时保持与现代Web标准的兼容性。通过模块化设计，Iris-JetCrab能够无缝集成到Iris的整体架构中，为开发者提供流畅的开发体验。
 
@@ -85,6 +88,12 @@ K[SFC 编译器]
 L[HMR 管理器]
 M[模块解析器]
 end
+subgraph "项目编译层"
+N[VueProjectCompiler]
+O[ProjectScanner]
+P[ModuleGraph]
+Q[HMRManager]
+end
 A --> E
 A --> F
 A --> G
@@ -93,12 +102,16 @@ A --> I
 J --> K
 J --> L
 J --> M
+N --> O
+N --> P
+N --> Q
 ```
 
 **图表来源**
 - [lib.rs:1-82](file://crates/iris-jetcrab/src/lib.rs#L1-L82)
 - [Cargo.toml:13-36](file://crates/iris-jetcrab/Cargo.toml#L13-L36)
 - [wasm_api.rs:13-47](file://crates/iris-jetcrab-engine/src/wasm_api.rs#L13-L47)
+- [engine.rs:13-15](file://crates/iris-jetcrab-engine/src/engine.rs#L13-L15)
 
 **章节来源**
 - [lib.rs:1-82](file://crates/iris-jetcrab/src/lib.rs#L1-L82)
@@ -169,16 +182,15 @@ D --> H
 E --> H
 F --> H
 G --> H
-subgraph "WASM API 层"
-K[IrisEngine 类]
-L[SFC 编译器]
-M[HMR 管理器]
-N[模块解析器]
+subgraph "项目编译层"
+K[VueProjectCompiler]
+L[ProjectScanner]
+M[ModuleGraph]
+N[HMRManager]
 end
 K --> L
 K --> M
 K --> N
-K --> D
 ```
 
 **图表来源**
@@ -197,40 +209,178 @@ K --> D
 
 ## 详细组件分析
 
-### JetCrabRuntime 类设计
+### JetCrabEngine 类设计
+
+**更新**：JetCrabEngine现在提供完整的Vue项目编译和执行能力，不再直接执行单个entry文件，而是使用VueProjectCompiler进行完整项目编译。
 
 ```mermaid
 classDiagram
-class JetCrabRuntime {
--RuntimeConfig config
--bool initialized
-+new() JetCrabRuntime
-+with_config(config) JetCrabRuntime
-+init() Result
-+eval(code) Result~String~
-+eval_file(path) Result~String~
-+set_global(name, value) Result
-+get_global(name) Result~String~
-+is_initialized() bool
-+config() &RuntimeConfig
-+shutdown() Result
+class JetCrabEngine {
+-EngineConfig config
+-Option~ProjectInfo~ project_info
+-module_graph : ModuleGraph
+-hmr_manager : Option~HMRManager~
+-initialize : bool
+-compilation_result : Option~CompilationResult~
++new() JetCrabEngine
++with_config(config) JetCrabEngine
++initialize() Result
++load_project(path) Result
++run() Result
++set_project_root(path) void
++enable_hmr(enabled) void
++project_info() Option~&ProjectInfo~
++module_graph() &ModuleGraph
++compilation_result() Option~&CompilationResult~
 }
-class RuntimeConfig {
-+bool strict_mode
-+u64 max_execution_time_ms
-+bool enable_source_map
-+usize memory_limit_mb
+class EngineConfig {
+-project_root : PathBuf
+-hmr_enabled : bool
+-debug : bool
+-ignore_patterns : Vec~String~
 }
-JetCrabRuntime --> RuntimeConfig : uses
+class VueProjectCompiler {
+-project_root : PathBuf
+-node_modules_path : PathBuf
+-compiled_cache : HashMap
+-compiling : HashSet
+-compiled : HashSet
+-npm_packages : HashMap
+-ts_compiler : TsCompiler
++new(root) VueProjectCompiler
++compile_project(entry) Result~CompilationResult~
++build_dependency_graph(entry) Result
++topological_sort(graph) Result
++compile_single_module(path) Result
+}
+JetCrabEngine --> EngineConfig : uses
+JetCrabEngine --> VueProjectCompiler : uses
 ```
 
 **图表来源**
-- [runtime.rs:47-202](file://crates/iris-jetcrab/src/runtime.rs#L47-L202)
+- [engine.rs:48-61](file://crates/iris-jetcrab-engine/src/engine.rs#L48-L61)
+- [engine.rs:16-27](file://crates/iris-jetcrab-engine/src/engine.rs#L16-L27)
+- [vue_compiler.rs:51-69](file://crates/iris-jetcrab-engine/src/vue_compiler.rs#L51-L69)
 
-JetCrabRuntime提供了完整的生命周期管理：
-- **初始化阶段**：建立运行时环境，配置安全策略
-- **执行阶段**：安全执行JavaScript代码，管理资源使用
-- **清理阶段**：释放资源，确保系统稳定性
+**更新**：JetCrabEngine.run()方法现在使用VueProjectCompiler进行完整项目编译，包括：
+1. 获取入口文件路径
+2. 创建VueProjectCompiler实例
+3. 调用compile_project()进行完整项目编译
+4. 按编译顺序执行模块
+5. 初始化渲染循环
+
+### VueProjectCompiler 详细分析
+
+**新增**：VueProjectCompiler是新的项目编译核心，提供完整的Vue项目编译能力。
+
+```mermaid
+classDiagram
+class VueProjectCompiler {
+-project_root : PathBuf
+-node_modules_path : PathBuf
+-compiled_cache : HashMap
+-compiling : HashSet
+-compiled : HashSet
+-npm_packages : HashMap
+-ts_compiler : TsCompiler
++new(root) VueProjectCompiler
++compile_project(entry) Result~CompilationResult~
++build_dependency_graph(entry) Result
++topological_sort(graph) Result
++compile_single_module(path) Result
++parse_vue_dependencies(content, path) Result
++parse_js_dependencies(content, path) Result
++extract_imports(script, path) Result
++resolve_npm_package(name) Result
+}
+class CompilationResult {
+-compiled_modules : HashMap
+-npm_packages : HashMap
+-compilation_order : Vec~String~
+-entry_file : String
+-global_styles : Vec~StyleBlock~
+}
+class PackageInfo {
+-name : String
+-version : String
+-main : String
+-module : Option~String~
+-style : Option~String~
+-types : Option~String~
+}
+VueProjectCompiler --> CompilationResult : produces
+VueProjectCompiler --> PackageInfo : manages
+```
+
+**图表来源**
+- [vue_compiler.rs:51-69](file://crates/iris-jetcrab-engine/src/vue_compiler.rs#L51-L69)
+- [vue_compiler.rs:36-49](file://crates/iris-jetcrab-engine/src/vue_compiler.rs#L36-L49)
+- [vue_compiler.rs:19-34](file://crates/iris-jetcrab-engine/src/vue_compiler.rs#L19-L34)
+
+**更新**：VueProjectCompiler的主要功能包括：
+- **依赖图构建**：从入口文件开始递归解析所有依赖
+- **拓扑排序**：确保模块按正确的依赖顺序编译
+- **多格式支持**：支持Vue SFC、TypeScript、SCSS、Less等
+- **npm包解析**：自动解析和编译npm包依赖
+- **缓存机制**：智能缓存编译结果，避免重复编译
+
+### ProjectScanner 项目扫描器
+
+**新增**：ProjectScanner负责扫描和解析Vue项目的目录结构。
+
+```mermaid
+flowchart TD
+A[项目扫描] --> B{查找 index.html}
+B --> |找到| C[记录 index.html 路径]
+B --> |未找到| D[错误处理]
+C --> E{查找 src 目录}
+E --> |找到| F[记录 src 目录路径]
+E --> |未找到| G[错误处理]
+F --> H{查找入口文件}
+H --> |找到| I[记录入口文件路径]
+H --> |未找到| J[错误处理]
+I --> K{查找 package.json}
+K --> |找到| L[记录 package.json 路径]
+K --> |未找到| M[继续]
+L --> N{检测构建工具}
+N --> O[记录构建工具类型]
+O --> P{检测 Vue 版本}
+P --> Q[记录 Vue 版本]
+```
+
+**图表来源**
+- [project_scanner.rs:53-93](file://crates/iris-jetcrab-engine/src/project_scanner.rs#L53-L93)
+
+### ModuleGraph 模块依赖图
+
+**新增**：ModuleGraph管理Vue项目中的模块依赖关系，支持循环依赖检测。
+
+```mermaid
+classDiagram
+class ModuleGraph {
+-modules : HashMap~String, Vec~String~~
++new() ModuleGraph
++add_module(path, deps) void
++detect_cycles() Option~Vec~Vec~String~~~
++topological_sort() Result~Vec~String~, String~
++dfs_detect_cycles(module, visited, stack, path, cycles) void
++dfs_topological_sort(module, visited, stack, result) Result
+}
+```
+
+**图表来源**
+- [module_graph.rs:8-12](file://crates/iris-jetcrab-engine/src/module_graph.rs#L8-L12)
+
+**更新**：ModuleGraph现在支持：
+- **循环依赖检测**：使用DFS算法检测循环依赖
+- **拓扑排序**：确保依赖先于使用者出现
+- **依赖查询**：快速获取模块的依赖列表
+
+**章节来源**
+- [engine.rs:305-370](file://crates/iris-jetcrab-engine/src/engine.rs#L305-L370)
+- [vue_compiler.rs:128-165](file://crates/iris-jetcrab-engine/src/vue_compiler.rs#L128-L165)
+- [project_scanner.rs:41-93](file://crates/iris-jetcrab-engine/src/project_scanner.rs#L41-L93)
+- [module_graph.rs:14-155](file://crates/iris-jetcrab-engine/src/module_graph.rs#L14-L155)
 
 ### ESM 模块加载器
 
@@ -526,6 +676,9 @@ J[Reqwest]
 K[Serde]
 L[WASM Bindgen]
 M[wasm-pack]
+N[swc]
+O[grass]
+P[less-rs]
 end
 G --> A
 G --> B
@@ -540,6 +693,9 @@ H --> G
 H --> I
 H --> L
 H --> M
+H --> N
+H --> O
+H --> P
 ```
 
 **图表来源**
@@ -577,6 +733,12 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - **批处理支持**：支持批量编译多个文件
 - **调试模式**：可选的调试信息，不影响生产性能
 
+### **更新**：VueProjectCompiler性能优化
+- **智能缓存**：编译结果缓存，避免重复编译
+- **增量编译**：支持部分文件更新的增量编译
+- **并行编译**：TypeScript和CSS预处理器支持并行编译
+- **依赖图优化**：使用拓扑排序确保最优编译顺序
+
 ## 故障排除指南
 
 ### 常见问题及解决方案
@@ -605,10 +767,19 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - **症状**：compileSfc或resolveImport返回错误
 - **解决**：检查输入参数格式和文件路径
 
+**问题7：Vue项目编译失败**
+- **症状**：JetCrabEngine.run()返回编译错误
+- **解决**：检查Vue文件语法和依赖路径
+
+**问题8：npm包解析失败**
+- **症状**：VueProjectCompiler无法解析npm包
+- **解决**：确认node_modules目录存在且包已安装
+
 **章节来源**
 - [runtime.rs:108-121](file://crates/iris-jetcrab/src/runtime.rs#L108-L121)
 - [esm.rs:41-57](file://crates/iris-jetcrab/src/esm.rs#L41-L57)
 - [wasm_bridge.rs:132-162](file://crates/iris-jetcrab/src/wasm_bridge.rs#L132-L162)
+- [engine.rs:305-370](file://crates/iris-jetcrab-engine/src/engine.rs#L305-L370)
 
 ## 结论
 
@@ -620,5 +791,11 @@ Iris-JetCrab引擎作为Iris框架的重要组成部分，成功地将JetCrab Ja
 4. **完善的热更新支持**：提供Vue组件的实时开发体验
 5. **跨平台构建支持**：简化WASM模块的部署流程
 6. **优秀的性能表现**：通过缓存和并发优化提升执行效率
+
+**更新**：**重构的编译流程**使Iris引擎能够处理复杂的Vue项目，从单个文件编译升级为完整的项目编译，包括：
+- **完整的依赖解析**：支持Vue SFC、TypeScript、CSS预处理器等多种文件格式
+- **智能缓存机制**：避免重复编译，提升开发效率
+- **拓扑排序优化**：确保模块按正确的依赖顺序编译
+- **npm包支持**：自动解析和编译npm包依赖
 
 **新增的WASM API功能**使Iris引擎能够直接服务于浏览器端的Vue SFC编译需求，为现代Web开发提供了更加灵活和高效的解决方案。随着项目的不断发展，Iris-JetCrab引擎将继续演进，为构建现代化的跨平台应用提供强有力的支持。
