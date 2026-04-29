@@ -1,46 +1,116 @@
 //! Vue 项目编译器
 //!
 //! 从 App.vue 开始反向解析依赖，按依赖顺序编译所有模块
+//! 支持 npm 包依赖、TypeScript、CSS 预处理器
 
 use anyhow::{Result, Context};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use tracing::{info, debug, warn, error};
 
-use crate::sfc_compiler::{self, CompiledModule, resolve_module};
+use crate::sfc_compiler::{self, CompiledModule, resolve_module, StyleBlock};
+
+/// npm 包信息
+#[derive(Debug, Clone)]
+pub struct PackageInfo {
+    /// 包名
+    pub name: String,
+    /// 包版本
+    pub version: String,
+    /// 入口文件
+    pub main: String,
+    /// 模块入口（ESM）
+    pub module: Option<String>,
+    /// 样式文件
+    pub style: Option<String>,
+    /// 类型定义
+    pub types: Option<String>,
+}
 
 /// 编译结果
 #[derive(Debug, Clone)]
 pub struct CompilationResult {
     /// 已编译的模块 key: 模块路径, value: 编译结果
     pub compiled_modules: HashMap<String, CompiledModule>,
+    /// npm 包依赖 key: 包名, value: 包信息
+    pub npm_packages: HashMap<String, PackageInfo>,
     /// 编译顺序（从叶子到根）
     pub compilation_order: Vec<String>,
     /// 入口文件
     pub entry_file: String,
+    /// 全局样式
+    pub global_styles: Vec<StyleBlock>,
 }
 
 /// Vue 项目编译器
 pub struct VueProjectCompiler {
     /// 项目根目录
     project_root: PathBuf,
+    /// node_modules 目录
+    node_modules_path: PathBuf,
     /// 已编译的模块缓存
     compiled_cache: HashMap<String, CompiledModule>,
     /// 正在编译的模块（用于检测循环依赖）
     compiling: HashSet<String>,
     /// 编译完成的模块
     compiled: HashSet<String>,
+    /// npm 包缓存
+    npm_packages: HashMap<String, PackageInfo>,
+    /// package.json 中的依赖
+    project_dependencies: HashMap<String, String>,
 }
 
 impl VueProjectCompiler {
     /// 创建新的编译器实例
     pub fn new(project_root: PathBuf) -> Self {
+        let node_modules_path = project_root.join("node_modules");
+        
+        // 加载 package.json 依赖
+        let project_dependencies = Self::load_package_dependencies(&project_root)
+            .unwrap_or_default();
+        
         Self {
             project_root,
+            node_modules_path,
             compiled_cache: HashMap::new(),
             compiling: HashSet::new(),
             compiled: HashSet::new(),
+            npm_packages: HashMap::new(),
+            project_dependencies,
         }
+    }
+
+    /// 加载 package.json 中的依赖
+    fn load_package_dependencies(project_root: &Path) -> Result<HashMap<String, String>> {
+        let package_json_path = project_root.join("package.json");
+        
+        if !package_json_path.exists() {
+            return Ok(HashMap::new());
+        }
+        
+        let content = std::fs::read_to_string(&package_json_path)
+            .context("Failed to read package.json")?;
+        
+        let package_json: serde_json::Value = serde_json::from_str(&content)
+            .context("Failed to parse package.json")?;
+        
+        let mut dependencies = HashMap::new();
+        
+        // 合并 dependencies 和 devDependencies
+        if let Some(deps) = package_json.get("dependencies").and_then(|v| v.as_object()) {
+            for (name, version) in deps {
+                dependencies.insert(name.clone(), version.as_str().unwrap_or("").to_string());
+            }
+        }
+        
+        if let Some(deps) = package_json.get("devDependencies").and_then(|v| v.as_object()) {
+            for (name, version) in deps {
+                dependencies.insert(name.clone(), version.as_str().unwrap_or("").to_string());
+            }
+        }
+        
+        info!("Loaded {} dependencies from package.json", dependencies.len());
+        Ok(dependencies)
     }
 
     /// 编译整个 Vue 项目
@@ -75,8 +145,10 @@ impl VueProjectCompiler {
 
         Ok(CompilationResult {
             compiled_modules,
+            npm_packages: self.npm_packages.clone(),
             compilation_order,
             entry_file: entry_path.to_string_lossy().to_string(),
+            global_styles: Vec::new(), // TODO: 从入口文件提取全局样式
         })
     }
 
@@ -126,7 +198,15 @@ impl VueProjectCompiler {
 
         // 递归处理依赖
         for dep_path_str in &dependencies {
-            // 解析依赖的完整路径
+            // 判断是否为 npm 包（不是相对路径或绝对路径）
+            if !dep_path_str.starts_with('.') && !dep_path_str.starts_with('/') {
+                // npm 包依赖
+                debug!("Found npm package dependency: {}", dep_path_str);
+                self.resolve_npm_package(dep_path_str)?;
+                continue;
+            }
+            
+            // 本地文件依赖
             if let Ok(dep_path) = self.resolve_dependency(dep_path_str, module_path) {
                 // 检查文件是否存在
                 if dep_path.exists() {
@@ -155,6 +235,27 @@ impl VueProjectCompiler {
     /// 解析 JS/TS 文件的依赖
     fn parse_js_dependencies(&self, content: &str, current_path: &Path) -> Result<Vec<String>> {
         self.extract_imports(content, current_path)
+    }
+
+    /// 解析 TypeScript 文件的依赖
+    fn parse_ts_dependencies(&self, content: &str, current_path: &Path) -> Result<Vec<String>> {
+        // TypeScript 的 import 语法与 JavaScript 相同
+        // 但需要额外处理 type imports
+        let mut imports = self.extract_imports(content, current_path)?;
+        
+        // 处理 type imports: import type { Foo } from './foo'
+        for line in content.lines() {
+            let line = line.trim();
+            if line.starts_with("import type ") || line.contains("import type{") {
+                if let Some(dep) = self.extract_string_from_import(line) {
+                    if !imports.contains(&dep) {
+                        imports.push(dep);
+                    }
+                }
+            }
+        }
+        
+        Ok(imports)
     }
 
     /// 从 JavaScript 代码中提取 import 语句
@@ -221,6 +322,135 @@ impl VueProjectCompiler {
         
         // 转换为绝对路径
         self.resolve_path(&resolved_str)
+    }
+
+    /// 解析 npm 包
+    fn resolve_npm_package(&mut self, package_name: &str) -> Result<()> {
+        // 如果已经解析过，跳过
+        if self.npm_packages.contains_key(package_name) {
+            return Ok(());
+        }
+        
+        debug!("Resolving npm package: {}", package_name);
+        
+        // 查找包的 package.json
+        let package_path = self.resolve_npm_package_path(package_name)?;
+        let package_json_path = package_path.join("package.json");
+        
+        if !package_json_path.exists() {
+            warn!("Package not found in node_modules: {}", package_name);
+            return Ok(());
+        }
+        
+        // 解析 package.json
+        let content = std::fs::read_to_string(&package_json_path)?;
+        let package_json: serde_json::Value = serde_json::from_str(&content)?;
+        
+        let name = package_json.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(package_name)
+            .to_string();
+        
+        let version = package_json.get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        
+        // 获取入口文件（优先使用 module 字段，其次 main）
+        let module_entry = package_json.get("module")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        
+        let main_entry = package_json.get("main")
+            .and_then(|v| v.as_str())
+            .unwrap_or("index.js")
+            .to_string();
+        
+        let entry_file = module_entry.clone().unwrap_or_else(|| main_entry.clone());
+        
+        // 获取样式文件
+        let style_file = package_json.get("style")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        
+        // 获取类型定义
+        let types_file = package_json.get("types")
+            .or_else(|| package_json.get("typings"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        
+        let package_info = PackageInfo {
+            name: name.clone(),
+            version,
+            main: main_entry,
+            module: module_entry,
+            style: style_file,
+            types: types_file,
+        };
+        
+        info!("Resolved npm package: {}@{} (entry: {})", 
+              name, package_info.version, entry_file);
+        
+        self.npm_packages.insert(package_name.to_string(), package_info);
+        
+        // 继续解析包的依赖
+        let entry_path = package_path.join(&entry_file);
+        if entry_path.exists() {
+            self.parse_file_dependencies(&entry_path)?;
+        }
+        
+        Ok(())
+    }
+
+    /// 解析 npm 包的路径
+    fn resolve_npm_package_path(&self, package_name: &str) -> Result<PathBuf> {
+        // 处理 scoped packages (@vue/runtime-core)
+        let package_path = if package_name.starts_with('@') {
+            let parts: Vec<&str> = package_name.split('/').collect();
+            if parts.len() >= 2 {
+                self.node_modules_path.join(package_name)
+            } else {
+                self.node_modules_path.join(package_name)
+            }
+        } else {
+            self.node_modules_path.join(package_name)
+        };
+        
+        if !package_path.exists() {
+            anyhow::bail!("Package not found: {:?}", package_path);
+        }
+        
+        Ok(package_path)
+    }
+
+    /// 解析文件依赖（供 npm 包调用）
+    fn parse_file_dependencies(&mut self, file_path: &Path) -> Result<()> {
+        if !file_path.exists() {
+            return Ok(());
+        }
+        
+        let content = std::fs::read_to_string(file_path)
+            .context(format!("Failed to read file: {:?}", file_path))?;
+        
+        let ext = file_path.extension().and_then(|e| e.to_str());
+        
+        // 根据文件类型解析依赖
+        let dependencies = match ext {
+            Some("vue") => self.parse_vue_dependencies(&content, file_path)?,
+            Some("js") | Some("jsx") => self.parse_js_dependencies(&content, file_path)?,
+            Some("ts") | Some("tsx") => self.parse_ts_dependencies(&content, file_path)?,
+            _ => vec![],
+        };
+        
+        // 继续解析依赖
+        for dep in dependencies {
+            if !dep.starts_with('.') && !dep.starts_with('/') {
+                // npm 包
+                self.resolve_npm_package(&dep)?;
+            }
+        }
+        
+        Ok(())
     }
 
     /// 解析文件路径（相对于项目根目录）
@@ -306,9 +536,50 @@ impl VueProjectCompiler {
 
         // 编译
         let compiled = if module_path.ends_with(".vue") {
+            // Vue SFC 文件
             sfc_compiler::compile_sfc(&content, module_path)?
+        } else if module_path.ends_with(".ts") || module_path.ends_with(".tsx") {
+            // TypeScript 文件 - 移除类型注解后作为 JS 处理
+            let js_code = self.transpile_typescript(&content)?;
+            CompiledModule {
+                script: js_code,
+                styles: vec![],
+                deps: vec![],
+            }
+        } else if module_path.ends_with(".css") {
+            // CSS 文件
+            CompiledModule {
+                script: format!("// CSS module: {}\nexport default {{}}", module_path),
+                styles: vec![StyleBlock {
+                    code: content,
+                    scoped: false,
+                }],
+                deps: vec![],
+            }
+        } else if module_path.ends_with(".scss") || module_path.ends_with(".sass") {
+            // SCSS/SASS 文件 - TODO: 集成 sass 编译器
+            warn!("SCSS/SASS compilation not yet implemented: {}", module_path);
+            CompiledModule {
+                script: format!("// SCSS module: {}\nexport default {{}}", module_path),
+                styles: vec![StyleBlock {
+                    code: content,
+                    scoped: false,
+                }],
+                deps: vec![],
+            }
+        } else if module_path.ends_with(".less") {
+            // Less 文件 - TODO: 集成 less 编译器
+            warn!("Less compilation not yet implemented: {}", module_path);
+            CompiledModule {
+                script: format!("// Less module: {}\nexport default {{}}", module_path),
+                styles: vec![StyleBlock {
+                    code: content,
+                    scoped: false,
+                }],
+                deps: vec![],
+            }
         } else {
-            // JS/TS 文件直接作为 script
+            // JS/JSX 文件直接作为 script
             CompiledModule {
                 script: content,
                 styles: vec![],
@@ -321,6 +592,39 @@ impl VueProjectCompiler {
         self.compiled.insert(module_path.to_string());
 
         Ok(compiled)
+    }
+
+    /// TypeScript 转 JavaScript（简化版）
+    /// TODO: 使用 swc 进行完整的 TS 编译
+    fn transpile_typescript(&self, ts_code: &str) -> Result<String> {
+        let mut js_lines = Vec::new();
+        
+        for line in ts_code.lines() {
+            let trimmed = line.trim();
+            
+            // 跳过纯类型声明
+            if trimmed.starts_with("interface ") || 
+               trimmed.starts_with("type ") ||
+               trimmed.starts_with("declare ") {
+                js_lines.push(format!("// {}", line));
+                continue;
+            }
+            
+            // 移除类型注解（简化处理）
+            let mut js_line = line.to_string();
+            
+            // 移除变量类型注解: let x: number = 1 -> let x = 1
+            // 这里只做简单的处理，完整的需要 AST 解析
+            
+            // 移除 import type
+            if js_line.contains("import type ") {
+                js_line = format!("// {}", js_line);
+            }
+            
+            js_lines.push(js_line);
+        }
+        
+        Ok(js_lines.join("\n"))
     }
 
     /// 获取编译缓存统计

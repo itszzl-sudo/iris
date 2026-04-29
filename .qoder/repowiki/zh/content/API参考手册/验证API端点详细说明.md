@@ -14,6 +14,13 @@
 - [iris-runtime/bin/iris-runtime.js](file://iris-runtime/bin/iris-runtime.js)
 </cite>
 
+## 更新摘要
+**变更内容**
+- 更新验证API响应格式，新增置信度级别、Vue版本、构建工具等详细检测信息
+- 增强项目检测逻辑，支持更精确的项目特征识别
+- 保持向后兼容性，原有API仍可正常工作
+- 新增多种构建工具支持（Vite、Webpack、Nuxt、Quasar等）
+
 ## 目录
 1. [简介](#简介)
 2. [项目结构](#项目结构)
@@ -29,11 +36,14 @@
 
 本文档详细说明了 iris-runtime 项目中的验证 API 端点，这是一个用于验证 Vue 项目目录的 REST API。该端点是 iris-runtime 目录选择功能的核心组件，允许用户实时验证所选目录是否为有效的 Vue 项目。
 
+**更新** 验证API现已返回更详细的检测结果，包括置信度级别、Vue版本、构建工具等信息，同时保持原有API的完全兼容性。
+
 主要功能包括：
 - 实时验证用户选择的目录是否为 Vue 项目
-- 检测项目类型（vite/webpack/其他）
+- 检测项目类型（vite/webpack/nuxt/quasar/其他）
 - 返回详细的验证结果供前端展示
 - 无需重启服务器即可切换项目目录
+- 提供置信度级别的检测准确性评估
 
 ## 项目结构
 
@@ -94,12 +104,29 @@ I --> J
 ```
 
 **响应格式**
-成功响应：
+**更新** 现在返回更详细的检测结果：
+
+成功响应（高置信度）：
 ```json
 {
   "isVueProject": true,
-  "reason": "Vue dependency found",
-  "buildTool": "vite"
+  "confidence": "high",
+  "reason": "Vue 3 dependency found in package.json",
+  "buildTool": "vite",
+  "vueVersion": "3",
+  "entryFile": "src/main.js"
+}
+```
+
+成功响应（中等置信度）：
+```json
+{
+  "isVueProject": true,
+  "confidence": "medium",
+  "reason": "Found 3 .vue file(s)",
+  "buildTool": "webpack",
+  "vueVersion": "2",
+  "entryFile": "main.js"
 }
 ```
 
@@ -107,7 +134,7 @@ I --> J
 ```json
 {
   "isVueProject": false,
-  "reason": "No Vue dependency in package.json"
+  "reason": "No Vue project characteristics detected"
 }
 ```
 
@@ -125,11 +152,13 @@ I --> J
 
 3. **检查 Vue 依赖**
    - 检查生产依赖和开发依赖中的 Vue 相关包
-   - 支持 `vue` 和 `vue3` 两种依赖名称
+   - 支持 `vue`、`vue3`、`vue2` 等多种依赖名称
+   - 自动识别 Vue 版本（2.x 或 3.x）
 
 4. **识别构建工具**
    - 优先检测 Vite（现代构建工具）
    - 次优检测 Webpack（传统构建工具）
+   - 支持 Nuxt、Quasar 等其他框架
    - 未知项目类型标记为 `unknown`
 
 **章节来源**
@@ -155,7 +184,9 @@ Server->>Server : 解析依赖信息
 Server->>Server : 检测Vue依赖
 Server->>FS : 读取package.json内容
 FS-->>Server : 返回JSON数据
-Server->>Frontend : 返回验证结果
+Server->>Server : 分析Vue版本
+Server->>Server : 识别构建工具
+Server->>Frontend : 返回详细验证结果
 Frontend->>Frontend : 显示结果状态
 Frontend->>Client : 成功时自动重定向
 ```
@@ -189,7 +220,9 @@ ParsePackageSuccess --> |是| CheckVue["检查Vue依赖"]
 CheckVue --> CheckVueResult{"找到Vue依赖?"}
 CheckVueResult --> |是| DetectBuildTool["识别构建工具"]
 CheckVueResult --> |否| ReturnNoVue["返回无Vue依赖"]
-DetectBuildTool --> ReturnSuccess["返回验证成功"]
+DetectBuildTool --> DetectVueVersion["检测Vue版本"]
+DetectVueVersion --> FindEntryFile["查找入口文件"]
+FindEntryFile --> ReturnSuccess["返回详细验证成功"]
 Return400 --> End([结束])
 ReturnFail --> End
 ReturnParseError --> End
@@ -210,6 +243,7 @@ stateDiagram-v2
 等待选择 --> 验证中 : 选择目录
 验证中 --> 验证成功 : 成功响应
 验证中 --> 验证失败 : 失败响应
+验证成功 --> 显示详细信息 : 显示置信度级别
 验证成功 --> 自动重定向 : 1.5秒延迟
 自动重定向 --> [*]
 验证失败 --> 等待选择 : 用户重新选择
@@ -226,8 +260,11 @@ stateDiagram-v2
 erDiagram
 VALIDATION_RESULT {
 boolean isVueProject
+string confidence
 string reason
 string buildTool
+string vueVersion
+string entryFile
 }
 REQUEST {
 string path
@@ -364,8 +401,11 @@ TryRead --> |成功| TryParsePackage{尝试解析package.json}
 TryRead --> |失败| ReturnFileError[返回文件错误]
 TryParsePackage --> |成功| CheckDependencies{检查Vue依赖}
 TryParsePackage --> |失败| ReturnParseError[返回解析错误]
-CheckDependencies --> |找到| ReturnSuccess[返回成功]
+CheckDependencies --> |找到| CheckVueVersion{检测Vue版本}
 CheckDependencies --> |未找到| ReturnNoVue[返回无Vue依赖]
+CheckVueVersion --> CheckBuildTool{检测构建工具}
+CheckBuildTool --> |找到| ReturnSuccess[返回详细成功]
+CheckBuildTool --> |未找到| ReturnNoBuildTool[返回未知构建工具]
 ```
 
 **图表来源**
@@ -385,6 +425,7 @@ CheckDependencies --> |未找到| ReturnNoVue[返回无Vue依赖]
 4. **安全防护** - 防止路径遍历攻击和恶意输入
 5. **高性能** - < 10ms响应时间，资源消耗极低
 6. **易于集成** - 标准JSON格式，零依赖实现
+7. **增强的检测能力** - 置信度级别、Vue版本、构建工具等详细信息
 
 ### 技术特点
 - 异步流式请求处理
@@ -392,5 +433,14 @@ CheckDependencies --> |未找到| ReturnNoVue[返回无Vue依赖]
 - 跨域友好设计
 - 类型安全（通过JSON Schema）
 - 最小化依赖和资源使用
+- 支持多种构建工具检测
 
-该验证API为 iris-runtime 的目录选择功能提供了坚实的基础，确保用户能够快速、准确地定位和验证 Vue 项目，从而提升整体开发体验。
+### 新增功能
+**更新** 验证API现已支持以下增强功能：
+- **置信度级别** (`confidence`): `high`、`medium`、`low`、`none`
+- **Vue版本检测** (`vueVersion`): `2`、`3`、`unknown`
+- **构建工具识别** (`buildTool`): `vite`、`webpack`、`nuxt`、`quasar`、`unknown`
+- **入口文件发现** (`entryFile`): 自动查找项目入口文件
+- **详细原因说明** (`reason`): 具体的检测依据和结果说明
+
+该验证API为 iris-runtime 的目录选择功能提供了坚实的基础，确保用户能够快速、准确地定位和验证 Vue 项目，从而提升整体开发体验。新版本的API在保持完全向后兼容的同时，为开发者提供了更丰富的项目信息和更好的用户体验。

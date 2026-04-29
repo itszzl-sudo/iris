@@ -75,7 +75,7 @@ pub use module_graph::ModuleGraph;
 pub use hmr::HMRManager;
 pub use sfc_compiler::{CompiledModule, StyleBlock, compile_sfc, resolve_module};
 pub use wasm_api::IrisEngine;
-pub use vue_compiler::{VueProjectCompiler, CompilationResult};
+pub use vue_compiler::{VueProjectCompiler, CompilationResult, PackageInfo};
 
 /// Iris JetCrab Engine 版本号
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
