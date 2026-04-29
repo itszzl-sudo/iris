@@ -28,11 +28,12 @@
 - [iris-jetcrab-engine/src/wasm_api.rs](file://crates/iris-jetcrab-engine/src/wasm_api.rs)
 - [iris-jetcrab-engine/WASM_API.md](file://crates/iris-jetcrab-engine/WASM_API.md)
 - [IRIS_RUNTIME_ARCHITECTURE_CHANGE.md](file://docs/IRIS_RUNTIME_ARCHITECTURE_CHANGE.md)
+- [iris-engine/src/lib.rs](file://crates/iris-engine/src/lib.rs)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 更新了CLI工具架构：从直接调用Rust引擎改为通过WASM接口调用iris-jetcrab-engine
+- 更新了CLI工具架构：从直接调用Rust引擎改为通过统一WASM接口调用iris-jetcrab-engine
 - 移除了对iris-runtime crate的直接依赖，现在通过iris-jetcrab-engine提供编译和HMR功能
 - 更新了开发服务器实现，现在CLI工具通过WASM接口与新引擎交互
 - 增强了WASM运行时架构的详细描述，包括统一的WASM接口设计

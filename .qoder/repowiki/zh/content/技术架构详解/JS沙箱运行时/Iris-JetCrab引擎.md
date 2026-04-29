@@ -13,9 +13,24 @@
 - [bridge.rs](file://crates/iris-jetcrab/src/bridge.rs)
 - [Cargo.toml](file://crates/iris-jetcrab/Cargo.toml)
 - [ARCHITECTURE.md](file://ARCHITECTURE.md)
+- [wasm_api.rs](file://crates/iris-jetcrab-engine/src/wasm_api.rs)
 - [WASM_API.md](file://crates/iris-jetcrab-engine/WASM_API.md)
 - [build-wasm-engine.sh](file://crates/iris-jetcrab-engine/build-wasm-engine.sh)
+- [build-wasm-engine.ps1](file://crates/iris-jetcrab-engine/build-wasm-engine.ps1)
+- [Cargo.toml](file://crates/iris-jetcrab-engine/Cargo.toml)
+- [lib.rs](file://crates/iris-jetcrab-engine/src/lib.rs)
+- [sfc_compiler.rs](file://crates/iris-jetcrab-engine/src/sfc_compiler.rs)
+- [hmr.rs](file://crates/iris-jetcrab-engine/src/hmr.rs)
+- [engine.rs](file://crates/iris-jetcrab-engine/src/engine.rs)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增WASM API功能模块，包含完整的IrisEngine类实现
+- 新增WASM_API.md完整API参考文档
+- 新增跨平台构建脚本支持（build-wasm-engine.sh和build-wasm-engine.ps1）
+- 新增iris-jetcrab-engine子项目，提供浏览器端Vue SFC编译能力
+- 新增热更新（HMR）支持和模块缓存机制
 
 ## 目录
 1. [简介](#简介)
@@ -23,14 +38,18 @@
 3. [核心组件](#核心组件)
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考虑](#性能考虑)
-8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
+6. [WASM API功能](#wasm-api功能)
+7. [跨平台构建支持](#跨平台构建支持)
+8. [依赖关系分析](#依赖关系分析)
+9. [性能考虑](#性能考虑)
+10. [故障排除指南](#故障排除指南)
+11. [结论](#结论)
 
 ## 简介
 
-Iris-JetCrab引擎是Iris跨平台UI框架中的JavaScript执行引擎，基于JetCrab Chitin引擎构建。该引擎提供了完整的npm包支持、ESM模块系统、Web API兼容层以及WASM原生支持，实现了从Vue SFC到JavaScript代码的完整执行链路。
+Iris-JetCrab引擎是Iris跨平台UI框架中的JavaScript执行引擎，基于JetCrab Chitin引擎构建。该引擎提供了完整的npm包支持、ESM模块系统、Web API兼容层以及**WASM原生支持**，实现了从Vue SFC到JavaScript代码的完整执行链路。
+
+**新增功能**：引擎现已支持WASM导出接口，允许浏览器端直接调用Vue SFC编译、模块解析和热更新功能，为前端开发提供了更高效的工作流程。
 
 该引擎的核心目标是在Rust生态系统中提供高性能的JavaScript执行环境，同时保持与现代Web标准的兼容性。通过模块化设计，Iris-JetCrab能够无缝集成到Iris的整体架构中，为开发者提供流畅的开发体验。
 
@@ -60,16 +79,26 @@ G[iris-layout]
 H[iris-gpu]
 I[iris-sfc]
 end
+subgraph "WASM API 层"
+J[IrisEngine 类]
+K[SFC 编译器]
+L[HMR 管理器]
+M[模块解析器]
+end
 A --> E
 A --> F
 A --> G
 A --> H
 A --> I
+J --> K
+J --> L
+J --> M
 ```
 
 **图表来源**
 - [lib.rs:1-82](file://crates/iris-jetcrab/src/lib.rs#L1-L82)
 - [Cargo.toml:13-36](file://crates/iris-jetcrab/Cargo.toml#L13-L36)
+- [wasm_api.rs:13-47](file://crates/iris-jetcrab-engine/src/wasm_api.rs#L13-L47)
 
 **章节来源**
 - [lib.rs:1-82](file://crates/iris-jetcrab/src/lib.rs#L1-L82)
@@ -140,12 +169,16 @@ D --> H
 E --> H
 F --> H
 G --> H
-subgraph "包管理"
-K[CPM 包管理器]
-L[npm 注册表]
+subgraph "WASM API 层"
+K[IrisEngine 类]
+L[SFC 编译器]
+M[HMR 管理器]
+N[模块解析器]
 end
 K --> L
-K --> F
+K --> M
+K --> N
+K --> D
 ```
 
 **图表来源**
@@ -337,6 +370,138 @@ JsFFIBridge --> WasmLoader : uses
 **章节来源**
 - [wasm_bridge.rs:1-369](file://crates/iris-jetcrab/src/wasm_bridge.rs#L1-L369)
 
+## WASM API功能
+
+**新增**：Iris引擎现已提供完整的WASM导出接口，允许浏览器端直接调用Vue SFC编译、模块解析和热更新功能。
+
+### IrisEngine 类设计
+
+```mermaid
+classDiagram
+class IrisEngine {
+-HashMap~String, CompiledModule~ compiled_modules
+-HMRManager hmr_manager
+-bool debug
++new() IrisEngine
++set_debug(enabled) void
++compile_sfc(source, filename) Result~String~
++resolve_import(import_path, importer) Result~String~
++generate_hmr_patch(old_source, new_source, filename) Result~String~
++get_compiled_module(filename) Result~String~
++clear_cache() void
++get_cache_size() usize
++version() String
+}
+class CompiledModule {
++String script
++Vec~StyleBlock~ styles
++Vec~String~ deps
+}
+class StyleBlock {
++String code
++bool scoped
+}
+class HMRManager {
++HashMap~String, u64~ file_timestamps
++Vec~HMRPatch~ pending_patches
++new() HMRManager
++generate_vue_reload_patch(file_path, content) HMRPatch
++check_file_change(file_path, timestamp) bool
+}
+IrisEngine --> CompiledModule : caches
+IrisEngine --> HMRManager : uses
+CompiledModule --> StyleBlock : contains
+```
+
+**图表来源**
+- [wasm_api.rs:40-191](file://crates/iris-jetcrab-engine/src/wasm_api.rs#L40-L191)
+- [sfc_compiler.rs:9-27](file://crates/iris-jetcrab-engine/src/sfc_compiler.rs#L9-L27)
+- [hmr.rs:34-150](file://crates/iris-jetcrab-engine/src/hmr.rs#L34-L150)
+
+### 核心API方法
+
+IrisEngine类提供了9个核心方法，支持完整的Vue SFC开发工作流：
+
+1. **compileSfc** - 编译Vue SFC文件并返回JSON格式结果
+2. **resolveImport** - 解析模块导入路径
+3. **generateHmrPatch** - 生成热更新补丁
+4. **getCompiledModule** - 获取已编译模块信息
+5. **clearCache** - 清除编译缓存
+6. **getCacheSize** - 获取缓存大小
+7. **setDebug** - 设置调试模式
+8. **version** - 获取引擎版本
+9. **构造函数** - 创建IrisEngine实例
+
+### 编译缓存机制
+
+IrisEngine内置了智能编译缓存系统：
+- 自动缓存编译结果，避免重复编译
+- 支持缓存查询和清理
+- 提供缓存统计功能
+- 支持批量编译优化
+
+### 热更新（HMR）支持
+
+引擎集成了完整的热更新管理器：
+- 监控文件变化并生成相应补丁
+- 支持Vue组件重载和CSS更新
+- 提供补丁队列管理
+- 支持完整页面重载场景
+
+**章节来源**
+- [wasm_api.rs:72-184](file://crates/iris-jetcrab-engine/src/wasm_api.rs#L72-L184)
+- [sfc_compiler.rs:29-82](file://crates/iris-jetcrab-engine/src/sfc_compiler.rs#L29-L82)
+- [hmr.rs:67-150](file://crates/iris-jetcrab-engine/src/hmr.rs#L67-L150)
+
+## 跨平台构建支持
+
+**新增**：引擎提供了完整的跨平台构建支持，包括Windows和Linux/macOS的构建脚本。
+
+### 构建脚本特性
+
+```mermaid
+flowchart TD
+A[构建请求] --> B{选择模式}
+B --> |release| C[发布模式构建]
+B --> |debug| D[调试模式构建]
+C --> E[wasm-pack build --release]
+D --> F[wasm-pack build]
+E --> G[生成优化的WASM文件]
+F --> H[生成包含调试信息的WASM文件]
+G --> I[输出 pkg-engine/ 目录]
+H --> I
+I --> J[iris_jetcrab_engine.js]
+I --> K[iris_jetcrab_engine_bg.wasm]
+I --> L[iris_jetcrab_engine.d.ts]
+I --> M[package.json]
+```
+
+**图表来源**
+- [build-wasm-engine.sh:19-25](file://crates/iris-jetcrab-engine/build-wasm-engine.sh#L19-L25)
+- [build-wasm-engine.ps1:20-26](file://crates/iris-jetcrab-engine/build-wasm-engine.ps1#L20-L26)
+
+### 构建模式对比
+
+| 特性 | Debug模式 | Release模式 |
+|------|-----------|-------------|
+| 编译速度 | 快 | 慢 |
+| 文件大小 | 大 | 最小化 |
+| 调试信息 | 包含 | 移除 |
+| 优化级别 | 无 | LTO优化 |
+| 适用场景 | 开发调试 | 生产部署 |
+
+### 输出文件结构
+
+构建完成后会在`pkg-engine/`目录生成以下文件：
+- `iris_jetcrab_engine.js` - JavaScript绑定文件
+- `iris_jetcrab_engine_bg.wasm` - WASM二进制文件
+- `iris_jetcrab_engine.d.ts` - TypeScript类型定义
+- `package.json` - NPM包配置
+
+**章节来源**
+- [build-wasm-engine.sh:1-52](file://crates/iris-jetcrab-engine/build-wasm-engine.sh#L1-L52)
+- [build-wasm-engine.ps1:1-68](file://crates/iris-jetcrab-engine/build-wasm-engine.ps1#L1-L68)
+
 ## 依赖关系分析
 
 Iris-JetCrab引擎的依赖关系遵循严格的单向依赖原则，确保系统的模块化和可维护性。
@@ -359,6 +524,8 @@ subgraph "外部依赖"
 I[Tokio]
 J[Reqwest]
 K[Serde]
+L[WASM Bindgen]
+M[wasm-pack]
 end
 G --> A
 G --> B
@@ -371,14 +538,18 @@ G --> J
 G --> K
 H --> G
 H --> I
+H --> L
+H --> M
 ```
 
 **图表来源**
 - [Cargo.toml:13-36](file://crates/iris-jetcrab/Cargo.toml#L13-L36)
+- [Cargo.toml:13-48](file://crates/iris-jetcrab-engine/Cargo.toml#L13-L48)
 - [ARCHITECTURE.md:38-43](file://ARCHITECTURE.md#L38-L43)
 
 **章节来源**
 - [Cargo.toml:1-48](file://crates/iris-jetcrab/Cargo.toml#L1-L48)
+- [Cargo.toml:13-48](file://crates/iris-jetcrab-engine/Cargo.toml#L13-L48)
 - [ARCHITECTURE.md:36-43](file://ARCHITECTURE.md#L36-L43)
 
 ## 性能考虑
@@ -400,6 +571,12 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - 并发模块加载和编译
 - 异步HTTP请求处理
 
+### WASM优化
+- **Release模式优化**：启用LTO链接时优化，文件大小最小化
+- **缓存机制**：编译结果自动缓存，避免重复编译
+- **批处理支持**：支持批量编译多个文件
+- **调试模式**：可选的调试信息，不影响生产性能
+
 ## 故障排除指南
 
 ### 常见问题及解决方案
@@ -420,6 +597,14 @@ Iris-JetCrab引擎在设计时充分考虑了性能优化：
 - **症状**：instantiate()返回错误
 - **解决**：确认WASM文件格式正确且导出函数存在
 
+**问题5：WASM构建失败**
+- **症状**：构建脚本报错
+- **解决**：检查wasm-pack安装状态和系统环境
+
+**问题6：IrisEngine方法调用失败**
+- **症状**：compileSfc或resolveImport返回错误
+- **解决**：检查输入参数格式和文件路径
+
 **章节来源**
 - [runtime.rs:108-121](file://crates/iris-jetcrab/src/runtime.rs#L108-L121)
 - [esm.rs:41-57](file://crates/iris-jetcrab/src/esm.rs#L41-L57)
@@ -432,6 +617,8 @@ Iris-JetCrab引擎作为Iris框架的重要组成部分，成功地将JetCrab Ja
 1. **完整的Web API兼容性**：确保JavaScript代码的可移植性
 2. **高效的模块系统**：支持ESM和npm包管理
 3. **强大的WASM互操作能力**：实现Rust与JavaScript的无缝集成
-4. **良好的性能表现**：通过缓存和并发优化提升执行效率
+4. **完善的热更新支持**：提供Vue组件的实时开发体验
+5. **跨平台构建支持**：简化WASM模块的部署流程
+6. **优秀的性能表现**：通过缓存和并发优化提升执行效率
 
-该引擎的设计体现了Iris框架的核心理念：在保证性能的同时提供最佳的开发体验。随着项目的不断发展，Iris-JetCrab引擎将继续演进，为构建现代化的跨平台应用提供强有力的支持。
+**新增的WASM API功能**使Iris引擎能够直接服务于浏览器端的Vue SFC编译需求，为现代Web开发提供了更加灵活和高效的解决方案。随着项目的不断发展，Iris-JetCrab引擎将继续演进，为构建现代化的跨平台应用提供强有力的支持。

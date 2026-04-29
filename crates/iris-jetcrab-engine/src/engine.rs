@@ -10,6 +10,8 @@ use crate::ProjectScanner;
 use crate::ProjectInfo;
 use crate::ModuleGraph;
 use crate::HMRManager;
+use crate::VueProjectCompiler;
+use crate::CompilationResult;
 
 /// 引擎配置
 #[derive(Debug, Clone)]
@@ -54,6 +56,8 @@ pub struct JetCrabEngine {
     hmr_manager: Option<HMRManager>,
     /// 是否已初始化
     initialized: bool,
+    /// 编译结果缓存
+    compilation_result: Option<CompilationResult>,
 }
 
 impl JetCrabEngine {
@@ -65,6 +69,7 @@ impl JetCrabEngine {
             module_graph: ModuleGraph::new(),
             hmr_manager: None,
             initialized: false,
+            compilation_result: None,
         }
     }
 
@@ -76,6 +81,7 @@ impl JetCrabEngine {
             module_graph: ModuleGraph::new(),
             hmr_manager: None,
             initialized: false,
+            compilation_result: None,
         }
     }
 
@@ -314,17 +320,48 @@ impl JetCrabEngine {
         let entry_file = &self.project_info.as_ref().unwrap().entry_file;
         info!("Entry file: {:?}", entry_file);
 
-        // 2. 创建 JetCrab 运行时
+        // 2. 使用 VueProjectCompiler 编译整个项目
+        // 忽略 package.json 中的构建工具，直接处理 Vue 依赖
+        let project_root = self.config.project_root.clone();
+        let mut compiler = VueProjectCompiler::new(project_root);
+        
+        let entry_relative = entry_file
+            .strip_prefix(&self.config.project_root)
+            .unwrap_or(entry_file)
+            .to_string_lossy()
+            .to_string();
+        
+        info!("Compiling project with entry: {}", entry_relative);
+        
+        let compilation_result = compiler.compile_project(&entry_relative).await?;
+        
+        info!(
+            "Compilation complete: {} modules in order: {:?}",
+            compilation_result.compiled_modules.len(),
+            compilation_result.compilation_order
+        );
+        
+        // 保存编译结果
+        self.compilation_result = Some(compilation_result);
+
+        // 3. 创建 JetCrab 运行时
         let mut runtime = iris_jetcrab::JetCrabRuntime::new();
         runtime.init().map_err(|e| anyhow::anyhow!("Failed to init runtime: {}", e))?;
 
-        // 3. 加载并执行入口文件
-        let entry_content = std::fs::read_to_string(entry_file)
-            .context("Failed to read entry file")?;
+        // 4. 按编译顺序执行模块（从叶子到根）
+        if let Some(ref result) = self.compilation_result {
+            for module_path in &result.compilation_order {
+                if let Some(compiled) = result.compiled_modules.get(module_path) {
+                    debug!("Executing module: {}", module_path);
+                    
+                    // 执行 JavaScript 代码
+                    runtime.eval(&compiled.script)
+                        .map_err(|e| anyhow::anyhow!("Failed to eval {}: {}", module_path, e))?;
+                }
+            }
+        }
 
-        runtime.eval(&entry_content).map_err(|e| anyhow::anyhow!("Failed to eval entry file: {}", e))?;
-
-        // 4. 启动渲染循环（使用 iris-gpu）
+        // 5. 启动渲染循环（使用 iris-gpu）
         // TODO: 实现渲染循环
 
         info!("Vue application started successfully");
@@ -350,6 +387,11 @@ impl JetCrabEngine {
     /// 获取模块依赖图
     pub fn module_graph(&self) -> &ModuleGraph {
         &self.module_graph
+    }
+
+    /// 获取编译结果
+    pub fn compilation_result(&self) -> Option<&CompilationResult> {
+        self.compilation_result.as_ref()
     }
 }
 
