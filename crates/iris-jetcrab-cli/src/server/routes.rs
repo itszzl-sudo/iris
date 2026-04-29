@@ -8,12 +8,13 @@ use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum::http::{StatusCode, header};
 use serde_json::json;
 use std::sync::Arc;
+use std::collections::HashMap;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
 use futures_util::SinkExt;
 use tracing::{info, debug, warn};
 use crate::server::compiler_cache::CompilerCache;
-use crate::server::hmr::{HMRManager, WebSocketManager};
+use crate::server::hmr::{WebSocketManager, HmrEvent};
 use crate::utils;
 use anyhow::Result;
 
@@ -278,16 +279,208 @@ fn generate_index_html(project_root: &std::path::PathBuf) -> String {
         console.log('🦀 Iris JetCrab Runtime');
         console.log('📦 Compilation: On-demand');
         
-        // 加载入口模块
+        // 依赖问题检查 banner
+        let depsCheckDone = false;
+        
+        async function checkDependencyIssues() {
+            if (localStorage.getItem('iris_deps_dismissed') === 'true') {
+                return false;
+            }
+            try {
+                const res = await fetch('/api/dependency-issues');
+                const data = await res.json();
+                if (data.has_issues) {
+                    return data;
+                }
+                return false;
+            } catch (e) {
+                console.warn('[Iris] Dependency check failed:', e);
+                return false;
+            }
+        }
+        
+        // 显示依赖问题 banner
+        function showDepsBanner(data) {
+            const banner = document.createElement('div');
+            banner.id = 'iris-deps-banner';
+            banner.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 99999;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: #fff;
+                padding: 10px 16px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                font-size: 14px;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+            `;
+            
+            const errors = data.issues.filter(i => i.severity === 'error').length;
+            const warnings = data.issues.filter(i => i.severity === 'warning').length;
+            
+            banner.innerHTML = `
+                <span>🛠️ 检测到 <strong>${data.issues.length}</strong> 个依赖问题（${errors} 个错误，${warnings} 个警告）</span>
+                <div>
+                    <a href="/resolve.html" style="color:#fff;background:rgba(255,255,255,0.2);padding:4px 14px;border-radius:4px;text-decoration:none;font-size:13px;margin-right:8px;">查看详情并修复</a>
+                    <button onclick="dismissDepsBanner()" style="background:none;border:none;color:rgba(255,255,255,0.8);cursor:pointer;font-size:18px;">✕</button>
+                </div>
+            `;
+            document.body.appendChild(banner);
+            
+            // 调整 app 顶部边距
+            if (appContainer) {
+                appContainer.style.marginTop = '44px';
+            }
+            
+            depsCheckDone = true;
+        }
+        
+        window.dismissDepsBanner = function() {
+            const banner = document.getElementById('iris-deps-banner');
+            if (banner) {
+                banner.style.display = 'none';
+            }
+            if (appContainer) {
+                appContainer.style.marginTop = '0';
+            }
+            localStorage.setItem('iris_deps_dismissed', 'true');
+        };
+        
+        // HMR WebSocket 客户端
+        let hmrConnected = false;
+        let hmrWs = null;
+        let moduleCacheTimestamp = Date.now();
+        
+        function connectHMR() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/@hmr`;
+            
+            try {
+                hmrWs = new WebSocket(wsUrl);
+                
+                hmrWs.onopen = () => {
+                    console.log('[HMR] WebSocket connected');
+                    hmrConnected = true;
+                };
+                
+                hmrWs.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('[HMR] Event:', data.type);
+                        
+                        if (data.type === 'file-changed') {
+                            console.log('[HMR] File changed, waiting for rebuild...');
+                        } else if (data.type === 'rebuild-complete') {
+                            console.log(`[HMR] Rebuild completed in ${data.duration_ms}ms`);
+                            // 更新缓存时间戳，使下次 import 使用新 URL
+                            moduleCacheTimestamp = Date.now();
+                            // 重新加载应用
+                            reloadApp();
+                        } else if (data.type === 'compile-error') {
+                            console.error('[HMR] Compile error:', data.message);
+                        }
+                    } catch (e) {
+                        console.warn('[HMR] Failed to parse message:', e);
+                    }
+                };
+                
+                hmrWs.onclose = () => {
+                    console.log('[HMR] WebSocket disconnected, retrying in 3s...');
+                    hmrConnected = false;
+                    hmrWs = null;
+                    setTimeout(connectHMR, 3000);
+                };
+                
+                hmrWs.onerror = (err) => {
+                    console.warn('[HMR] WebSocket error:', err);
+                };
+            } catch (e) {
+                console.warn('[HMR] Connection failed:', e);
+                setTimeout(connectHMR, 3000);
+            }
+        }
+        
+        // 当前 app 的挂载点
+        let appContainer = document.getElementById('app');
+        
+        // 清理旧的 app 实例
+        function cleanupApp() {
+            // 移除所有之前注入的 style
+            document.querySelectorAll('style[data-iris-hmr]').forEach(el => el.remove());
+            
+            // 清空 app 容器
+            if (appContainer) {
+                appContainer.innerHTML = '';
+            }
+            
+            // 从 window 上清除 Vue app 实例
+            delete window.__iris_app;
+        }
+        
+        // 重新加载应用（HMR 热替换）
+        async function reloadApp() {
+            try {
+                cleanupApp();
+                
+                // 使用动态 import 加载带缓存失效参数的模块
+                const cacheBuster = `?t=${moduleCacheTimestamp}`;
+                const moduleUrl = `/src/main.ts${cacheBuster}`;
+                
+                // 通过 fetch 获取新编译的代码
+                const response = await fetch(moduleUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                let jsCode = await response.text();
+                
+                console.log('[HMR] Module re-fetched, executing...');
+                console.log('✅ Entry module loaded');
+                console.log('📝 Script length:', jsCode.length);
+                
+                // 移除旧 script 标签（如果存在）
+                const oldScript = document.getElementById('iris-app-script');
+                if (oldScript) {
+                    oldScript.remove();
+                }
+                
+                // 创建新的 script 标签执行
+                const scriptEl = document.createElement('script');
+                scriptEl.id = 'iris-app-script';
+                scriptEl.type = 'module';
+                scriptEl.textContent = jsCode;
+                document.body.appendChild(scriptEl);
+                
+                console.log('[HMR] App reloaded successfully');
+            } catch (error) {
+                console.error('[HMR] Failed to reload app:', error);
+            }
+        }
+        
+        // 首次加载应用
         async function loadApp() {
             try {
-                // 请求编译入口文件（使用 /src/ 路径）
+                // 连接 HMR WebSocket
+                connectHMR();
+                
+                // 检查依赖问题
+                checkDependencyIssues().then(data => {
+                    if (data) {
+                        showDepsBanner(data);
+                    }
+                });
+                
+                // 请求编译入口文件
                 const response = await fetch('/src/main.ts');
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
-                // 直接获取 JavaScript 代码并执行
                 const jsCode = await response.text();
                 
                 console.log('✅ Entry module loaded');
@@ -305,6 +498,733 @@ fn generate_index_html(project_root: &std::path::PathBuf) -> String {
         }
         
         loadApp();
+    </script>
+</body>
+</html>"#.to_string()
+}
+
+/// 依赖问题扫描 API 处理器
+/// 
+/// 路由: GET /api/dependency-issues
+pub async fn dependency_issues_handler(
+    State(state): State<ServerState>,
+) -> Json<serde_json::Value> {
+    let (cache, _enable_hmr, _ws_manager): (Arc<tokio::sync::Mutex<CompilerCache>>, bool, Arc<WebSocketManager>) = state;
+    let cache_lock = cache.lock().await;
+    let project_root = &cache_lock.project_root;
+
+    let scanner = iris_jetcrab_engine::DependencyScanner::new(project_root.clone());
+    let scan_result = scanner.scan();
+
+    let issues_json: Vec<serde_json::Value> = scan_result.issues.iter().map(|issue| {
+        json!({
+            "issue_type": issue.issue_type,
+            "import_path": issue.import_path,
+            "source_file": issue.source_file,
+            "source_line": issue.source_line,
+            "description": issue.description,
+            "solution": issue.solution,
+            "severity": issue.severity,
+            "can_auto_fix": issue.can_auto_fix,
+        })
+    }).collect();
+
+    Json(json!({
+        "issues": issues_json,
+        "declared_packages": scan_result.declared_packages,
+        "installed_packages": scan_result.installed_packages,
+        "has_node_modules": scan_result.has_node_modules,
+        "source_file_count": scan_result.source_file_count,
+        "has_issues": !scan_result.issues.is_empty(),
+        "fixable_count": scan_result.issues.iter().filter(|i| i.can_auto_fix).count(),
+        "iris_resolved": scan_result.iris_resolved,
+    }))
+}
+
+/// 依赖问题解决页面处理器
+/// 
+/// 路由: GET /resolve.html
+pub async fn resolve_page_handler() -> Html<String> {
+    Html(generate_resolve_page())
+}
+
+/// 自动解决依赖问题处理器
+/// 
+/// 路由: POST /api/resolve-dependencies
+pub async fn resolve_dependencies_handler(
+    State(state): State<ServerState>,
+) -> Json<serde_json::Value> {
+    let (cache, _enable_hmr, ws_manager): (Arc<tokio::sync::Mutex<CompilerCache>>, bool, Arc<WebSocketManager>) = state;
+    let project_root = {
+        let cache_lock = cache.lock().await;
+        cache_lock.project_root.clone()
+    };
+
+    // 创建扫描器并找到需要下载的包
+    let scanner = iris_jetcrab_engine::DependencyScanner::new(project_root.clone());
+    let uninstalled_packages = scanner.find_uninstalled_npm_packages();
+    
+    if uninstalled_packages.is_empty() {
+        info!("No uninstalled npm packages found");
+        return Json(json!({
+            "status": "skipped",
+            "message": "没有需要下载的 npm 包",
+            "downloaded": [],
+        }));
+    }
+
+    info!("Found {} uninstalled npm packages", uninstalled_packages.len());
+
+    // 广播开始事件
+    ws_manager.broadcast(HmrEvent::NpmDownload {
+        package: uninstalled_packages[0].clone(),
+        version: String::new(),
+        progress: 0,
+        status: "starting".to_string(),
+        error: None,
+    });
+
+    // 在后台任务中执行下载
+    let ws_manager_clone = ws_manager.clone();
+    let ws_manager_for_download = ws_manager.clone();
+    let packages_clone = uninstalled_packages.clone();
+    let project_root_clone = project_root.clone();
+
+    tokio::spawn(async move {
+        let node_modules = project_root_clone.join("node_modules");
+        let downloader = iris_jetcrab_engine::NpmDownloader::new(node_modules.clone())
+            .with_progress_callback(move |pkg, ver, progress, status| {
+                ws_manager_for_download.broadcast(HmrEvent::NpmDownload {
+                    package: pkg.to_string(),
+                    version: ver.to_string(),
+                    progress,
+                    status: status.to_string(),
+                    error: None,
+                });
+            });
+
+        let mut downloaded_versions = HashMap::new();
+
+        for pkg in &packages_clone {
+            info!("Downloading npm package: {}", pkg);
+            match downloader.download_and_install(pkg, None) {
+                Ok(path) => {
+                    info!("Successfully downloaded {} to {:?}", pkg, path);
+                    // 读取实际安装的版本
+                    let pkg_json_path = path.join("package.json");
+                    if pkg_json_path.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&pkg_json_path) {
+                            if let Ok(pkg_json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(ver) = pkg_json.get("version").and_then(|v| v.as_str()) {
+                                    downloaded_versions.insert(pkg.clone(), ver.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to download {}: {}", pkg, e);
+                    ws_manager_clone.broadcast(HmrEvent::NpmDownload {
+                        package: pkg.clone(),
+                        version: String::new(),
+                        progress: 0,
+                        status: "error".to_string(),
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+        }
+
+        // 写入 irisResolved 到 package.json
+        if !downloaded_versions.is_empty() {
+            info!("Writing {} resolved versions to package.json irisResolved", downloaded_versions.len());
+            ws_manager_clone.broadcast(HmrEvent::NpmDownload {
+                package: "irisResolved".to_string(),
+                version: String::new(),
+                progress: 0,
+                status: "writing_iris_resolved".to_string(),
+                error: None,
+            });
+
+            let scanner = iris_jetcrab_engine::DependencyScanner::new(project_root_clone.clone());
+            match scanner.write_iris_resolved(downloaded_versions) {
+                Ok(()) => {
+                    info!("Successfully updated package.json irisResolved");
+                }
+                Err(e) => {
+                    warn!("Failed to write irisResolved: {}", e);
+                    ws_manager_clone.broadcast(HmrEvent::NpmDownload {
+                        package: "irisResolved".to_string(),
+                        version: String::new(),
+                        progress: 0,
+                        status: "error".to_string(),
+                        error: Some(format!("写入 irisResolved 失败: {}", e)),
+                    });
+                }
+            }
+        }
+
+        // 下载完成，广播完成事件
+        info!("All downloads completed");
+        ws_manager_clone.broadcast(HmrEvent::RebuildComplete {
+            modules_count: packages_clone.len(),
+            duration_ms: 0,
+        });
+    });
+
+    Json(json!({
+        "status": "started",
+        "message": format!("开始下载 {} 个 npm 包，请查看 WebSocket 进度", uninstalled_packages.len()),
+        "downloading": uninstalled_packages,
+    }))
+}
+
+/// 生成依赖问题解决页面 HTML
+fn generate_resolve_page() -> String {
+    r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iris Runtime - 依赖问题解决</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 28px;
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        .header p {
+            color: rgba(255,255,255,0.85);
+            font-size: 16px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            color: #444;
+        }
+        .card h2 .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+        .badge-error { background: #fee2e2; color: #dc2626; }
+        .badge-warning { background: #fef3c7; color: #d97706; }
+        .badge-success { background: #dcfce7; color: #16a34a; }
+        .badge-info { background: #e0f2fe; color: #0284c7; }
+        
+        .issue-item {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: border-color 0.2s;
+        }
+        .issue-item:last-child { margin-bottom: 0; }
+        .issue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .issue-title {
+            font-weight: 600;
+            font-size: 15px;
+            color: #1f2937;
+        }
+        .issue-source {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        .issue-source code {
+            background: #f3f4f6;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .issue-body {
+            margin-top: 8px;
+        }
+        .issue-desc {
+            font-size: 14px;
+            color: #4b5563;
+            margin-bottom: 8px;
+        }
+        .issue-solution {
+            font-size: 13px;
+            color: #059669;
+            background: #f0fdf4;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-primary {
+            background: #6366f1;
+            color: #fff;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #4f46e5;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+        }
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+        .btn-success {
+            background: #16a34a;
+            color: #fff;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: #15803d;
+        }
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 24px;
+        }
+        
+        /* 进度条 */
+        .progress-container {
+            display: none;
+            margin-top: 16px;
+        }
+        .progress-container.active { display: block; }
+        .progress-bar-bg {
+            background: #e5e7eb;
+            border-radius: 8px;
+            height: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            border-radius: 8px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 8px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        .progress-status {
+            text-align: center;
+            margin-top: 4px;
+            font-size: 13px;
+            color: #9ca3af;
+        }
+        
+        /* 日志 */
+        .log {
+            display: none;
+            background: #1f2937;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Fira Code', monospace;
+            font-size: 13px;
+            color: #d1d5db;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 12px;
+            line-height: 1.6;
+        }
+        .log.active { display: block; }
+        .log .log-info { color: #60a5fa; }
+        .log .log-success { color: #34d399; }
+        .log .log-error { color: #f87171; }
+        .log .log-warn { color: #fbbf24; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state p { font-size: 16px; }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(99,102,241,0.3);
+            border-radius: 50%;
+            border-top-color: #6366f1;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .severity-error { border-left: 4px solid #ef4444; }
+        .severity-warning { border-left: 4px solid #f59e0b; }
+        .severity-info { border-left: 4px solid #3b82f6; }
+
+        .skip-link {
+            display: inline-block;
+            margin-top: 16px;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .skip-link:hover { color: #fff; }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .summary-item {
+            text-align: center;
+            padding: 12px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+        .summary-item .num {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        .summary-item .label {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        
+        .resolved-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .resolved-tag {
+            display: inline-block;
+            padding: 3px 10px;
+            background: #dcfce7;
+            color: #16a34a;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .iris-resolved-section {
+            margin-bottom: 16px;
+            padding: 12px;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛠️ Iris Runtime 依赖管理</h1>
+            <p>扫描项目中的依赖问题，并提供一键修复方案</p>
+        </div>
+
+        <div class="card" id="scanning-card">
+            <div class="empty-state" id="loading-state">
+                <div class="loading-spinner"></div>
+                <p>正在扫描项目依赖...</p>
+            </div>
+            <div class="empty-state" id="empty-state" style="display:none;">
+                <div class="icon">✅</div>
+                <p>项目依赖检查通过，没有发现需要处理的问题</p>
+                <button class="btn btn-primary" style="margin-top:16px;" onclick="window.location.href='/'">返回应用</button>
+            </div>
+            <div id="issues-container" style="display:none;">
+                <h2>
+                    发现的问题
+                    <span class="badge badge-error" id="issue-count">0</span>
+                </h2>
+                
+                <div class="summary-grid" id="summary-grid"></div>
+                
+                <div id="iris-resolved-section" class="iris-resolved-section" style="display:none;">
+                    <h3 style="font-size:14px;margin-bottom:8px;color:#059669;">✅ 已由 iris 解析的软件包 (记录在 package.json 的 irisResolved 字段)</h3>
+                    <div id="iris-resolved-list" class="resolved-list"></div>
+                </div>
+                
+                <div id="issues-list"></div>
+                
+                <div class="actions">
+                    <button class="btn btn-primary" id="fix-btn" onclick="startFix()">
+                        🚀 一键修复依赖问题
+                    </button>
+                    <button class="btn btn-secondary" onclick="skipResolve()">
+                        跳过，继续浏览
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="progress-card" style="display:none;">
+            <h2>📦 正在处理依赖</h2>
+            <div class="progress-container active">
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-text" id="progress-text">准备中...</div>
+                <div class="progress-status" id="progress-status"></div>
+            </div>
+            <div class="log active" id="log"></div>
+            <div class="actions" id="post-fix-actions" style="display:none;">
+                <button class="btn btn-success" onclick="reloadApp()">
+                    ✅ 重新加载应用
+                </button>
+            </div>
+        </div>
+
+        <div style="text-align:center;">
+            <a class="skip-link" href="/" onclick="dismissIssues()">暂不处理，直接进入应用 →</a>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let fixComplete = false;
+
+        // 连接 HMR WebSocket
+        function connectWS() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/@hmr`);
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'npm-download') {
+                        updateProgress(data);
+                    } else if (data.type === 'rebuild-complete') {
+                        fixComplete = true;
+                        document.getElementById('progress-text').textContent = '✅ 所有依赖已处理完成！';
+                        document.getElementById('progress-status').textContent = '';
+                        document.getElementById('post-fix-actions').style.display = 'flex';
+                        addLog('success', '所有依赖处理完成，可以重新加载应用了');
+                    }
+                } catch(e) {}
+            };
+        }
+
+        // 更新进度
+        function updateProgress(data) {
+            const fill = document.getElementById('progress-fill');
+            const text = document.getElementById('progress-text');
+            const status = document.getElementById('progress-status');
+            
+            fill.style.width = data.progress + '%';
+            
+            if (data.status === 'resolving') {
+                text.textContent = `🔍 正在解析 ${data.package} 的版本信息...`;
+            } else if (data.status === 'downloading') {
+                text.textContent = `📥 正在下载 ${data.package}@${data.version} (${data.progress}%)`;
+            } else if (data.status === 'extracting') {
+                text.textContent = `📦 正在解压 ${data.package}...`;
+            } else if (data.status === 'installed') {
+                text.textContent = `✅ ${data.package}@${data.version} 安装完成`;
+                addLog('success', `${data.package}@${data.version} 安装完成`);
+            } else if (data.status === 'writing_iris_resolved') {
+                text.textContent = `📝 正在将已解析版本写入 package.json 的 irisResolved 字段...`;
+                addLog('info', '正在更新 package.json...');
+            } else if (data.status === 'error') {
+                text.textContent = `❌ ${data.package} 下载失败`;
+                status.textContent = data.error || '未知错误';
+                addLog('error', `${data.package} 下载失败: ${data.error || '未知错误'}`);
+            } else if (data.status === 'starting') {
+                addLog('info', `开始处理依赖...`);
+            }
+            
+            if (data.status !== 'error') {
+                status.textContent = `${data.package}@${data.version} - ${data.status}`;
+            }
+        }
+
+        // 添加日志
+        function addLog(level, message) {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-' + level;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // 开始修复
+        function startFix() {
+            document.getElementById('fix-btn').disabled = true;
+            document.getElementById('fix-btn').textContent = '⏳ 处理中...';
+            document.getElementById('progress-card').style.display = 'block';
+            document.getElementById('progress-card').scrollIntoView({ behavior: 'smooth' });
+            
+            connectWS();
+            
+            fetch('/api/resolve-dependencies', { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    addLog('info', data.message);
+                })
+                .catch(err => {
+                    addLog('error', '请求失败: ' + err);
+                });
+        }
+
+        // 跳过
+        function skipResolve() {
+            dismissIssues();
+            window.location.href = '/';
+        }
+
+        // 忽略检查
+        function dismissIssues() {
+            localStorage.setItem('iris_deps_dismissed', 'true');
+        }
+
+        // 重新加载应用
+        function reloadApp() {
+            window.location.href = '/';
+        }
+
+        // 加载扫描结果
+        async function loadResults() {
+            try {
+                const res = await fetch('/api/dependency-issues');
+                const data = await res.json();
+                
+                document.getElementById('loading-state').style.display = 'none';
+                
+                if (!data.has_issues) {
+                    document.getElementById('empty-state').style.display = 'block';
+                    return;
+                }
+                
+                document.getElementById('issues-container').style.display = 'block';
+                
+                // 统计摘要
+                let errors = 0, warnings = 0, fixable = 0;
+                data.issues.forEach(i => {
+                    if (i.severity === 'error') errors++;
+                    else if (i.severity === 'warning') warnings++;
+                    if (i.can_auto_fix) fixable++;
+                });
+                
+                document.getElementById('issue-count').textContent = data.issues.length;
+                
+                document.getElementById('summary-grid').innerHTML = `
+                    <div class="summary-item">
+                        <div class="num">${data.issues.length}</div>
+                        <div class="label">问题总数</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="num" style="color:#dc2626;">${errors}</div>
+                        <div class="label">错误</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="num" style="color:#d97706;">${warnings}</div>
+                        <div class="label">警告</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="num" style="color:#16a34a;">${fixable}</div>
+                        <div class="label">可自动修复</div>
+                    </div>
+                `;
+                
+                // 显示 irisResolved 中已有的解析记录
+                const irisResolved = data.iris_resolved || {};
+                const resolvedKeys = Object.keys(irisResolved);
+                if (resolvedKeys.length > 0) {
+                    document.getElementById('iris-resolved-section').style.display = 'block';
+                    document.getElementById('iris-resolved-list').innerHTML = resolvedKeys.map(key =>
+                        `<span class="resolved-tag">${key}@${irisResolved[key]}</span>`
+                    ).join('');
+                }
+                
+                // 渲染问题列表
+                const list = document.getElementById('issues-list');
+                list.innerHTML = data.issues.map(i => `
+                    <div class="issue-item severity-${i.severity}">
+                        <div class="issue-header">
+                            <div>
+                                <div class="issue-title">
+                                    ${i.severity === 'error' ? '🔴' : i.severity === 'warning' ? '🟡' : '🔵'}
+                                    ${i.import_path}
+                                    <span class="badge badge-${i.severity}">${i.severity}</span>
+                                    ${i.can_auto_fix ? '<span class="badge badge-success">可自动修复</span>' : ''}
+                                </div>
+                                <div class="issue-source">
+                                    文件: <code>${i.source_file}</code>
+                                    ${i.source_line ? `行号: <code>${i.source_line}</code>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="issue-body">
+                            <div class="issue-desc">${i.description}</div>
+                            <div class="issue-solution">💡 ${i.solution}</div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // 如果没有可自动修复的问题，禁用按钮
+                if (fixable === 0) {
+                    document.getElementById('fix-btn').disabled = true;
+                    document.getElementById('fix-btn').textContent = '无需自动修复';
+                }
+                
+            } catch (err) {
+                document.getElementById('loading-state').innerHTML = `
+                    <div class="icon">❌</div>
+                    <p>扫描失败: ${err.message}</p>
+                    <button class="btn btn-primary" style="margin-top:12px;" onclick="location.reload()">重试</button>
+                `;
+            }
+        }
+
+        loadResults();
     </script>
 </body>
 </html>"#.to_string()
@@ -516,6 +1436,7 @@ pub async fn source_file_handler(
             for style in &module.styles {
                 js_code.push_str("\n\n/* Injected Styles */\n");
                 js_code.push_str("const style = document.createElement('style');\n");
+                js_code.push_str("style.setAttribute('data-iris-hmr', '');\n");
                 js_code.push_str("style.textContent = `");
                 js_code.push_str(&style.code.replace('`', "\\`"));
                 js_code.push_str("`;\n");

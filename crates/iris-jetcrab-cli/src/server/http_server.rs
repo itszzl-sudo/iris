@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use axum::{
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use tower_http::cors::CorsLayer;
@@ -72,6 +72,12 @@ pub async fn start(root: String, port: u16, open: bool, enable_hmr: bool, debug:
         .route("/assets/*path", get(routes::static_handler))
         // 项目信息 API
         .route("/api/project-info", get(routes::project_info_handler))
+        // 依赖问题扫描 API
+        .route("/api/dependency-issues", get(routes::dependency_issues_handler))
+        // 依赖问题解决 API
+        .route("/api/resolve-dependencies", post(routes::resolve_dependencies_handler))
+        // 依赖问题解决页面
+        .route("/resolve.html", get(routes::resolve_page_handler))
         // HMR WebSocket
         .route("/@hmr", get(routes::hmr_handler))
         .with_state((cache, enable_hmr, ws_manager));

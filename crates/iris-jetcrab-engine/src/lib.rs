@@ -67,6 +67,7 @@ pub mod wasm_api;
 pub mod vue_compiler;
 pub mod dependency_tree;
 pub mod npm_downloader;
+pub mod dependency_scanner;
 
 // 重新导出常用类型
 pub use engine::JetCrabEngine;
@@ -80,6 +81,7 @@ pub use wasm_api::IrisEngine;
 pub use vue_compiler::{VueProjectCompiler, CompilationResult, PackageInfo};
 pub use dependency_tree::{DependencyTree, DependencyInfo, ChangedDependency, ChangeType};
 pub use npm_downloader::NpmDownloader;
+pub use dependency_scanner::{DependencyScanner, DependencyIssue, IssueType, ScanResult};
 
 /// Iris JetCrab Engine 版本号
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

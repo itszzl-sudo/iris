@@ -9,7 +9,7 @@
       <div class="card">
         <h2>Features</h2>
         <ul>
-          <li>Rust + WebGPU Rendering</li>
+          <li>Rust + WebGPU Rendering aa</li>
           <li>Vue 3 SFC Support</li>
           <li>GPU Hardware Acceleration</li>
           <li>Hot Module Replacement</li>
