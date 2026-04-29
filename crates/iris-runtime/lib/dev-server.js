@@ -7,8 +7,8 @@
 import chokidar from 'chokidar';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
-import { readFileSync, statSync, existsSync } from 'fs';
-import { resolve, extname, dirname } from 'path';
+import { readFileSync, statSync, existsSync, readdirSync } from 'fs';
+import { resolve, extname, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 
@@ -50,50 +50,248 @@ function isPortInUse(port) {
 /**
  * 检测是否为 Vue 项目根目录
  * 
+ * 检测策略（按优先级）：
+ * 1. package.json 中包含 vue 依赖
+ * 2. 存在 .vue 文件（最小 demo）
+ * 3. 存在 Vue 相关配置文件
+ * 4. index.html 中引用了 Vue CDN
+ * 
  * @param {string} dirPath - 目录路径
- * @returns {Object} - { isVueProject: boolean, reason: string }
+ * @returns {Object} - { isVueProject: boolean, confidence: string, reason: string, entryFile: string }
  */
 function isVueProjectRoot(dirPath) {
-  // 检查 package.json
+  const result = {
+    isVueProject: false,
+    confidence: 'none', // 'high', 'medium', 'low', 'none'
+    reason: '',
+    entryFile: null,
+    buildTool: 'unknown',
+    vueVersion: 'unknown'
+  };
+
+  // 策略 1: 检查 package.json 中的 Vue 依赖
   const packageJsonPath = resolve(dirPath, 'package.json');
-  if (!existsSync(packageJsonPath)) {
-    return {
-      isVueProject: false,
-      reason: 'No package.json found'
-    };
+  if (existsSync(packageJsonPath)) {
+    try {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+      const dependencies = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies
+      };
+
+      // 检查 Vue 版本
+      if (dependencies['vue']) {
+        result.vueVersion = dependencies['vue'].includes('^3') || dependencies['vue'].includes('3.') ? '3' : '2';
+        result.isVueProject = true;
+        result.confidence = 'high';
+        result.reason = `Vue ${result.vueVersion} dependency found in package.json`;
+      } else if (dependencies['vue3']) {
+        result.vueVersion = '3';
+        result.isVueProject = true;
+        result.confidence = 'high';
+        result.reason = 'Vue 3 dependency found in package.json';
+      } else if (dependencies['vue2']) {
+        result.vueVersion = '2';
+        result.isVueProject = true;
+        result.confidence = 'high';
+        result.reason = 'Vue 2 dependency found in package.json';
+      }
+
+      // 检测构建工具
+      if (dependencies['vite'] || dependencies['@vitejs/plugin-vue']) {
+        result.buildTool = 'vite';
+      } else if (dependencies['webpack'] || dependencies['vue-loader'] || dependencies['@vue/cli-service']) {
+        result.buildTool = 'webpack';
+      } else if (dependencies['@nuxt/cli'] || dependencies['nuxt']) {
+        result.buildTool = 'nuxt';
+      }
+
+      if (result.isVueProject) {
+        // 查找入口文件
+        result.entryFile = findEntryFile(dirPath, result.buildTool);
+        return result;
+      }
+    } catch (error) {
+      // package.json 解析失败，继续检查其他策略
+    }
+  }
+
+  // 策略 2: 检查是否存在 .vue 文件（支持最小 demo）
+  const vueFiles = findVueFiles(dirPath);
+  if (vueFiles.length > 0) {
+    result.isVueProject = true;
+    result.confidence = vueFiles.length >= 3 ? 'high' : 'medium';
+    result.reason = `Found ${vueFiles.length} .vue file(s)${vueFiles.length < 3 ? ' (minimal demo)' : ''}`;
+    
+    // 尝试检测 Vue 版本（通过文件内容）
+    result.vueVersion = detectVueVersionFromFiles(dirPath, vueFiles);
+    
+    // 入口文件优先使用 App.vue 或 main.js
+    result.entryFile = findEntryFile(dirPath, 'unknown');
+    return result;
+  }
+
+  // 策略 3: 检查 Vue 相关配置文件
+  const vueConfigFiles = [
+    'vite.config.js', 'vite.config.ts',
+    'vue.config.js',
+    'webpack.config.js',
+    '.nuxtrc', 'nuxt.config.js', 'nuxt.config.ts',
+    'quasar.conf.js'
+  ];
+  
+  for (const configFile of vueConfigFiles) {
+    if (existsSync(resolve(dirPath, configFile))) {
+      result.isVueProject = true;
+      result.confidence = 'medium';
+      result.reason = `Vue config file found: ${configFile}`;
+      
+      if (configFile.includes('vite')) result.buildTool = 'vite';
+      else if (configFile.includes('nuxt')) result.buildTool = 'nuxt';
+      else if (configFile.includes('quasar')) result.buildTool = 'quasar';
+      else result.buildTool = 'webpack';
+      
+      result.entryFile = findEntryFile(dirPath, result.buildTool);
+      return result;
+    }
+  }
+
+  // 策略 4: 检查 index.html 是否引用 Vue CDN
+  const indexHtmlPath = resolve(dirPath, 'index.html');
+  if (existsSync(indexHtmlPath)) {
+    try {
+      const htmlContent = readFileSync(indexHtmlPath, 'utf-8');
+      if (htmlContent.includes('vue.') || htmlContent.includes('vuejs.org') || htmlContent.includes('cdn.jsdelivr.net/npm/vue')) {
+        result.isVueProject = true;
+        result.confidence = 'low';
+        result.reason = 'Vue CDN reference found in index.html';
+        result.vueVersion = htmlContent.includes('vue@3') || htmlContent.includes('vue/3.') ? '3' : '2';
+        result.entryFile = findEntryFile(dirPath, 'unknown');
+        return result;
+      }
+    } catch (error) {
+      // 忽略读取错误
+    }
+  }
+
+  // 未检测到 Vue 项目特征
+  result.reason = 'No Vue project characteristics detected';
+  return result;
+}
+
+/**
+ * 查找目录中的 .vue 文件
+ * 
+ * @param {string} dirPath - 目录路径
+ * @param {number} maxDepth - 最大搜索深度
+ * @returns {string[]} - .vue 文件路径列表
+ */
+function findVueFiles(dirPath, maxDepth = 3) {
+  const vueFiles = [];
+  
+  function scan(dir, depth) {
+    if (depth > maxDepth) return;
+    
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        
+        if (entry.isDirectory()) {
+          // 跳过 node_modules、.git、dist 等目录
+          if (!['node_modules', '.git', 'dist', 'build', 'coverage'].includes(entry.name)) {
+            scan(fullPath, depth + 1);
+          }
+        } else if (entry.isFile() && entry.name.endsWith('.vue')) {
+          vueFiles.push(fullPath);
+        }
+      }
+    } catch (error) {
+      // 忽略权限错误等
+    }
   }
   
-  try {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    
-    // 检查 Vue 依赖
-    const dependencies = {
-      ...packageJson.dependencies,
-      ...packageJson.devDependencies
-    };
-    
-    const hasVue = dependencies['vue'] || dependencies['vue3'];
-    const hasVite = dependencies['vite'] || dependencies['@vitejs/plugin-vue'];
-    const hasWebpack = dependencies['webpack'] || dependencies['vue-loader'];
-    
-    if (hasVue) {
-      return {
-        isVueProject: true,
-        reason: 'Vue dependency found',
-        buildTool: hasVite ? 'vite' : (hasWebpack ? 'webpack' : 'unknown')
-      };
+  scan(dirPath, 0);
+  return vueFiles;
+}
+
+/**
+ * 从 .vue 文件内容检测 Vue 版本
+ * 
+ * @param {string} dirPath - 目录路径
+ * @param {string[]} vueFiles - .vue 文件列表
+ * @returns {string} - '2' | '3' | 'unknown'
+ */
+function detectVueVersionFromFiles(dirPath, vueFiles) {
+  // 检查前 3 个 .vue 文件
+  for (const vueFile of vueFiles.slice(0, 3)) {
+    try {
+      const content = readFileSync(vueFile, 'utf-8');
+      
+      // Vue 3 特征
+      if (content.includes('<script setup>') || 
+          content.includes('defineProps') || 
+          content.includes('defineEmits') ||
+          content.includes('ref(') ||
+          content.includes('reactive(')) {
+        return '3';
+      }
+      
+      // Vue 2 特征
+      if (content.includes('export default') && 
+          content.includes('data()') &&
+          !content.includes('<script setup>')) {
+        return '2';
+      }
+    } catch (error) {
+      // 忽略读取错误
     }
-    
-    return {
-      isVueProject: false,
-      reason: 'No Vue dependency in package.json'
-    };
-  } catch (error) {
-    return {
-      isVueProject: false,
-      reason: 'Failed to parse package.json'
-    };
   }
+  
+  return 'unknown';
+}
+
+/**
+ * 查找项目入口文件
+ * 
+ * @param {string} dirPath - 目录路径
+ * @param {string} buildTool - 构建工具
+ * @returns {string|null} - 入口文件路径
+ */
+function findEntryFile(dirPath, buildTool) {
+  // 优先级列表
+  const candidates = [
+    'src/main.js',
+    'src/main.ts',
+    'src/index.js',
+    'src/index.ts',
+    'main.js',
+    'main.ts',
+    'index.js',
+    'index.ts',
+    'src/App.vue',
+    'App.vue'
+  ];
+  
+  for (const candidate of candidates) {
+    const fullPath = resolve(dirPath, candidate);
+    if (existsSync(fullPath)) {
+      return candidate;
+    }
+  }
+  
+  // Nuxt 项目
+  if (buildTool === 'nuxt') {
+    if (existsSync(resolve(dirPath, 'app.vue'))) {
+      return 'app.vue';
+    }
+    if (existsSync(resolve(dirPath, 'pages'))) {
+      return null; // Nuxt 自动路由
+    }
+  }
+  
+  return null;
 }
 
 /**
@@ -333,12 +531,18 @@ function generateDirectorySelectorPage() {
     <div id="status" class="status"></div>
     
     <div class="tips">
-      <h4>💡 Vue Project Root Should Contain:</h4>
+      <h4>💡 Vue Project Detection Rules:</h4>
       <ul>
-        <li>package.json with vue dependency</li>
-        <li>src/ directory with .vue files</li>
-        <li>index.html or public/index.html</li>
-        <li>Configuration files (vite.config.js, vue.config.js, etc.)</li>
+        <li><strong>High confidence:</strong> package.json with vue/vue2/vue3 dependency</li>
+        <li><strong>Medium confidence:</strong> .vue files found (minimal demo supported) or Vue config files</li>
+        <li><strong>Low confidence:</strong> Vue CDN reference in index.html</li>
+      </ul>
+      <h4 style="margin-top: 15px;">📦 Supported Build Tools:</h4>
+      <ul>
+        <li>Vite (vite.config.js/ts)</li>
+        <li>Webpack (vue.config.js, webpack.config.js)</li>
+        <li>Nuxt (nuxt.config.js/ts)</li>
+        <li>Plain HTML with Vue CDN</li>
       </ul>
     </div>
   </div>
@@ -373,11 +577,28 @@ function generateDirectorySelectorPage() {
         const result = await response.json();
         
         if (result.isVueProject) {
+          // 根据置信度显示不同信息
+          const confidenceIcons = {
+            high: '✅',
+            medium: '✅',
+            low: '⚠️'
+          };
+          
+          const confidenceLabels = {
+            high: 'Vue Project Detected',
+            medium: 'Vue Project Detected (Likely)',
+            low: 'Possible Vue Project'
+          };
+          
           statusDiv.className = 'status success';
           statusDiv.innerHTML = \`
-            <h4>✅ Vue Project Detected!</h4>
-            <p>Build tool: \${result.buildTool || 'Unknown'}</p>
-            <p>Redirecting to your application...</p>
+            <h4>\${confidenceIcons[result.confidence] || '✅'} \${confidenceLabels[result.confidence] || 'Vue Project Detected'}</h4>
+            <p><strong>Vue Version:</strong> \${result.vueVersion !== 'unknown' ? 'Vue ' + result.vueVersion : 'Unknown'}</p>
+            <p><strong>Build Tool:</strong> \${result.buildTool !== 'unknown' ? result.buildTool : 'Unknown'}</p>
+            <p><strong>Entry File:</strong> \${result.entryFile || 'Not found (will scan)'}</p>
+            <p><strong>Confidence:</strong> \${result.confidence}</p>
+            <p>\${result.reason}</p>
+            <p style="margin-top: 10px;">Redirecting to your application...</p>
           \`;
           
           // 重定向到实际页面
@@ -580,9 +801,17 @@ export async function startDevServer(runtime, config) {
     console.log(chalk.yellow('   Reason: ' + projectCheck.reason));
     console.log();
     console.log(chalk.cyan('A directory selection page will be shown in the browser.'));
+    console.log(chalk.cyan('Supported Vue project types:'));
+    console.log(chalk.cyan('  - Standard Vue project (with package.json)'));
+    console.log(chalk.cyan('  - Minimal Vue demo (with .vue files only)'));
+    console.log(chalk.cyan('  - Vue with CDN (index.html with Vue script tag)'));
     console.log();
   } else {
-    console.log(chalk.green('✓ Vue project detected') + chalk.dim(` (${projectCheck.buildTool})`));
+    console.log(chalk.green('✓ Vue project detected'));
+    console.log(chalk.dim(`   Version: Vue ${projectCheck.vueVersion !== 'unknown' ? projectCheck.vueVersion : 'Unknown'}`));
+    console.log(chalk.dim(`   Build tool: ${projectCheck.buildTool !== 'unknown' ? projectCheck.buildTool : 'Unknown'}`));
+    console.log(chalk.dim(`   Entry file: ${projectCheck.entryFile || 'Will scan'}`));
+    console.log(chalk.dim(`   Confidence: ${projectCheck.confidence}`));
     console.log();
   }
 
