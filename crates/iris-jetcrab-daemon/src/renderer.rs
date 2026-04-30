@@ -3,10 +3,6 @@
 use crate::particles::ParticleSystem;
 use std::sync::OnceLock;
 
-/// 窗口尺寸常量
-pub const WINDOW_WIDTH: u32 = 800;
-pub const WINDOW_HEIGHT: u32 = 1200;
-
 /// 彩虹图标 RGBA 像素数据
 pub struct RainbowIcon {
     pub width: u32,
@@ -314,9 +310,9 @@ const RAINBOW_BANDS: [(u8, u8, u8); 6] = [
 ];
 
 /// 在像素缓冲区中心绘制彩虹图标
-pub fn draw_icon(buffer: &mut [u8], icon: &RainbowIcon) {
-    let buf_w = WINDOW_WIDTH as i32;
-    let buf_h = WINDOW_HEIGHT as i32;
+pub fn draw_icon(buffer: &mut [u8], w: u32, h: u32, icon: &RainbowIcon) {
+    let buf_w = w as i32;
+    let buf_h = h as i32;
     let icon_w = icon.width as i32;
     let icon_h = icon.height as i32;
 
@@ -357,13 +353,13 @@ pub fn draw_icon(buffer: &mut [u8], icon: &RainbowIcon) {
 }
 
 /// 绘制呼吸光晕
-pub fn draw_breathe_glow(buffer: &mut [u8], alpha: f32) {
-    let cx = WINDOW_WIDTH as f32 / 2.0;
-    let cy = WINDOW_HEIGHT as f32 / 2.0;
-    let radius = (WINDOW_WIDTH.min(WINDOW_HEIGHT) as f32 / 2.0) * 0.85;
+pub fn draw_breathe_glow(buffer: &mut [u8], w: u32, h: u32, alpha: f32) {
+    let cx = w as f32 / 2.0;
+    let cy = h as f32 / 2.0;
+    let radius = (w.min(h) as f32 / 2.0) * 0.85;
 
-    for y in 0..WINDOW_HEIGHT {
-        for x in 0..WINDOW_WIDTH {
+    for y in 0..h {
+        for x in 0..w {
             let dx = x as f32 - cx;
             let dy = y as f32 - cy;
             let dist = (dx * dx + dy * dy).sqrt();
@@ -373,7 +369,7 @@ pub fn draw_breathe_glow(buffer: &mut [u8], alpha: f32) {
                 if glow < 0.01 {
                     continue;
                 }
-                let idx = ((y * WINDOW_WIDTH + x) * 4) as usize;
+                let idx = ((y * w + x) * 4) as usize;
                 let glow_alpha = (glow * 255.0) as u8;
 
                 // 渐变色光晕（柔和的彩虹渐变）
@@ -400,7 +396,7 @@ pub fn draw_breathe_glow(buffer: &mut [u8], alpha: f32) {
 }
 
 /// 绘制拖拽彩虹轨迹（心形）
-pub fn draw_trail(buffer: &mut [u8], particles: &ParticleSystem) {
+pub fn draw_trail(buffer: &mut [u8], w: u32, h: u32, particles: &ParticleSystem) {
     let trail = &particles.trail;
     let len = trail.len();
     if len < 2 {
@@ -413,20 +409,21 @@ pub fn draw_trail(buffer: &mut [u8], particles: &ParticleSystem) {
         let (r, g, b) = ParticleSystem::trail_color(i, len);
         let pt = &trail[i];
 
+        let _scale = (w as f32 / 80.0).max(1.0);
         // 心形大小随新旧变化（最近的更大）
         let size = if particles.is_dragging {
-            4 + (i as f32 / len as f32 * 8.0) as i32
+            (6.0 + (i as f32 / len as f32 * 14.0)) as i32
         } else {
-            2 + (i as f32 / len as f32 * 5.0) as i32
+            (3.0 + (i as f32 / len as f32 * 8.0)) as i32
         };
         let alpha = (alpha_pct * 220.0) as u8;
 
-        draw_heart(buffer, pt.x, pt.y, size, r, g, b, alpha);
+        draw_heart(buffer, w, h, pt.x, pt.y, size, r, g, b, alpha);
     }
 }
 
 /// 绘制星光粒子
-pub fn draw_sparkles(buffer: &mut [u8], particles: &ParticleSystem) {
+pub fn draw_sparkles(buffer: &mut [u8], w: u32, h: u32, particles: &ParticleSystem) {
     for sparkle in &particles.sparkles {
         let (r, g, b) = particles.sparkle_color(sparkle);
         let alpha = (sparkle.life * 220.0) as u8;
@@ -437,32 +434,32 @@ pub fn draw_sparkles(buffer: &mut [u8], particles: &ParticleSystem) {
         let y = sparkle.y as i32;
 
         // 主点
-        set_pixel(buffer, x, y, r, g, b, alpha);
+        set_pixel(buffer, w, h, x, y, r, g, b, alpha);
         // 4个尖角
         if size >= 2 {
-            set_pixel(buffer, x + 1, y, r, g, b, (alpha as f32 * 0.8) as u8);
-            set_pixel(buffer, x - 1, y, r, g, b, (alpha as f32 * 0.8) as u8);
-            set_pixel(buffer, x, y + 1, r, g, b, (alpha as f32 * 0.8) as u8);
-            set_pixel(buffer, x, y - 1, r, g, b, (alpha as f32 * 0.8) as u8);
+            set_pixel(buffer, w, h, x + 1, y, r, g, b, (alpha as f32 * 0.8) as u8);
+            set_pixel(buffer, w, h, x - 1, y, r, g, b, (alpha as f32 * 0.8) as u8);
+            set_pixel(buffer, w, h, x, y + 1, r, g, b, (alpha as f32 * 0.8) as u8);
+            set_pixel(buffer, w, h, x, y - 1, r, g, b, (alpha as f32 * 0.8) as u8);
         }
         if size >= 3 {
-            set_pixel(buffer, x + 2, y, r, g, b, (alpha as f32 * 0.4) as u8);
-            set_pixel(buffer, x - 2, y, r, g, b, (alpha as f32 * 0.4) as u8);
-            set_pixel(buffer, x, y + 2, r, g, b, (alpha as f32 * 0.4) as u8);
-            set_pixel(buffer, x, y - 2, r, g, b, (alpha as f32 * 0.4) as u8);
+            set_pixel(buffer, w, h, x + 2, y, r, g, b, (alpha as f32 * 0.4) as u8);
+            set_pixel(buffer, w, h, x - 2, y, r, g, b, (alpha as f32 * 0.4) as u8);
+            set_pixel(buffer, w, h, x, y + 2, r, g, b, (alpha as f32 * 0.4) as u8);
+            set_pixel(buffer, w, h, x, y - 2, r, g, b, (alpha as f32 * 0.4) as u8);
         }
     }
 }
 
 /// 设置单个像素（带透明度混合）
-fn set_pixel(buffer: &mut [u8], x: i32, y: i32, r: u8, g: u8, b: u8, a: u8) {
-    if x < 0 || x >= WINDOW_WIDTH as i32 || y < 0 || y >= WINDOW_HEIGHT as i32 {
+fn set_pixel(buffer: &mut [u8], w: u32, h: u32, x: i32, y: i32, r: u8, g: u8, b: u8, a: u8) {
+    if x < 0 || x >= w as i32 || y < 0 || y >= h as i32 {
         return;
     }
     if a == 0 {
         return;
     }
-    let idx = ((y as u32 * WINDOW_WIDTH + x as u32) * 4) as usize;
+    let idx = ((y as u32 * w + x as u32) * 4) as usize;
 
     let sa = a as f32 / 255.0;
     let da = buffer[idx + 3] as f32 / 255.0;
@@ -478,14 +475,14 @@ fn set_pixel(buffer: &mut [u8], x: i32, y: i32, r: u8, g: u8, b: u8, a: u8) {
 }
 
 /// 绘制心形（带透明度）- 使用心形隐式方程 (x²+y²-1)³ - x²y³ ≤ 0
-fn draw_heart(buffer: &mut [u8], cx: i32, cy: i32, size: i32, r: u8, g: u8, b: u8, a: u8) {
+fn draw_heart(buffer: &mut [u8], w: u32, h: u32, cx: i32, cy: i32, size: i32, r: u8, g: u8, b: u8, a: u8) {
     if a == 0 || size <= 0 {
         return;
     }
     let min_x = (cx - size).max(0);
-    let max_x = (cx + size).min(WINDOW_WIDTH as i32 - 1);
+    let max_x = (cx + size).min(w as i32 - 1);
     let min_y = (cy - size).max(0);
-    let max_y = (cy + size).min(WINDOW_HEIGHT as i32 - 1);
+    let max_y = (cy + size).min(h as i32 - 1);
 
     // 心形在归一化空间 [-1.3, 1.3] × [-1.3, 1.2]
     let scale = size as f32 / 1.3;
@@ -505,8 +502,133 @@ fn draw_heart(buffer: &mut [u8], cx: i32, cy: i32, size: i32, r: u8, g: u8, b: u
                 // 边缘柔化
                 let edge = (0.0f32.max(-val) / 0.08).min(1.0);
                 let alpha = ((a as f32) * edge).min(255.0) as u8;
-                set_pixel(buffer, px, py, r, g, b, alpha);
+                set_pixel(buffer, w, h, px, py, r, g, b, alpha);
             }
+        }
+    }
+}
+
+/// 绘制悬停提示文字（使用 fontdue 渲染文本）
+pub fn draw_tooltip(buffer: &mut [u8], w: u32, h: u32, text: &str, x: i32, y: i32) {
+    let font_data = match load_system_ui_font() {
+        Some(d) => d,
+        None => return,
+    };
+    let font = match fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default()) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+
+    let font_size = 14.0;
+    let mut total_width = 0i32;
+    let mut glyph_metrics = Vec::new();
+    let mut glyph_bitmaps = Vec::new();
+
+    for ch in text.chars() {
+        let char_index = font.lookup_glyph_index(ch);
+        if char_index == 0 { continue; }
+        let (metrics, bitmap) = font.rasterize(ch, font_size);
+        glyph_metrics.push((metrics, total_width));
+        glyph_bitmaps.push(bitmap);
+        total_width += metrics.width as i32 + metrics.xmin as i32 + 1;
+    }
+
+    if glyph_metrics.is_empty() { return; }
+
+    let start_x = x - total_width / 2;
+    let line_height = font_size as i32 + 2;
+    let start_y = y - line_height / 2;
+
+    for (i, (metrics, x_offset)) in glyph_metrics.iter().enumerate() {
+        let gw = metrics.width as i32;
+        let gh = metrics.height as i32;
+        if gw <= 0 || gh <= 0 { continue; }
+
+        for py in 0..gh {
+            for px in 0..gw {
+                let coverage = glyph_bitmaps[i][(py * gw + px) as usize];
+                if coverage == 0 { continue; }
+                let bx = start_x + x_offset + px;
+                let by = start_y + py;
+                if bx < 0 || bx >= w as i32 || by < 0 || by >= h as i32 { continue; }
+                let idx = ((by as u32 * w + bx as u32) * 4) as usize;
+                let sa = coverage as f32 / 255.0;
+                let da = buffer[idx + 3] as f32 / 255.0;
+                let out_a = sa + da * (1.0 - sa);
+                if out_a <= 0.0 { continue; }
+                buffer[idx] = ((255.0 * sa + buffer[idx] as f32 * da * (1.0 - sa)) / out_a) as u8;
+                buffer[idx + 1] = ((255.0 * sa + buffer[idx + 1] as f32 * da * (1.0 - sa)) / out_a) as u8;
+                buffer[idx + 2] = ((255.0 * sa + buffer[idx + 2] as f32 * da * (1.0 - sa)) / out_a) as u8;
+                buffer[idx + 3] = (out_a * 255.0) as u8;
+            }
+        }
+    }
+}
+
+/// 加载系统 UI 字体
+fn load_system_ui_font() -> Option<Vec<u8>> {
+    let candidates: &[&str] = if cfg!(target_os = "windows") {
+        &[
+            "C:\\Windows\\Fonts\\segoeui.ttf",
+            "C:\\Windows\\Fonts\\Segoe UI\\segoeui.ttf",
+            "C:\\Windows\\Fonts\\arial.ttf",
+            "C:\\Windows\\Fonts\\msyh.ttc",
+        ]
+    } else if cfg!(target_os = "macos") {
+        &[
+            "/System/Library/Fonts/SFNS.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ]
+    } else {
+        &[
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        ]
+    };
+    for path in candidates {
+        if let Ok(data) = std::fs::read(path) {
+            if path.ends_with(".ttc") {
+                return extract_from_ttc_if_needed(&data);
+            }
+            return Some(data);
+        }
+    }
+    None
+}
+
+/// 绘制下载进度条
+pub fn draw_progress_bar(buffer: &mut [u8], w: u32, h: u32,
+    x: i32, y: i32, width: u32, bar_height: u32,
+    percentage: f64, r: u8, g: u8, b: u8) {
+    if percentage <= 0.0 { return; }
+    let fill_w = ((width as f64 * percentage / 100.0) as u32).max(1).min(width);
+    for py in y..(y + bar_height as i32) {
+        for px in x..(x + width as i32) {
+            if px < 0 || px >= w as i32 || py < 0 || py >= h as i32 { continue; }
+            let idx = ((py as u32 * w + px as u32) * 4) as usize;
+            let bg_a = 80u8;
+            let da = buffer[idx + 3] as f32 / 255.0;
+            let sa = bg_a as f32 / 255.0;
+            let out_a = sa + da * (1.0 - sa);
+            if out_a <= 0.0 { continue; }
+            buffer[idx] = ((50.0 * sa + buffer[idx] as f32 * da * (1.0 - sa)) / out_a) as u8;
+            buffer[idx + 1] = ((50.0 * sa + buffer[idx + 1] as f32 * da * (1.0 - sa)) / out_a) as u8;
+            buffer[idx + 2] = ((50.0 * sa + buffer[idx + 2] as f32 * da * (1.0 - sa)) / out_a) as u8;
+            buffer[idx + 3] = (out_a * 255.0) as u8;
+        }
+    }
+    for py in y..(y + bar_height as i32) {
+        for px in x..(x + fill_w as i32) {
+            if px < 0 || px >= w as i32 || py < 0 || py >= h as i32 { continue; }
+            let idx = ((py as u32 * w + px as u32) * 4) as usize;
+            let sa = 200u8;
+            let da = buffer[idx + 3] as f32 / 255.0;
+            let out_a = sa as f32 / 255.0 + da * (1.0 - sa as f32 / 255.0);
+            if out_a <= 0.0 { continue; }
+            buffer[idx] = ((r as f32 * sa as f32 / 255.0 + buffer[idx] as f32 * da * (1.0 - sa as f32 / 255.0)) / out_a) as u8;
+            buffer[idx + 1] = ((g as f32 * sa as f32 / 255.0 + buffer[idx + 1] as f32 * da * (1.0 - sa as f32 / 255.0)) / out_a) as u8;
+            buffer[idx + 2] = ((b as f32 * sa as f32 / 255.0 + buffer[idx + 2] as f32 * da * (1.0 - sa as f32 / 255.0)) / out_a) as u8;
+            buffer[idx + 3] = (out_a * 255.0) as u8;
         }
     }
 }

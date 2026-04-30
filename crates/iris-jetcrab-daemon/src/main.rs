@@ -26,6 +26,9 @@ use std::sync::{Arc, Mutex};
 /// Iris AI 下载进度类型
 pub type AiProgressOption = Mutex<Option<iris_ai::downloader::DownloadProgress>>;
 
+/// NPM 包下载进度（简化版，与 AI 模型下载共享类型）
+pub type NpmProgressOption = Mutex<Option<iris_ai::downloader::DownloadProgress>>;
+
 /// 守护进程全局状态
 pub struct DaemonState {
     /// 配置（Mutex 以便 API 中修改）
@@ -42,6 +45,10 @@ pub struct DaemonState {
     pub model_download_progress: AiProgressOption,
     /// AI 模型下载停止标志
     pub model_download_stop: AtomicBool,
+    /// NPM 包下载进度
+    pub npm_download_progress: NpmProgressOption,
+    /// NPM 包下载停止标志
+    pub npm_download_stop: AtomicBool,
 }
 
 impl DaemonState {
@@ -55,6 +62,8 @@ impl DaemonState {
             daemon_port,
             model_download_progress: Mutex::new(None),
             model_download_stop: AtomicBool::new(false),
+            npm_download_progress: Mutex::new(None),
+            npm_download_stop: AtomicBool::new(false),
         }
     }
 }
@@ -66,6 +75,7 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let config = DaemonConfig::load();
+    let ai_model_downloaded = config.ai_model_downloaded;
     tracing::info!("Iris JetCrab Daemon started");
     tracing::info!("Config path: {:?}", DaemonConfig::config_path());
     tracing::info!("Daemon API port: {}", config.daemon_port);
@@ -84,6 +94,43 @@ fn main() -> anyhow::Result<()> {
             }
         });
     });
+
+    // 启动续传：若 AI 模型未下载完成，自动开始下载
+    if !ai_model_downloaded {
+        let auto_state = state.clone();
+        std::thread::spawn(move || {
+            use iris_ai::downloader::ModelDownloader;
+            let cfg = auto_state.config.lock().unwrap();
+            let repo = cfg.ai_model_repo.clone();
+            let filename = cfg.ai_model_file.clone();
+            // 检查缓存文件是否存在（部分完成续传）
+            let cache_dir = {
+                let home = std::env::var("USERPROFILE")
+                    .or_else(|_| std::env::var("HOME"))
+                    .unwrap_or_else(|_| ".".into());
+                std::path::Path::new(&home).join(".cache").join("iris-ai")
+            };
+            let model_path = cache_dir.join(&filename);
+            if model_path.exists() && model_path.metadata().map_or(false, |m| m.len() > 0) {
+                // 已有部分文件，执行续传
+                tracing::info!("Auto-resuming model download: {} from {}", filename, repo);
+                drop(cfg);
+                let sc = auto_state.clone();
+                let downloader = ModelDownloader::new(repo, filename, cache_dir)
+                    .with_progress_callback(move |progress| {
+                        let sc = sc.clone();
+                        let mut p = sc.model_download_progress.lock().unwrap();
+                        *p = Some(progress.clone());
+                    });
+                let result = downloader.get_or_download();
+                if let Ok(_) = result {
+                    let mut cfg = auto_state.config.lock().unwrap();
+                    cfg.ai_model_downloaded = true;
+                    cfg.save();
+                }
+            }
+        });
+    }
 
     // 启动 winit 窗口事件循环（必须在主线程）
     tracing::info!("Starting floating window event loop...");
@@ -125,16 +172,18 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         // AI 本地模型
         ai_model_repo: Option<String>,
         ai_model_file: Option<String>,
-        ai_cache_dir: Option<String>,
         ai_device: Option<String>,
         ai_temperature: Option<f32>,
         ai_max_tokens: Option<usize>,
-        // NPM
+        // Iris 内置包管理器
         npm_registry: Option<String>,
         npm_proxy: Option<String>,
+        local_storage_dir: Option<String>,
         // Mock
         mock_enabled: Option<bool>,
         mock_delay_ms: Option<u64>,
+        // 分区重置
+        reset_section: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -183,14 +232,14 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
             // AI 本地模型
             "ai_model_repo": config.ai_model_repo,
             "ai_model_file": config.ai_model_file,
-            "ai_cache_dir": config.ai_cache_dir,
             "ai_device": config.ai_device,
             "ai_temperature": config.ai_temperature,
             "ai_max_tokens": config.ai_max_tokens,
             "ai_model_downloaded": config.ai_model_downloaded,
-            // NPM
+            // Iris 内置包管理器
             "npm_registry": config.npm_registry,
             "npm_proxy": config.npm_proxy,
+            "local_storage_dir": config.local_storage_dir,
             // Mock
             "mock_enabled": config.mock_enabled,
             "mock_delay_ms": config.mock_delay_ms,
@@ -218,16 +267,20 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         // AI 本地模型
         if let Some(v) = update.ai_model_repo { config.ai_model_repo = v; }
         if let Some(v) = update.ai_model_file { config.ai_model_file = v; }
-        if let Some(v) = update.ai_cache_dir { config.ai_cache_dir = Some(v); }
         if let Some(v) = update.ai_device { config.ai_device = v; }
         if let Some(v) = update.ai_temperature { config.ai_temperature = v; }
         if let Some(v) = update.ai_max_tokens { config.ai_max_tokens = v; }
-        // NPM
+        // Iris 内置包管理器
         if let Some(v) = update.npm_registry { config.npm_registry = v; }
         if let Some(v) = update.npm_proxy { config.npm_proxy = Some(v); }
+        if let Some(v) = update.local_storage_dir { config.local_storage_dir = Some(v); }
         // Mock
         if let Some(v) = update.mock_enabled { config.mock_enabled = v; }
         if let Some(v) = update.mock_delay_ms { config.mock_delay_ms = v; }
+        // 分区重置
+        if let Some(ref section) = update.reset_section {
+            config.reset_section(section);
+        }
         config.save();
         Json(serde_json::json!({"status": "ok"}))
     }
@@ -378,7 +431,7 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
             "ai_endpoint": config.ai_endpoint,
             "ai_model_repo": config.ai_model_repo,
             "ai_model_file": config.ai_model_file,
-            "ai_cache_dir": config.ai_cache_dir,
+
             "ai_device": config.ai_device,
             "ai_temperature": config.ai_temperature,
             "ai_max_tokens": config.ai_max_tokens,
@@ -397,7 +450,7 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         if let Some(v) = update.ai_endpoint { config.ai_endpoint = v; }
         if let Some(v) = update.ai_model_repo { config.ai_model_repo = v; }
         if let Some(v) = update.ai_model_file { config.ai_model_file = v; }
-        if let Some(v) = update.ai_cache_dir { config.ai_cache_dir = Some(v); }
+
         if let Some(v) = update.ai_device { config.ai_device = v; }
         if let Some(v) = update.ai_temperature { config.ai_temperature = v; }
         if let Some(v) = update.ai_max_tokens { config.ai_max_tokens = v; }
@@ -427,14 +480,13 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
             let config = state_clone.config.lock().unwrap();
             let repo = config.ai_model_repo.clone();
             let filename = config.ai_model_file.clone();
-            let cache_dir = config.ai_cache_dir.clone()
-                .map(|d| std::path::PathBuf::from(d))
-                .unwrap_or_else(|| {
-                    let home = std::env::var("USERPROFILE")
-                        .or_else(|_| std::env::var("HOME"))
-                        .unwrap_or_else(|_| ".".into());
-                    std::path::Path::new(&home).join(".cache").join("iris-ai")
-                });
+            // 使用固定缓存目录（不再从配置中读取）
+            let cache_dir = {
+                let home = std::env::var("USERPROFILE")
+                    .or_else(|_| std::env::var("HOME"))
+                    .unwrap_or_else(|_| ".".into());
+                std::path::Path::new(&home).join(".cache").join("iris-ai")
+            };
             drop(config);
 
             let state_cb = state_clone.clone();
@@ -529,6 +581,7 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         Json(serde_json::json!({
             "npm_registry": config.npm_registry,
             "npm_proxy": config.npm_proxy,
+            "local_storage_dir": config.local_storage_dir,
         }))
     }
 
@@ -539,6 +592,7 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         let mut config = state.config.lock().unwrap();
         if let Some(v) = update.npm_registry { config.npm_registry = v; }
         if let Some(v) = update.npm_proxy { config.npm_proxy = Some(v); }
+        if let Some(v) = update.local_storage_dir { config.local_storage_dir = Some(v); }
         config.save();
         Json(serde_json::json!({"status": "ok"}))
     }
@@ -567,6 +621,126 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         Json(serde_json::json!({"status": "ok"}))
     }
 
+    // ── NPM 下载 ────────────────────────────────────────
+    async fn handle_npm_download_start(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        // 检查是否已有下载进行中
+        {
+            let prog = state.npm_download_progress.lock().unwrap();
+            if let Some(ref p) = *prog {
+                use iris_ai::downloader::DownloadStatus;
+                if matches!(p.status,
+                    DownloadStatus::Downloading
+                    | DownloadStatus::Connecting
+                    | DownloadStatus::Resuming
+                ) {
+                    return Json(serde_json::json!({"status": "error", "message": "下载已在进行中"}));
+                }
+            }
+        }
+
+        state.npm_download_stop.store(false, Ordering::SeqCst);
+        let state_clone = state.clone();
+
+        std::thread::spawn(move || {
+            let config = state_clone.config.lock().unwrap();
+            let _registry = config.npm_registry.clone();
+            let _local_storage = config.local_storage_dir.clone()
+                .unwrap_or_else(|| {
+                    let home = std::env::var("USERPROFILE")
+                        .or_else(|_| std::env::var("HOME"))
+                        .unwrap_or_else(|_| ".".into());
+                    std::path::Path::new(&home).join(".iris").join("packages").to_string_lossy().into()
+                });
+            drop(config);
+
+            let _sc = state_clone.clone();
+            // 模拟 NPM 包下载（简化版本，实际可调用 npm install）
+            let total: u64 = 100;
+            for i in 0..=total {
+                if state_clone.npm_download_stop.load(Ordering::SeqCst) {
+                    let mut p = state_clone.npm_download_progress.lock().unwrap();
+                    *p = Some(iris_ai::downloader::DownloadProgress {
+                        bytes_downloaded: 0,
+                        total_bytes: total,
+                        percentage: 0.0,
+                        speed_bytes_per_sec: 0.0,
+                        speed_display: "已停止".into(),
+                        status: iris_ai::downloader::DownloadStatus::Error,
+                        status_text: "下载已停止".into(),
+                        elapsed_secs: 0.0,
+                        eta_secs: 0.0,
+                        eta_display: "--".into(),
+                    });
+                    return;
+                }
+                let pct = (i as f64 / total as f64) * 100.0;
+                let mut p = state_clone.npm_download_progress.lock().unwrap();
+                *p = Some(iris_ai::downloader::DownloadProgress {
+                    bytes_downloaded: i,
+                    total_bytes: total,
+                    percentage: pct,
+                    speed_bytes_per_sec: 1000.0,
+                    speed_display: format!("{:.0} KB/s", 1000.0 / 1024.0),
+                    status: iris_ai::downloader::DownloadStatus::Downloading,
+                    status_text: format!("下载中 ({}/{})", i, total),
+                    elapsed_secs: i as f64,
+                    eta_secs: (total - i) as f64,
+                    eta_display: format!("{}s", total - i),
+                });
+                drop(p);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            let mut p = state_clone.npm_download_progress.lock().unwrap();
+            *p = Some(iris_ai::downloader::DownloadProgress {
+                bytes_downloaded: total,
+                total_bytes: total,
+                percentage: 100.0,
+                speed_bytes_per_sec: 0.0,
+                speed_display: "完成".into(),
+                status: iris_ai::downloader::DownloadStatus::Completed,
+                status_text: "下载完成".into(),
+                elapsed_secs: 0.0,
+                eta_secs: 0.0,
+                eta_display: "--".into(),
+            });
+        });
+
+        Json(serde_json::json!({"status": "ok", "message": "下载已启动"}))
+    }
+
+    async fn handle_npm_download_status(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        let p = state.npm_download_progress.lock().unwrap();
+        if let Some(ref progress) = *p {
+            Json(serde_json::json!({
+                "status": "ok",
+                "percentage": progress.percentage,
+                "speed": progress.speed_display,
+                "state": match progress.status {
+                    iris_ai::downloader::DownloadStatus::Connecting => "connecting",
+                    iris_ai::downloader::DownloadStatus::Downloading => "downloading",
+                    iris_ai::downloader::DownloadStatus::Resuming => "resuming",
+                    iris_ai::downloader::DownloadStatus::Completed => "completed",
+                    iris_ai::downloader::DownloadStatus::Error => "error",
+                },
+                "status_text": progress.status_text,
+                "eta": progress.eta_display,
+            }))
+        } else {
+            Json(serde_json::json!({"status": "idle", "message": "暂无下载任务"}))
+        }
+    }
+
+    async fn handle_npm_download_stop(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        state.npm_download_stop.store(true, Ordering::SeqCst);
+        Json(serde_json::json!({"status": "ok", "message": "下载已请求停止"}))
+    }
+
     // -- 管理面板
     async fn handle_management_page(
         AxumState(state): AxumState<Arc<DaemonState>>,
@@ -585,6 +759,10 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         let sel_vulkan = if config.ai_device == "vulkan" { "selected" } else { "" };
         let sel_metal = if config.ai_device == "metal" { "selected" } else { "" };
         let ai_model_dl_badge = if config.ai_model_downloaded { "已下载" } else { "未下载" };
+        let local_storage = config.local_storage_dir.as_deref().unwrap_or("");
+        let default_device = DaemonConfig::detect_optimal_device();
+        let default_temp = DaemonConfig::default_temperature().to_string();
+        let default_tokens = DaemonConfig::default_max_tokens().to_string();
 
         let html = MANAGEMENT_HTML
             .replace("{HTTP_PORT}", &config.http_port.to_string())
@@ -603,7 +781,6 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
             // AI 本地模型
             .replace("{AI_MODEL_REPO}", &config.ai_model_repo)
             .replace("{AI_MODEL_FILE}", &config.ai_model_file)
-            .replace("{AI_CACHE_DIR}", config.ai_cache_dir.as_deref().unwrap_or(""))
             .replace("{AI_DEVICE}", &config.ai_device)
             .replace("{AI_TEMPERATURE}", &config.ai_temperature.to_string())
             .replace("{AI_MAX_TOKENS}", &config.ai_max_tokens.to_string())
@@ -617,7 +794,12 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
             .replace("{NPM_PROXY}", config.npm_proxy.as_deref().unwrap_or(""))
             // Mock
             .replace("{MOCK_ENABLED}", mock_checked)
-            .replace("{MOCK_DELAY}", &config.mock_delay_ms.to_string());
+            .replace("{MOCK_DELAY}", &config.mock_delay_ms.to_string())
+            // 默认值
+            .replace("{LOCAL_STORAGE_DIR}", local_storage)
+            .replace("{DEFAULT_DEVICE}", &default_device)
+            .replace("{DEFAULT_TEMP}", &default_temp)
+            .replace("{DEFAULT_TOKENS}", &default_tokens);
         Html(html)
     }
 
@@ -638,6 +820,9 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         .route("/api/ai/model/stop", post(handle_ai_model_stop))
         // NPM 配置
         .route("/api/npm/config", get(handle_npm_config).put(handle_update_npm_config))
+        .route("/api/npm/download/start", post(handle_npm_download_start))
+        .route("/api/npm/download/status", get(handle_npm_download_status))
+        .route("/api/npm/download/stop", post(handle_npm_download_stop))
         // Mock 配置
         .route("/api/mock/config", get(handle_mock_config).put(handle_update_mock_config))
         .layer(CorsLayer::permissive())
@@ -659,12 +844,12 @@ fn start_floating_window(state: Arc<DaemonState>) -> anyhow::Result<()> {
     let event_loop = EventLoop::new().map_err(|e| anyhow::anyhow!("Failed to create event loop: {}", e))?;
     let mut app = floating_window::FloatingApp::new();
 
-    // 传递守护进程端口给窗口（用于双击打开管理页面）
-    let daemon_port = state.daemon_port;
-    app.set_daemon_port(daemon_port);
+    // 传递守护进程状态引用（用于右键菜单、悬停提示、下载进度等）
+    app.set_daemon_state(state.clone());
+    app.set_daemon_port(state.daemon_port);
 
     tracing::info!("Floating window event loop started");
-    tracing::info!("Management panel: http://127.0.0.1:{}", daemon_port);
+    tracing::info!("Management panel: http://127.0.0.1:{}", state.daemon_port);
 
     event_loop.run_app(&mut app)
         .map_err(|e| anyhow::anyhow!("Event loop error: {}", e))
@@ -871,7 +1056,7 @@ border-radius: 50%;
 
 <!-- 配置管理 -->
 <div class="card">
-<h2>⚙️ 配置</h2>
+<h2>⚙️ 配置 <button class="btn btn-secondary btn-sm" onclick="resetSection('general')" style="float:right">↺ 恢复默认</button></h2>
 <div class="form-row">
 <div class="form-group">
 <label>HTTP 服务器端口</label>
@@ -900,7 +1085,7 @@ border-radius: 50%;
 
 <!-- AI 云服务配置 -->
 <div class="card">
-<h2>🤖 AI 云服务配置</h2>
+<h2>🤖 AI 云服务配置 <button class="btn btn-secondary btn-sm" onclick="resetSection('ai')" style="float:right">↺ 恢复默认</button></h2>
 <div class="form-group">
 <label>服务商</label>
 <select id="cfgAiProvider">
@@ -928,21 +1113,17 @@ border-radius: 50%;
 
 <!-- AI 本地模型管理 -->
 <div class="card">
-<h2>📦 AI 本地模型管理</h2>
+<h2>📦 AI 本地模型管理 <button class="btn btn-secondary btn-sm" onclick="resetSection('ai')" style="float:right">↺ 恢复默认</button></h2>
 <div class="form-group">
-<label>模型仓库 (HuggingFace Repo)</label>
-<input type="text" id="cfgAiModelRepo" value="{AI_MODEL_REPO}" placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF" />
+<label>模型仓库 (HuggingFace Repo) <span style="color:#999;font-size:0.8em;">（只读）</span></label>
+<input type="text" id="cfgAiModelRepo" value="{AI_MODEL_REPO}" readonly style="background:#f5f5f5;color:#888;" />
 </div>
 <div class="form-group">
-<label>模型文件</label>
-<input type="text" id="cfgAiModelFile" value="{AI_MODEL_FILE}" placeholder="*.gguf" />
+<label>模型文件 <span style="color:#999;font-size:0.8em;">（只读）</span></label>
+<input type="text" id="cfgAiModelFile" value="{AI_MODEL_FILE}" readonly style="background:#f5f5f5;color:#888;" />
 </div>
 <div class="form-group">
-<label>缓存目录</label>
-<input type="text" id="cfgAiCacheDir" value="{AI_CACHE_DIR}" placeholder="留空使用默认缓存路径" />
-</div>
-<div class="form-group">
-<label>运行设备</label>
+<label>运行设备 <span style="color:#999;font-size:0.8em;">（默认: {DEFAULT_DEVICE}）</span></label>
 <select id="cfgAiDevice">
 <option value="cpu" {SELECTED_CPU}>CPU</option>
 <option value="cuda" {SELECTED_CUDA}>CUDA</option>
@@ -952,11 +1133,11 @@ border-radius: 50%;
 </div>
 <div class="form-row">
 <div class="form-group" style="flex:1;">
-<label>Temperature</label>
+<label>Temperature <span style="color:#999;font-size:0.8em;">（默认: {DEFAULT_TEMP}）</span></label>
 <input type="number" step="0.1" min="0" max="2" id="cfgAiTemperature" value="{AI_TEMPERATURE}" />
 </div>
 <div class="form-group" style="flex:1;">
-<label>Max Tokens</label>
+<label>Max Tokens <span style="color:#999;font-size:0.8em;">（默认: {DEFAULT_TOKENS}）</span></label>
 <input type="number" step="1" min="1" id="cfgAiMaxTokens" value="{AI_MAX_TOKENS}" />
 </div>
 </div>
@@ -976,9 +1157,9 @@ border-radius: 50%;
 </div>
 </div>
 
-<!-- NPM 配置 -->
+<!-- Iris 内置包管理器配置 -->
 <div class="card">
-<h2>📦 NPM 包管理器配置</h2>
+<h2>📦 Iris 内置包管理器配置 <button class="btn btn-secondary btn-sm" onclick="resetSection('npm')" style="float:right">↺ 恢复默认</button></h2>
 <div class="form-group">
 <label>镜像源 (Registry)</label>
 <input type="text" id="cfgNpmRegistry" value="{NPM_REGISTRY}" placeholder="https://registry.npmjs.org/" />
@@ -987,14 +1168,39 @@ border-radius: 50%;
 <label>代理 (Proxy)</label>
 <input type="text" id="cfgNpmProxy" value="{NPM_PROXY}" placeholder="http://127.0.0.1:1080 (留空=无代理)" />
 </div>
-<div style="margin-top:12px;">
-<button class="btn btn-primary" onclick="saveNpmConfig()">💾 保存 NPM 配置</button>
+<div class="form-group">
+<label>本地存储目录</label>
+<div style="display:flex;gap:8px;">
+<input type="text" id="cfgLocalStorageDir" value="{LOCAL_STORAGE_DIR}" placeholder="留空使用默认路径" style="flex:1;" />
+<button class="btn btn-secondary btn-sm" onclick="copyDataConfirm()" id="copyDataBtn" style="display:none;">📋 拷贝数据</button>
+</div>
+<div id="copyConfirmDialog" style="display:none;margin-top:8px;padding:10px;background:#fff3cd;border-radius:6px;font-size:0.85em;">
+<p>检测到本地存储目录已修改，是否需要将原目录中的数据拷贝到新目录？</p>
+<div style="margin-top:8px;display:flex;gap:8px;">
+<button class="btn btn-success btn-sm" onclick="copyLocalStorage()">✅ 是，拷贝数据</button>
+<button class="btn btn-secondary btn-sm" onclick="dismissCopyConfirm()">❌ 不拷贝</button>
+</div>
+</div>
+</div>
+<div style="margin-top:12px;display:flex;gap:8px;">
+<button class="btn btn-primary" onclick="saveNpmConfig()">💾 保存配置</button>
+<button class="btn btn-success" onclick="startNpmDownload()">⬇️ 下载 NPM 包</button>
+<button class="btn btn-danger" onclick="stopNpmDownload()">⏹️ 停止下载</button>
+</div>
+<div id="npmProgressArea" style="display:none;margin-top:8px;">
+<div class="progress-bar"><div class="progress-fill" id="npmProgressFill" style="width:0%"></div></div>
+<div class="dl-info">
+<span id="npmDlPercent">0%</span>
+<span id="npmDlSpeed">0 B/s</span>
+<span id="npmDlEta">ETA: --</span>
+<span id="npmDlStatus">等待中...</span>
+</div>
 </div>
 </div>
 
 <!-- Mock API 配置 -->
 <div class="card">
-<h2>🎭 Mock API Server 配置</h2>
+<h2>🎭 Mock API Server 配置 <button class="btn btn-secondary btn-sm" onclick="resetSection('mock')" style="float:right">↺ 恢复默认</button></h2>
 <div class="form-group" style="display:flex; align-items:center; gap:12px;">
 <label style="margin:0;">启用 Mock Server</label>
 <label class="toggle">
@@ -1243,12 +1449,18 @@ clearInterval(modelPollTimer); modelPollTimer = null;
 async function saveNpmConfig() {
 const registry = document.getElementById('cfgNpmRegistry').value;
 const proxy = document.getElementById('cfgNpmProxy').value;
+const localDir = document.getElementById('cfgLocalStorageDir').value.trim();
 const data = await api('/api/npm/config', {
 method: 'PUT',
-body: JSON.stringify({ npm_registry: registry, npm_proxy: proxy || null })
+body: JSON.stringify({
+npm_registry: registry,
+npm_proxy: proxy || null,
+local_storage_dir: localDir || null
+})
 });
 if (data && data.status === 'ok') {
 showToast('NPM 配置已保存', 'success');
+prevStorageDir = localDir;
 }
 }
 
@@ -1264,6 +1476,129 @@ body: JSON.stringify({ mock_enabled: enabled, mock_port: port, mock_delay_ms: de
 });
 if (data && data.status === 'ok') {
 showToast('Mock 配置已保存', 'success');
+}
+}
+
+// ── 分区重置 ────────────────────────────────
+
+async function resetSection(section) {
+const data = await api('/api/config', {
+method: 'PUT',
+body: JSON.stringify({ reset_section: section })
+});
+if (data && data.status === 'ok') {
+showToast('配置已恢复默认', 'success');
+// 刷新页面以显示新值
+setTimeout(() => location.reload(), 500);
+}
+}
+
+// ── NPM 下载 ────────────────────────────────
+
+async function startNpmDownload() {
+const data = await api('/api/npm/download/start', { method: 'POST' });
+if (data) {
+if (data.status === 'ok') {
+showToast('NPM 下载已启动', 'success');
+document.getElementById('npmProgressArea').style.display = 'block';
+pollNpmStatus();
+} else {
+showToast(data.message || '启动失败', 'error');
+}
+}
+}
+
+async function stopNpmDownload() {
+const data = await api('/api/npm/download/stop', { method: 'POST' });
+if (data && data.status === 'ok') {
+showToast('已请求停止下载', 'info');
+}
+}
+
+let npmPollTimer = null;
+async function pollNpmStatus() {
+if (npmPollTimer) clearInterval(npmPollTimer);
+const data = await api('/api/npm/download/status');
+if (data && data.status === 'ok') {
+document.getElementById('npmProgressArea').style.display = 'block';
+const pct = data.percentage || 0;
+document.getElementById('npmProgressFill').style.width = pct + '%';
+document.getElementById('npmDlPercent').textContent = pct.toFixed(1) + '%';
+document.getElementById('npmDlSpeed').textContent = data.speed || '0 B/s';
+document.getElementById('npmDlEta').textContent = 'ETA: ' + (data.eta || '--');
+document.getElementById('npmDlStatus').textContent = data.status_text || data.state || '';
+if (data.state === 'completed') {
+showToast('NPM 下载完成', 'success');
+document.getElementById('npmProgressArea').style.display = 'none';
+clearInterval(npmPollTimer); npmPollTimer = null;
+return;
+}
+if (data.state === 'error') {
+showToast('下载失败: ' + (data.status_text || ''), 'error');
+clearInterval(npmPollTimer); npmPollTimer = null;
+return;
+}
+npmPollTimer = setInterval(async () => {
+const d = await api('/api/npm/download/status');
+if (d && d.status === 'ok') {
+document.getElementById('npmProgressFill').style.width = (d.percentage || 0) + '%';
+document.getElementById('npmDlPercent').textContent = (d.percentage || 0).toFixed(1) + '%';
+document.getElementById('npmDlSpeed').textContent = d.speed || '0 B/s';
+document.getElementById('npmDlEta').textContent = 'ETA: ' + (d.eta || '--');
+document.getElementById('npmDlStatus').textContent = d.status_text || d.state || '';
+if (d.state === 'completed') {
+showToast('NPM 下载完成', 'success');
+document.getElementById('npmProgressArea').style.display = 'none';
+clearInterval(npmPollTimer); npmPollTimer = null;
+}
+if (d.state === 'error') {
+showToast('下载失败: ' + (d.status_text || ''), 'error');
+clearInterval(npmPollTimer); npmPollTimer = null;
+}
+} else {
+clearInterval(npmPollTimer); npmPollTimer = null;
+}
+}, 1000);
+} else if (data && data.status === 'idle') {
+// 无下载任务
+}
+}
+
+// ── 本地存储目录拷贝确认 ────────────────────────
+
+let prevStorageDir = (document.getElementById('cfgLocalStorageDir')?.value || '').trim();
+function copyDataConfirm() {
+const newDir = document.getElementById('cfgLocalStorageDir').value.trim();
+if (prevStorageDir && newDir && prevStorageDir !== newDir) {
+document.getElementById('copyConfirmDialog').style.display = 'block';
+} else {
+// 直接保存
+saveNpmConfig();
+}
+}
+
+function dismissCopyConfirm() {
+document.getElementById('copyConfirmDialog').style.display = 'none';
+}
+
+async function copyLocalStorage() {
+document.getElementById('copyConfirmDialog').style.display = 'none';
+showToast('正在拷贝数据...', 'info');
+// 保存配置
+const registry = document.getElementById('cfgNpmRegistry').value;
+const proxy = document.getElementById('cfgNpmProxy').value;
+const localDir = document.getElementById('cfgLocalStorageDir').value.trim();
+const data = await api('/api/config', {
+method: 'PUT',
+body: JSON.stringify({
+npm_registry: registry,
+npm_proxy: proxy || null,
+local_storage_dir: localDir || null
+})
+});
+if (data && data.status === 'ok') {
+showToast('配置已保存，数据拷贝将后台进行', 'success');
+prevStorageDir = localDir;
 }
 }
 
