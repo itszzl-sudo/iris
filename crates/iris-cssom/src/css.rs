@@ -203,7 +203,7 @@ impl Stylesheet {
 /// # 示例
 ///
 /// ```rust
-/// use iris_layout::css::parse_stylesheet;
+/// use iris_cssom::css::parse_stylesheet;
 ///
 /// let css = r#"
 ///     .container {

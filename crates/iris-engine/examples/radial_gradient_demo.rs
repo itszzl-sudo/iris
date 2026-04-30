@@ -2,7 +2,7 @@
 // 展示 iris-gpu 的径向渐变功能
 
 use iris_engine::orchestrator::RuntimeOrchestrator;
-use iris_gpu::{BatchRenderer, DrawCommand};
+use iris_gpu::{Renderer, DrawCommand};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -11,15 +11,11 @@ use winit::{
 };
 
 struct RadialGradientApp {
-    window: Option<Window>,
     orchestrator: RuntimeOrchestrator,
 }
 
 impl ApplicationHandler for RadialGradientApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
-            return;
-        }
 
         let window = event_loop
             .create_window(
@@ -32,11 +28,15 @@ impl ApplicationHandler for RadialGradientApp {
         println!("✅ Window created");
 
         // 初始化 GPU 渲染器
-        let renderer = pollster::block_on(BatchRenderer::new(&window)).unwrap();
-        self.orchestrator.set_gpu_renderer(renderer);
-        println!("✅ GPU renderer initialized");
-
-        self.window = Some(window);
+        match pollster::block_on(Renderer::new(window)) {
+            Ok(renderer) => {
+                self.orchestrator.set_gpu_renderer(renderer);
+                println!("✅ GPU renderer initialized");
+            }
+            Err(e) => {
+                eprintln!("❌ Failed to initialize GPU renderer: {}", e);
+            }
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -44,10 +44,8 @@ impl ApplicationHandler for RadialGradientApp {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
-            WindowEvent::Resized(size) => {
-                if let Some(window) = &self.window {
-                    window.request_redraw();
-                }
+            WindowEvent::Resized(_size) => {
+                // GPU 渲染器会自行处理窗口大小变化
             }
             WindowEvent::RedrawRequested => {
                 self.render_frame();
@@ -59,7 +57,7 @@ impl ApplicationHandler for RadialGradientApp {
 
 impl RadialGradientApp {
     fn render_frame(&mut self) {
-        if let Some(renderer) = self.orchestrator.gpu_renderer() {
+        if let Some(renderer) = self.orchestrator.gpu_renderer_mut() {
             // 示例 1: 基础径向渐变（白色到紫色）
             renderer.submit_command(DrawCommand::RadialGradientRect {
                 center_x: 150.0,
@@ -119,7 +117,6 @@ fn main() {
 
     let event_loop = EventLoop::new().unwrap();
     let mut app = RadialGradientApp {
-        window: None,
         orchestrator: RuntimeOrchestrator::new(),
     };
 

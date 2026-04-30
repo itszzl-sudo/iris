@@ -16,6 +16,7 @@ mod script_setup;
 mod template_compiler;
 pub mod ts_compiler;
 pub mod postcss_processor;
+pub mod less_processor;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -706,7 +707,8 @@ fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
                     }
                 }
             } else if style.lang == "less" {
-                match scss_processor::compile_less(&style.content) {
+                let config = less_processor::LessConfig::default();
+                match less_processor::compile_less(&style.content, &config) {
                     Ok(result) => {
                         debug!("Less compiled");
                         result.css

@@ -21,7 +21,6 @@
 //! - 大型背景渐变效果
 
 use iris_engine::orchestrator::RuntimeOrchestrator;
-use iris_gpu::Renderer;
 use iris_layout::vdom::{VElement, VNode, VTree};
 use tracing::{info, warn};
 use winit::{
@@ -98,11 +97,9 @@ impl RadialGradientApp {
             info!("Initializing GPU renderer (sync)...");
             
             // 使用 pollster 将异步操作转为同步
-            match pollster::block_on(iris_gpu::BatchRenderer::new(&window)) {
-                Ok(mut renderer) => {
-                    info!("✅ BatchRenderer created successfully");
-                    renderer.set_window_size(self.size.width as f32, self.size.height as f32);
-                    info!("   Window size set: {}x{}", self.size.width, self.size.height);
+            match pollster::block_on(iris_gpu::Renderer::new(window)) {
+                Ok(renderer) => {
+                    info!("✅ Renderer created successfully");
                     
                     // 将渲染器注入到 orchestrator
                     self.orchestrator.set_gpu_renderer(renderer);
@@ -111,13 +108,10 @@ impl RadialGradientApp {
                     self.renderer_initialized = true;
                 }
                 Err(e) => {
-                    warn!("❌ Failed to create BatchRenderer: {}", e);
+                    warn!("❌ Failed to create Renderer: {}", e);
                     warn!("   Will retry on next redraw...");
                 }
             }
-            
-            // 放回 window
-            self.window = Some(window);
         }
     }
 
@@ -151,8 +145,8 @@ impl ApplicationHandler for RadialGradientApp {
         info!("Application resumed");
         self.suspended = false;
         
-        // 窗口已经创建，尝试初始化渲染器
-        if self.window.is_some() {
+        // 如果渲染器已初始化，不需要再创建窗口
+        if self.window.is_some() && !self.renderer_initialized {
             self.init_renderer_sync();
         }
     }
@@ -180,14 +174,14 @@ impl ApplicationHandler for RadialGradientApp {
                 // 更新视口大小
                 self.orchestrator.set_viewport_size(new_size.width as f32, new_size.height as f32);
                 
+                // 更新渲染器尺寸（如果已初始化）
+                if let Some(renderer) = self.orchestrator.gpu_renderer_mut() {
+                    renderer.resize(new_size);
+                }
+                
                 // 重新计算布局
                 if let Err(e) = self.orchestrator.compute_layout() {
                     warn!("Failed to recompute layout: {}", e);
-                }
-                
-                // 请求重绘
-                if let Some(window) = &self.window {
-                    window.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {

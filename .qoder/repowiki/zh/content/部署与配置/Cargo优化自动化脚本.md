@@ -4,19 +4,26 @@
 **本文档引用的文件**
 - [Cargo.toml](file://Cargo.toml)
 - [apply-cargo-optimizations.ps1](file://apply-cargo-optimizations.ps1)
-- [CARGO-PERFORMANCE-OPTIMIZATION.md](file://CARGO-PERFORMANCE-OPTIMIZATION.md)
+- [docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md)
 - [.cargo/config.toml](file://.cargo/config.toml)
-- [CARGO-MIRROR-CONFIG.md](file://CARGO-MIRROR-CONFIG.md)
+- [docs/guides/CARGO-MIRROR-CONFIG.md](file://docs/guides/CARGO-MIRROR-CONFIG.md)
 - [run-tests.ps1](file://run-tests.ps1)
 - [fix-encoding.ps1](file://fix-encoding.ps1)
 - [QUICK-START.md](file://QUICK-START.md)
 - [rust-toolchain.toml](file://rust-toolchain.toml)
-- [crates/iris/Cargo.toml](file://crates/iris/Cargo.toml)
+- [crates/iris-core/Cargo.toml](file://crates/iris-core/Cargo.toml)
 - [crates/iris-sfc/Cargo.toml](file://crates/iris-sfc/Cargo.toml)
 - [crates/iris-app/Cargo.toml](file://crates/iris-app/Cargo.toml)
 - [crates/iris-gpu/Cargo.toml](file://crates/iris-gpu/Cargo.toml)
 - [crates/iris-dom/Cargo.toml](file://crates/iris-dom/Cargo.toml)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 新增了 Cargo 优化自动化脚本的详细分析和使用指南
+- 更新了核心组件部分，重点介绍 apply-cargo-optimizations.ps1 脚本功能
+- 增强了性能优化指南章节，包含更多实用的优化建议
+- 完善了故障排除指南，涵盖脚本执行过程中的常见问题
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -40,6 +47,8 @@
 - 增量编译时间缩短6倍
 - 磁盘占用减少60%
 
+**更新** 新增了 `apply-cargo-optimizations.ps1` 自动化脚本，提供了一键式配置优化功能，大幅简化了手动配置过程。
+
 ## 项目结构
 
 ```mermaid
@@ -47,28 +56,27 @@ graph TB
 subgraph "项目根目录"
 A[Cargo.toml] --> B[.cargo/config.toml]
 C[rust-toolchain.toml] --> D[crates/]
-end
-subgraph "脚本文件"
-E[apply-cargo-optimizations.ps1]
-F[run-tests.ps1]
-G[fix-encoding.ps1]
-H[Auto-Setup-UTF8.ps1]
-end
-subgraph "优化文档"
-I[CARGO-PERFORMANCE-OPTIMIZATION.md]
-J[CARGO-MIRROR-CONFIG.md]
-K[QUICK-START.md]
+E[apply-cargo-optimizations.ps1] --> F[自动化优化脚本]
 end
 subgraph "工作区Crates"
-L[iris/]
-M[iris-core/]
-N[iris-gpu/]
-O[iris-sfc/]
-P[iris-app/]
-Q[iris-dom/]
-R[iris-js/]
-S[iris-layout/]
+G[iris-core/]
+H[iris-gpu/]
+I[iris-sfc/]
+J[iris-app/]
+K[iris-dom/]
+L[iris-js/]
+M[iris-layout/]
+N[iris-engine/]
+O[iris-cli/]
+P[iris-jetcrab/]
+Q[iris-jetcrab-engine/]
+R[iris-jetcrab-cli/]
 end
+A --> G
+A --> H
+A --> I
+A --> J
+A --> K
 A --> L
 A --> M
 A --> N
@@ -76,15 +84,14 @@ A --> O
 A --> P
 A --> Q
 A --> R
-A --> S
 ```
 
 **图表来源**
-- [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
-- [crates/iris/Cargo.toml:1-20](file://crates/iris/Cargo.toml#L1-L20)
+- [Cargo.toml:1-50](file://Cargo.toml#L1-L50)
+- [crates/iris-core/Cargo.toml:1-20](file://crates/iris-core/Cargo.toml#L1-L20)
 
 **章节来源**
-- [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
+- [Cargo.toml:1-50](file://Cargo.toml#L1-L50)
 - [rust-toolchain.toml:1-5](file://rust-toolchain.toml#L1-L5)
 
 ## 核心组件
@@ -127,11 +134,11 @@ A --> S
 
 **章节来源**
 - [.cargo/config.toml:1-82](file://.cargo/config.toml#L1-L82)
-- [CARGO-MIRROR-CONFIG.md:1-130](file://CARGO-MIRROR-CONFIG.md#L1-L130)
+- [docs/guides/CARGO-MIRROR-CONFIG.md:1-130](file://docs/guides/CARGO-MIRROR-CONFIG.md#L1-L130)
 
 ### 性能优化指南
 
-`CARGO-PERFORMANCE-OPTIMIZATION.md`提供了完整的性能优化策略：
+`docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md`提供了完整的性能优化策略：
 
 1. **网络优化**：sparse协议、网络重试机制
 2. **编译优化**：并行编译、开发模式优化
@@ -139,7 +146,7 @@ A --> S
 4. **存储优化**：target目录优化、RAM磁盘使用
 
 **章节来源**
-- [CARGO-PERFORMANCE-OPTIMIZATION.md:1-417](file://CARGO-PERFORMANCE-OPTIMIZATION.md#L1-L417)
+- [docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md:1-417](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md#L1-L417)
 
 ## 架构概览
 
@@ -233,14 +240,19 @@ subgraph "核心模块"
 B[iris-core]
 C[iris-dom]
 D[iris-layout]
+E[iris-cssom]
 end
 subgraph "功能模块"
-E[iris-gpu]
-F[iris-js]
-G[iris-sfc]
+F[iris-gpu]
+G[iris-js]
+H[iris-sfc]
+I[iris-app]
 end
-subgraph "应用模块"
-H[iris-app]
+subgraph "工具模块"
+J[iris-cli]
+K[iris-jetcrab]
+L[iris-jetcrab-engine]
+M[iris-jetcrab-cli]
 end
 A --> B
 A --> C
@@ -248,19 +260,24 @@ A --> D
 A --> E
 A --> F
 A --> G
+A --> H
+A --> I
+J --> B
+J --> F
+J --> G
+J --> H
+K --> B
+L --> K
+M --> L
 H --> B
-H --> E
-H --> F
-H --> G
-G --> B
-E --> B
+F --> B
 C --> B
 D --> B
 ```
 
 **图表来源**
 - [Cargo.toml:13-21](file://Cargo.toml#L13-L21)
-- [crates/iris/Cargo.toml:13-19](file://crates/iris/Cargo.toml#L13-L19)
+- [crates/iris-core/Cargo.toml:13-19](file://crates/iris-core/Cargo.toml#L13-L19)
 
 #### 依赖版本管理
 
@@ -321,12 +338,19 @@ string iris_js
 string iris_sfc
 string iris_layout
 string iris_app
+string iris_engine
+string iris_cli
+string iris_cssom
+string iris_jetcrab
+string iris_jetcrab_engine
+string iris_jetcrab_cli
 }
 EXTERNAL_DEPS {
 string tokio_full
 string winit_0_30
 string wgpu_24
 string html5ever_0_27
+string markup5ever_rcdom
 string cssparser_0_33
 }
 CARGO_CONFIG ||--|| WORKSPACE_CRATES : "管理"
@@ -374,7 +398,7 @@ WORKSPACE_CRATES ||--|| EXTERNAL_DEPS : "依赖"
 - **调试功能**：开发模式下的性能优化会影响调试体验
 
 **章节来源**
-- [CARGO-PERFORMANCE-OPTIMIZATION.md:316-341](file://CARGO-PERFORMANCE-OPTIMIZATION.md#L316-L341)
+- [docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md:316-341](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md#L316-L341)
 
 ## 故障排除指南
 
@@ -409,8 +433,22 @@ WORKSPACE_CRATES ||--|| EXTERNAL_DEPS : "依赖"
    - 检查文件保存格式为UTF-8无BOM
    - 验证PowerShell控制台编码设置
 
+#### 优化脚本执行问题
+
+1. **脚本权限问题**
+   - 解决方案：运行`Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+   - 检查方法：确认脚本执行策略允许本地脚本运行
+
+2. **Cargo版本不兼容**
+   - 解决方案：升级到最新版本的Cargo
+   - 检查方法：运行`rustup update`更新Rust工具链
+
+3. **sccache安装失败**
+   - 解决方案：手动安装sccache或使用其他缓存方案
+   - 检查方法：确认网络连接正常，尝试使用代理
+
 **章节来源**
-- [CARGO-PERFORMANCE-OPTIMIZATION.md:105-120](file://CARGO-PERFORMANCE-OPTIMIZATION.md#L105-L120)
+- [docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md:105-120](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md#L105-L120)
 - [fix-encoding.ps1:56-81](file://fix-encoding.ps1#L56-L81)
 
 ## 结论
@@ -430,5 +468,7 @@ WORKSPACE_CRATES ||--|| EXTERNAL_DEPS : "依赖"
 2. **动态配置调整**：根据实际使用情况自动调整优化参数
 3. **跨平台支持**：扩展对Linux和macOS平台的支持
 4. **容器化部署**：提供Docker容器化的优化配置
+
+**更新** 新增的 `apply-cargo-optimizations.ps1` 脚本大大简化了配置过程，用户只需运行一个脚本即可获得完整的优化配置建议，显著降低了使用门槛。
 
 这个项目为Rust生态系统的开发效率提升做出了重要贡献，值得在更大范围内推广使用。

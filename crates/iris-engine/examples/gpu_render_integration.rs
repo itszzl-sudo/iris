@@ -10,8 +10,7 @@
 //! ```
 
 use iris_engine::orchestrator::RuntimeOrchestrator;
-use iris_gpu::Renderer;
-use std::path::Path;
+use iris_layout::DOMNode;
 
 /// 示例：基本的 GPU 渲染集成
 /// 
@@ -56,7 +55,7 @@ console.log('组件初始化');
 "#;
 
     // 写入临时文件
-    let temp_path = Path::new("test_gpu_example.vue");
+    let temp_path = std::path::Path::new("test_gpu_example.vue");
     std::fs::write(temp_path, test_vue)?;
     println!("✅ 测试文件已创建: {:?}\n", temp_path);
 
@@ -79,7 +78,6 @@ console.log('组件初始化');
 
     // 4. 手动创建 DOM 树用于演示
     println!("步骤 4: 创建 DOM 树（手动）...");
-    use iris_layout::dom::DOMNode;
     let mut dom_tree = DOMNode::new_element("div");
     dom_tree.set_attribute("id", "app");
     dom_tree.set_attribute("style", "display: flex; flex-direction: column; padding: 20px;");
@@ -152,8 +150,8 @@ fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    // 运行示例
-    match basic_gpu_integration() {
+    // 运行示例（使用 pollster 阻塞等待异步函数完成）
+    match pollster::block_on(basic_gpu_integration()) {
         Ok(()) => {
             println!("\n✅ 示例运行成功");
         }

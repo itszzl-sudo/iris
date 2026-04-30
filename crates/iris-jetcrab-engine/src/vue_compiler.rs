@@ -608,14 +608,20 @@ impl VueProjectCompiler {
                 deps: vec![],
             }
         } else if module_path.ends_with(".less") {
-            // Less 文件 - 保留原始内容，应用 PostCSS 转换
-            warn!("Less compilation not yet available: {}", module_path);
+            // Less 文件 - 使用 rust-less 编译器，然后 PostCSS 转换
+            let less_config = iris_sfc::less_processor::LessConfig::default();
+            let less_result = iris_sfc::less_processor::compile_less(&content, &less_config)
+                .map_err(|e| anyhow::anyhow!("Less compilation failed: {}", e))?;
+            let css_code = less_result.css;
             let postcss_config = iris_sfc::postcss_processor::PostCssConfig::default();
             let postcss_result = iris_sfc::postcss_processor::process_css(
-                &content,
+                &css_code,
                 &postcss_config,
                 module_path
             );
+            if postcss_result.transformed {
+                debug!("PostCSS applied to Less: {} -> {} bytes", postcss_result.original_size, postcss_result.output_size);
+            }
             CompiledModule {
                 script: format!("// Less module: {}\nexport default {{}}", module_path),
                 styles: vec![StyleBlock {

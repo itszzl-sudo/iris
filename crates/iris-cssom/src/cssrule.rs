@@ -72,7 +72,7 @@ impl CSSRuleOM {
 /// use iris_cssom::cssom::CSSStyleDeclaration;
 ///
 /// let mut rule = CSSStyleRule::new(".class");
-/// rule.style().set_property("color", "red", "");
+/// rule.style().lock().unwrap().set_property("color", "red", "");
 /// ```
 #[derive(Debug, Clone)]
 pub struct CSSStyleRule {

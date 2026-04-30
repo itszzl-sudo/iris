@@ -4,10 +4,10 @@
 **本文档引用的文件**
 - [Cargo.toml](file://Cargo.toml)
 - [.cargo/config.toml](file://.cargo/config.toml)
-- [CARGO-MIRROR-CONFIG.md](file://CARGO-MIRROR-CONFIG.md)
-- [CARGO-PERFORMANCE-OPTIMIZATION.md](file://CARGO-PERFORMANCE-OPTIMIZATION.md)
+- [CARGO-MIRROR-CONFIG.md](file://docs/guides/CARGO-MIRROR-CONFIG.md)
+- [CARGO-PERFORMANCE-OPTIMIZATION.md](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md)
 - [rust-toolchain.toml](file://rust-toolchain.toml)
-- [crates/iris/Cargo.toml](file://crates/iris/Cargo.toml)
+- [crates/iris/Cargo.toml](file://Cargo.toml)
 - [crates/iris-app/Cargo.toml](file://crates/iris-app/Cargo.toml)
 - [crates/iris-core/Cargo.toml](file://crates/iris-core/Cargo.toml)
 - [crates/iris-gpu/Cargo.toml](file://crates/iris-gpu/Cargo.toml)
@@ -18,6 +18,13 @@
 - [crates/iris-sfc/src/lib.rs](file://crates/iris-sfc/src/lib.rs)
 - [crates/iris-app/src/main.rs](file://crates/iris-app/src/main.rs)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 更新了Cargo性能优化文档的引用路径，从docs/reports/迁移到docs/architecture/
+- 增加了对现有架构文档的引用
+- 更新了镜像源配置指南的参考路径
+- 修正了文档结构以反映实际的文件组织
 
 ## 目录
 1. [简介](#简介)
@@ -71,12 +78,12 @@ Root --> Engine
 ```
 
 **图表来源**
-- [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
-- [crates/iris/Cargo.toml:1-20](file://crates/iris/Cargo.toml#L1-L20)
+- [Cargo.toml:1-50](file://Cargo.toml#L1-L50)
+- [crates/iris/Cargo.toml:1-20](file://Cargo.toml#L1-L20)
 
 **章节来源**
-- [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
-- [crates/iris/Cargo.toml:1-20](file://crates/iris/Cargo.toml#L1-L20)
+- [Cargo.toml:1-50](file://Cargo.toml#L1-L50)
+- [crates/iris/Cargo.toml:1-20](file://Cargo.toml#L1-L20)
 
 ## 核心组件
 
@@ -89,18 +96,18 @@ classDiagram
 class Workspace {
 +members : ["crates/*"]
 +resolver : "2"
-+version : "0.0.1"
++version : "0.1.0"
 +edition : "2021"
 +rust-version : "1.78"
 }
 class SharedDependencies {
-+iris-core : "0.0.1"
-+iris-gpu : "0.0.1"
-+iris-layout : "0.0.1"
-+iris-dom : "0.0.1"
-+iris-js : "0.0.1"
-+iris-sfc : "0.0.1"
-+iris-app : "0.0.1"
++iris-core : "0.1.0"
++iris-gpu : "0.1.0"
++iris-layout : "0.1.0"
++iris-dom : "0.1.0"
++iris-js : "0.1.0"
++iris-sfc : "0.1.0"
++iris-app : "0.1.0"
 +tokio : "1"
 +winit : "0.30"
 +wgpu : "24"
@@ -111,7 +118,7 @@ Workspace --> SharedDependencies
 ```
 
 **图表来源**
-- [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
+- [Cargo.toml:1-50](file://Cargo.toml#L1-L50)
 
 ### 工具链配置
 
@@ -322,7 +329,7 @@ subgraph "外部依赖"
 Tokio[tokio: 1<br/>异步运行时]
 Winit[winit: 0.30<br/>窗口管理]
 WGPU[wgpu: 24<br/>GPU渲染]
-SWC[swc: 0.270<br/>TypeScript编译]
+SWC[swc: 62<br/>TypeScript编译]
 Regex[regex: 1.10<br/>正则表达式]
 end
 subgraph "内部模块"
@@ -345,9 +352,9 @@ SFC --> Regex
 ```
 
 **图表来源**
-- [Cargo.toml:13-28](file://Cargo.toml#L13-L28)
+- [Cargo.toml:27-50](file://Cargo.toml#L27-L50)
 - [crates/iris-gpu/Cargo.toml:11-22](file://crates/iris-gpu/Cargo.toml#L11-L22)
-- [crates/iris-sfc/Cargo.toml:11-31](file://crates/iris-sfc/Cargo.toml#L11-L31)
+- [crates/iris-sfc/Cargo.toml:21-42](file://crates/iris-sfc/Cargo.toml#L21-L42)
 
 ### 模块间依赖关系
 
@@ -372,12 +379,12 @@ end
 ```
 
 **图表来源**
-- [crates/iris/Cargo.toml:13-19](file://crates/iris/Cargo.toml#L13-L19)
+- [crates/iris/Cargo.toml:13-19](file://Cargo.toml#L13-L19)
 - [crates/iris-app/Cargo.toml:16-25](file://crates/iris-app/Cargo.toml#L16-L25)
 
 **章节来源**
-- [Cargo.toml:1-29](file://Cargo.toml#L1-L29)
-- [crates/iris/Cargo.toml:1-20](file://crates/iris/Cargo.toml#L1-L20)
+- [Cargo.toml:1-50](file://Cargo.toml#L1-L50)
+- [crates/iris/Cargo.toml:1-20](file://Cargo.toml#L1-L20)
 
 ## 性能考虑
 
@@ -402,7 +409,7 @@ Mirror --> USTC
 ```
 
 **图表来源**
-- [.cargo/config.toml:8-21](file://.cargo/config.toml#L8-L21)
+- [.cargo/config.toml:8-22](file://.cargo/config.toml#L8-L22)
 
 #### 网络优化配置
 
@@ -435,8 +442,8 @@ Mirror --> USTC
 | 磁盘占用 | 5-8 GB | 2-3 GB | **60%** 💾 |
 
 **章节来源**
-- [CARGO-PERFORMANCE-OPTIMIZATION.md:9-18](file://CARGO-PERFORMANCE-OPTIMIZATION.md#L9-L18)
-- [.cargo/config.toml:27-50](file://.cargo/config.toml#L27-L50)
+- [CARGO-PERFORMANCE-OPTIMIZATION.md:9-18](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md#L9-L18)
+- [.cargo/config.toml:28-50](file://.cargo/config.toml#L28-L50)
 
 ## 故障排除指南
 
@@ -479,7 +486,7 @@ Mirror --> USTC
 - 检查防火墙设置
 
 **章节来源**
-- [CARGO-PERFORMANCE-OPTIMIZATION.md:316-341](file://CARGO-PERFORMANCE-OPTIMIZATION.md#L316-L341)
+- [CARGO-PERFORMANCE-OPTIMIZATION.md:316-341](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md#L316-L341)
 
 ### 性能监控工具
 
@@ -508,7 +515,7 @@ Get-ChildItem target -Recurse | Measure-Object -Property Length -Sum
 ```
 
 **章节来源**
-- [CARGO-PERFORMANCE-OPTIMIZATION.md:282-313](file://CARGO-PERFORMANCE-OPTIMIZATION.md#L282-L313)
+- [CARGO-PERFORMANCE-OPTIMIZATION.md:282-313](file://docs/reports/CARGO-PERFORMANCE-OPTIMIZATION.md#L282-L313)
 
 ## 结论
 
@@ -562,3 +569,5 @@ panic = "abort"
 - [清华大学 TUNA 镜像](https://mirrors.tuna.tsinghua.edu.cn/help/crates.io-index/)
 - [sccache 文档](https://github.com/mozilla/sccache)
 - [Cargo 性能优化指南](https://nnethercote.github.io/perf-book/)
+- [Cargo 镜像源配置指南](file://docs/guides/CARGO-MIRROR-CONFIG.md)
+- [架构文档](file://docs/architecture/ARCHITECTURE.md)

@@ -20,7 +20,7 @@ use crate::cssrulelist::CSSRuleList;
 /// let mut sheet = CSSStyleSheet::new();
 /// sheet.insert_rule(".container { color: red; }", 0).unwrap();
 ///
-/// assert_eq!(sheet.css_rules().length(), 1);
+/// assert_eq!(sheet.css_rules().lock().unwrap().length(), 1);
 /// ```
 #[derive(Debug, Clone)]
 pub struct CSSStyleSheet {
@@ -60,8 +60,8 @@ impl CSSStyleSheet {
     ///
     /// let sheet = CSSStyleSheet::new();
     /// assert!(!sheet.disabled());
-    /// assert_eq!(sheet.css_rules().length(), 0);
-    /// ```
+    /// assert_eq!(sheet.css_rules().lock().unwrap().length(), 0);
+/// ```
     pub fn new() -> Self {
         Self {
             disabled: false,
@@ -88,7 +88,7 @@ impl CSSStyleSheet {
     ///     #header { background: blue; }
     /// "#;
     /// let sheet = CSSStyleSheet::from_css(css);
-    /// assert!(sheet.css_rules().length() > 0);
+    /// assert!(sheet.css_rules().lock().unwrap().length() > 0);
     /// ```
     pub fn from_css(css_text: &str) -> Self {
         let sheet = Self::new();

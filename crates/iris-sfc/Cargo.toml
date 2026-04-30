@@ -40,3 +40,6 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # SCSS 编译器
 grass = "0.13"
 lightningcss = "1.0.0-alpha.71"
+
+# Less 编译器
+rust-less = "0.1"
