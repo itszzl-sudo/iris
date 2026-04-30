@@ -7,13 +7,35 @@ const __dirname = dirname(__filename);
 const TEMPLATE_DIR = resolve(__dirname, '..', 'templates');
 
 export function generateIrisIndexHtml(projectRoot) {
+  let html;
   if (projectRoot) {
     const projectIndex = resolve(projectRoot, 'index.html');
-    if (existsSync(projectIndex)) return readFileSync(projectIndex, 'utf-8');
+    if (existsSync(projectIndex)) {
+      html = readFileSync(projectIndex, 'utf-8');
+    }
   }
-  const templatePath = resolve(TEMPLATE_DIR, 'index.html');
-  if (existsSync(templatePath)) return readFileSync(templatePath, 'utf-8');
-  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Iris Runtime</title></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>';
+  if (!html) {
+    const templatePath = resolve(TEMPLATE_DIR, 'index.html');
+    if (existsSync(templatePath)) {
+      html = readFileSync(templatePath, 'utf-8');
+    } else {
+      html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Iris Runtime</title></head><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>';
+    }
+  }
+
+  // 检查是否已有 favicon 链接
+  const hasFavicon = html.includes('rel="icon"') || html.includes("rel='icon'") || html.includes('rel=icon');
+  
+  // 如果没有 favicon，注入彩虹 emoji favicon
+  if (!hasFavicon) {
+    const faviconLink = '<link rel="icon" type="image/svg+xml" href="/__iris-favicon.svg">';
+    const headEnd = html.indexOf('</head>');
+    if (headEnd !== -1) {
+      html = html.slice(0, headEnd) + faviconLink + html.slice(headEnd);
+    }
+  }
+
+  return html;
 }
 
 export function generateDirectorySelectorPage() {

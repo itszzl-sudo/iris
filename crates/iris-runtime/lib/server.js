@@ -188,6 +188,7 @@ async function handleRequest(req, res, ctx) {
     return;
   }
 
+  // 从项目根目录服务文件
   const filePath = resolve(root, pathname.slice(1));
   if (existsSync(filePath) && statSync(filePath).isFile()) {
     res.writeHead(200, { 'Content-Type': getContentType(filePath) });
@@ -195,8 +196,46 @@ async function handleRequest(req, res, ctx) {
     return;
   }
 
+  // favicon.ico 不存在时，返回彩虹 emoji SVG
+  if (pathname === '/favicon.ico' || pathname === '/__iris-favicon.svg') {
+    res.writeHead(200, {
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'public, max-age=3600'
+    });
+    res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f0f0f0" rx="14"/><text x="50" y="82" text-anchor="middle" font-size="72">&#127752;</text></svg>');
+    return;
+  }
+
+  // 图片文件不存在时，生成占位 SVG
+  if (isImagePath(pathname)) {
+    const filename = pathname.split('/').pop() || pathname;
+    const safeName = filename.length > 30 ? filename.slice(0, 27) + '...' : filename;
+    res.writeHead(200, {
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'no-cache'
+    });
+    res.end(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#f5f5f5" rx="12"/>
+  <rect x="1.5" y="1.5" width="397" height="297" fill="none" stroke="#e0e0e0" stroke-width="2" rx="12"/>
+  <text x="200" y="140" text-anchor="middle" font-size="64">&#128196;</text>
+  <text x="200" y="200" text-anchor="middle" font-size="15" font-family="sans-serif" fill="#b0b0b0">${escapeXml(safeName)} (placeholder)</text>
+</svg>`);
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Not Found');
+}
+
+function isImagePath(path) {
+  const lower = path.toLowerCase();
+  return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+    || lower.endsWith('.gif') || lower.endsWith('.webp') || lower.endsWith('.bmp')
+    || lower.endsWith('.ico') || lower.endsWith('.svg');
+}
+
+function escapeXml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function printBanner() {

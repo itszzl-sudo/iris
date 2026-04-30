@@ -5,7 +5,7 @@ use axum::{
     extract::{State, Path},
 };
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
-use axum::http::{StatusCode, header};
+use axum::http::{StatusCode, header, Uri};
 use serde_json::json;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -254,21 +254,31 @@ fn generate_index_html(project_root: &std::path::PathBuf) -> String {
         default_index_html()
     };
     
-    // 注入 Vue 特性标志（避免 esm-bundler 版本警告）
-    // 这些标志需要在 Vue 初始化前定义，用于 tree-shaking
-    // 在浏览器中，常规 script 标签中使用 var 定义全局变量
-    let feature_flags = "<script>var __VUE_OPTIONS_API__=true;var __VUE_PROD_DEVTOOLS__=false;var __VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false;</script>";
+    // 检查是否已有 favicon
+    let has_favicon = html.contains("rel=\"icon\"") || html.contains("rel='icon'") || html.contains("rel=icon");
+    
+    // 构建注入内容
+    let mut inject_content = String::from(
+        "<script>var __VUE_OPTIONS_API__=true;var __VUE_PROD_DEVTOOLS__=false;var __VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false;</script>"
+    );
+    
+    // 如果没有 favicon 链接，注入彩虹 emoji favicon
+    if !has_favicon {
+        inject_content.push_str(
+            "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/__iris-favicon.svg\">"
+        );
+    }
     
     // 在 </head> 前注入（所有浏览器兼容）
     if let Some(pos) = html.find("</head>") {
-        let mut result = String::with_capacity(html.len() + feature_flags.len());
+        let mut result = String::with_capacity(html.len() + inject_content.len());
         result.push_str(&html[..pos]);
-        result.push_str(&feature_flags);
+        result.push_str(&inject_content);
         result.push_str(&html[pos..]);
         result
     } else {
         // 如果没有 </head>，追加到开头
-        format!("{}\n{}", feature_flags, html)
+        format!("{}\n{}", inject_content, html)
     }
 }
 
@@ -1756,7 +1766,146 @@ pub async fn source_file_handler(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 [(header::CONTENT_TYPE, "text/plain")],
                 format!("Failed to compile module: {}", e),
-            ).into_response()
+           ).into_response()
         }
     }
+}
+
+/// 彩虹 emoji SVG favicon
+fn rainbow_favicon_svg() -> &'static str {
+    r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f0f0f0" rx="14"/><text x="50" y="82" text-anchor="middle" font-size="72">&#127752;</text></svg>"##
+}
+
+/// 检查路径是否为图片文件
+fn is_image_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg")
+        || lower.ends_with(".gif") || lower.ends_with(".webp") || lower.ends_with(".bmp")
+        || lower.ends_with(".ico") || lower.ends_with(".svg")
+}
+
+/// 生成占位 SVG 图片
+fn placeholder_svg(path: &str) -> String {
+    let filename = path.split('/').last().unwrap_or(path);
+    let safe_name = if filename.len() > 30 { format!("{}...", &filename[..27]) } else { filename.to_string() };
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <rect width="400" height="300" fill="#f5f5f5" rx="12"/>
+  <rect x="1.5" y="1.5" width="397" height="297" fill="none" stroke="#e0e0e0" stroke-width="2" rx="12"/>
+  <text x="200" y="140" text-anchor="middle" font-size="64">&#128196;</text>
+  <text x="200" y="200" text-anchor="middle" font-size="15" font-family="sans-serif" fill="#b0b0b0">{} (placeholder)</text>
+</svg>"##,
+        safe_name
+    )
+}
+
+/// Fallback 处理器 - 处理 favicon、图片和其他静态资源
+///
+/// 当请求的文件在项目根目录不存在时：
+/// - /__iris-favicon.svg 或 /favicon.ico → 返回彩虹 emoji favicon
+/// - 其他图片文件 → 返回占位 SVG
+pub async fn fallback_handler(
+    State(state): State<ServerState>,
+    uri: Uri,
+) -> Response {
+    let (cache, _enable_hmr, _ws_manager): (Arc<tokio::sync::Mutex<CompilerCache>>, bool, Arc<WebSocketManager>) = state;
+    let cache_lock = cache.lock().await;
+    let project_root = cache_lock.project_root.clone();
+    drop(cache_lock);
+
+    let path = uri.path();
+    if path == "/" {
+        return (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain")],
+            "Not Found".to_string(),
+        ).into_response();
+    }
+
+    let relative_path = path.trim_start_matches('/');
+    let file_path = project_root.join(relative_path);
+
+    // 特殊处理 Iris 彩虹 favicon
+    if path == "/__iris-favicon.svg" || path == "/favicon.ico" {
+        if path == "/favicon.ico" && file_path.exists() && file_path.is_file() {
+            // 项目实际有 favicon.ico，读取并返回
+            match tokio::fs::read(&file_path).await {
+                Ok(data) => {
+                    return (
+                        StatusCode::OK,
+                        [
+                            (header::CONTENT_TYPE, "image/x-icon"),
+                            (header::CACHE_CONTROL, "public, max-age=3600"),
+                        ],
+                        data,
+                    ).into_response();
+                }
+                Err(_) => {}
+            }
+        }
+        // 返回彩虹 emoji SVG favicon
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "image/svg+xml"),
+                (header::CACHE_CONTROL, "public, max-age=3600"),
+            ],
+            rainbow_favicon_svg(),
+        ).into_response();
+    }
+
+    // 图片文件：存在则返回，不存在则生成占位图
+    if is_image_path(path) {
+        if file_path.exists() && file_path.is_file() {
+            match tokio::fs::read(&file_path).await {
+                Ok(data) => {
+                    let ct = get_content_type(path);
+                    return (
+                        StatusCode::OK,
+                        [
+                            (header::CONTENT_TYPE, ct),
+                            (header::CACHE_CONTROL, "public, max-age=3600"),
+                        ],
+                        data,
+                    ).into_response();
+                }
+                Err(_) => {}
+            }
+        }
+        // 生成占位 SVG
+        let placeholder = placeholder_svg(relative_path);
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "image/svg+xml"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            placeholder,
+        ).into_response();
+    }
+
+    // 其他文件类型
+    if file_path.exists() && file_path.is_file() {
+        match tokio::fs::read(&file_path).await {
+            Ok(data) => {
+                let ct = get_content_type(path);
+                return (
+                    StatusCode::OK,
+                    [
+                        (header::CONTENT_TYPE, ct),
+                        (header::CACHE_CONTROL, "public, max-age=3600"),
+                    ],
+                    data,
+                ).into_response();
+            }
+            Err(_) => {}
+        }
+    }
+
+    // 404
+    (
+        StatusCode::NOT_FOUND,
+        [(header::CONTENT_TYPE, "text/plain")],
+        "Not Found".to_string(),
+    ).into_response()
 }

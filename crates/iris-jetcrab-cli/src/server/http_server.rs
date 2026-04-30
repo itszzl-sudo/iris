@@ -87,6 +87,8 @@ pub async fn start(root: String, port: u16, open: bool, enable_hmr: bool, debug:
         .route("/api/ai-edit", post(ai_inspector::ai_edit_handler))
         .route("/api/apply-edit", post(ai_inspector::apply_edit_handler))
         .route("/api/npm-package-info", get(ai_inspector::npm_package_info_handler))
+        // 通用文件服务 fallback（favicon.ico、图片占位等）
+        .fallback(routes::fallback_handler)
         .with_state((cache, enable_hmr, ws_manager));
 
     // 添加 CORS
