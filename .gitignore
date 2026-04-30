@@ -40,3 +40,6 @@ doc/
 # Cargo 沙盒配置文件（保留示例）
 !.cargo-sandbox.env.example
 Set-CargoSandbox.ps1
+
+# Development screenshots
+step*.png
