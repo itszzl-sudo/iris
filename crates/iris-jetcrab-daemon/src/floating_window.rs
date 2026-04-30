@@ -32,8 +32,8 @@ pub struct FloatingApp {
     surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
     /// 上下文
     context: Option<softbuffer::Context<Rc<Window>>>,
-    /// 彩虹图标数据
-    icon: RainbowIcon,
+    /// 彩虹图标数据（静态缓存引用）
+    icon: &'static RainbowIcon,
     /// 粒子系统
     particles: ParticleSystem,
     /// 当前位置
@@ -255,7 +255,7 @@ impl ApplicationHandler for FloatingApp {
                         renderer::draw_sparkles(raw, &self.particles);
 
                         // 4. 彩虹图标（最上层）
-                        renderer::draw_icon(raw, &self.icon);
+                        renderer::draw_icon(raw, self.icon);
                     }
 
                     buffer.present().ok();

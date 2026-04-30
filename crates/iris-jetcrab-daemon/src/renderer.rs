@@ -1,6 +1,7 @@
 //! 软渲染器 - 彩虹图标（系统 emoji 字体渲染）+ 粒子 + 轨迹 + 呼吸光晕
 
 use crate::particles::ParticleSystem;
+use std::sync::OnceLock;
 
 /// 窗口尺寸常量
 pub const WINDOW_WIDTH: u32 = 80;
@@ -13,31 +14,36 @@ pub struct RainbowIcon {
     pub pixels: Vec<u8>, // RGBA
 }
 
+/// 全局缓存：只渲染一次，后续复用
+static RAINBOW_ICON: OnceLock<RainbowIcon> = OnceLock::new();
+
 /// ============================================================
 /// 彩虹图标生成：优先使用系统 emoji 字体渲染 🌈 字符
 /// ============================================================
 
-/// 生成彩虹图标
-pub fn generate_rainbow_icon() -> RainbowIcon {
-    let w = 64u32;
-    let h = 64u32;
-    let mut pixels = vec![0u8; (w * h * 4) as usize];
+/// 生成彩虹图标（缓存为全局静态，仅首次调用时实际生成）
+pub fn generate_rainbow_icon() -> &'static RainbowIcon {
+    RAINBOW_ICON.get_or_init(|| {
+        let w = 64u32;
+        let h = 64u32;
+        let mut pixels = vec![0u8; (w * h * 4) as usize];
 
-    // 尝试从系统 emoji 字体加载 🌈 轮廓
-    if let Some(font_data) = load_emoji_font_data() {
-        let font_data = extract_from_ttc_if_needed(&font_data);
-        if let Some(fd) = font_data {
-            if let Ok(font) = fontdue::Font::from_bytes(fd, fontdue::FontSettings::default()) {
-                if render_emoji_glyph(&mut pixels, w, h, &font) {
-                    return RainbowIcon { width: w, height: h, pixels };
+        // 尝试从系统 emoji 字体加载 🌈 轮廓
+        if let Some(font_data) = load_emoji_font_data() {
+            let font_data = extract_from_ttc_if_needed(&font_data);
+            if let Some(fd) = font_data {
+                if let Ok(font) = fontdue::Font::from_bytes(fd, fontdue::FontSettings::default()) {
+                    if render_emoji_glyph(&mut pixels, w, h, &font) {
+                        return RainbowIcon { width: w, height: h, pixels };
+                    }
                 }
             }
         }
-    }
 
-    // 回退：程序化生成
-    generate_rainbow_procedural(&mut pixels, w, h);
-    RainbowIcon { width: w, height: h, pixels }
+        // 回退：程序化生成
+        generate_rainbow_procedural(&mut pixels, w, h);
+        RainbowIcon { width: w, height: h, pixels }
+    })
 }
 
 // ── 跨平台 emoji 字体加载 ──────────────────────────────────
