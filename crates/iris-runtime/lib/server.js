@@ -196,17 +196,17 @@ async function handleRequest(req, res, ctx) {
     return;
   }
 
-  // favicon.ico 不存在时，返回彩虹 emoji SVG
+  // favicon.ico 不存在时，返回彩虹 emoji SVG（含 Iris 项目标识）
   if (pathname === '/favicon.ico' || pathname === '/__iris-favicon.svg') {
     res.writeHead(200, {
       'Content-Type': 'image/svg+xml',
       'Cache-Control': 'public, max-age=3600'
     });
-    res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f0f0f0" rx="14"/><text x="50" y="82" text-anchor="middle" font-size="72">&#127752;</text></svg>');
+    res.end('<!-- Iris JetCrab v0.1.1 - Rainbow Favicon -->\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f8f4ff" rx="14"/><text x="50" y="82" text-anchor="middle" font-size="72">&#127752;</text><text x="50" y="96" text-anchor="middle" font-size="6" font-family="sans-serif" fill="#aaa">Iris</text></svg>');
     return;
   }
 
-  // 图片文件不存在时，生成占位 SVG
+  // 图片文件不存在时，生成占位 SVG（含 Iris 项目标识）
   if (isImagePath(pathname)) {
     const filename = pathname.split('/').pop() || pathname;
     const safeName = filename.length > 30 ? filename.slice(0, 27) + '...' : filename;
@@ -214,11 +214,23 @@ async function handleRequest(req, res, ctx) {
       'Content-Type': 'image/svg+xml',
       'Cache-Control': 'no-cache'
     });
-    res.end(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
-  <rect width="400" height="300" fill="#f5f5f5" rx="12"/>
-  <rect x="1.5" y="1.5" width="397" height="297" fill="none" stroke="#e0e0e0" stroke-width="2" rx="12"/>
+    res.end(`<!-- Iris JetCrab v0.1.1 - Placeholder Image -->\n<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#faf8ff"/>
+      <stop offset="100%" stop-color="#f5f0ff"/>
+    </linearGradient>
+    <linearGradient id="border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8d5ff"/>
+      <stop offset="50%" stop-color="#b8d4ff"/>
+      <stop offset="100%" stop-color="#ffe0b0"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg)" rx="12"/>
+  <rect x="2" y="2" width="396" height="296" fill="none" stroke="url(#border)" stroke-width="2" rx="12"/>
   <text x="200" y="140" text-anchor="middle" font-size="64">&#128196;</text>
-  <text x="200" y="200" text-anchor="middle" font-size="15" font-family="sans-serif" fill="#b0b0b0">${escapeXml(safeName)} (placeholder)</text>
+  <text x="200" y="195" text-anchor="middle" font-size="14" font-family="sans-serif" fill="#b0a8c0">${escapeXml(safeName)}</text>
+  <text x="200" y="285" text-anchor="middle" font-size="10" font-family="sans-serif" fill="#ccc0d8">Iris JetCrab placeholder</text>
 </svg>`);
     return;
   }

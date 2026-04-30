@@ -1,4 +1,4 @@
-//! 软渲染器 - 彩虹图标 + 粒子 + 轨迹 + 呼吸光晕
+//! 软渲染器 - 彩虹图标（系统 emoji 字体渲染）+ 粒子 + 轨迹 + 呼吸光晕
 
 use crate::particles::ParticleSystem;
 
@@ -6,80 +6,272 @@ use crate::particles::ParticleSystem;
 pub const WINDOW_WIDTH: u32 = 80;
 pub const WINDOW_HEIGHT: u32 = 80;
 
-/// 彩虹图标 RGBA 像素数据（程序化生成）
+/// 彩虹图标 RGBA 像素数据
 pub struct RainbowIcon {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>, // RGBA
 }
 
-/// 生成彩虹图标像素数据
+/// ============================================================
+/// 彩虹图标生成：优先使用系统 emoji 字体渲染 🌈 字符
+/// ============================================================
+
+/// 生成彩虹图标
 pub fn generate_rainbow_icon() -> RainbowIcon {
     let w = 64u32;
     let h = 64u32;
     let mut pixels = vec![0u8; (w * h * 4) as usize];
 
+    // 尝试从系统 emoji 字体加载 🌈 轮廓
+    if let Some(font_data) = load_emoji_font_data() {
+        let font_data = extract_from_ttc_if_needed(&font_data);
+        if let Some(fd) = font_data {
+            if let Ok(font) = fontdue::Font::from_bytes(fd, fontdue::FontSettings::default()) {
+                if render_emoji_glyph(&mut pixels, w, h, &font) {
+                    return RainbowIcon { width: w, height: h, pixels };
+                }
+            }
+        }
+    }
+
+    // 回退：程序化生成
+    generate_rainbow_procedural(&mut pixels, w, h);
+    RainbowIcon { width: w, height: h, pixels }
+}
+
+// ── 跨平台 emoji 字体加载 ──────────────────────────────────
+
+/// 加载系统 emoji 字体的原始字节
+fn load_emoji_font_data() -> Option<Vec<u8>> {
+    // 按平台候选路径
+    let candidates: &[&str] = if cfg!(target_os = "windows") {
+        &[
+            "C:\\Windows\\Fonts\\seguiemj.ttf",
+            "C:\\Windows\\Fonts\\Segoe UI Emoji\\seguiemj.ttf",
+        ]
+    } else if cfg!(target_os = "macos") {
+        &[
+            "/System/Library/Fonts/Apple Color Emoji.ttc",
+            "/System/Library/Fonts/Apple Color Emoji - Alternate.ttc",
+        ]
+    } else {
+        // Linux
+        &[
+            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/noto/NotoColorEmoji.ttf",
+            "/usr/share/fonts/NotoColorEmoji.ttf",
+            "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
+        ]
+    };
+
+    for path in candidates {
+        if let Ok(data) = std::fs::read(path) {
+            return Some(data);
+        }
+    }
+    None
+}
+
+/// 如果是 TTC (TrueType Collection)，提取第一个字体
+fn extract_from_ttc_if_needed(data: &[u8]) -> Option<Vec<u8>> {
+    if data.len() < 12 || &data[0..4] != b"ttcf" {
+        return Some(data.to_vec()); // 已经是 TTF
+    }
+
+    let num_fonts = read_u32_be(data, 8);
+    if num_fonts == 0 {
+        return None;
+    }
+    let offset = read_u32_be(data, 12) as usize;
+    let end = if num_fonts > 1 {
+        read_u32_be(data, 16) as usize
+    } else {
+        data.len()
+    };
+    Some(data[offset..end].to_vec())
+}
+
+fn read_u32_be(data: &[u8], pos: usize) -> u32 {
+    if pos + 4 > data.len() {
+        return 0;
+    }
+    u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]])
+}
+
+// ── 栅格化并着色 ────────────────────────────────────────────
+
+/// 使用 fontdue 栅格化 🌈 字符，并用彩虹色着色
+/// 返回 true 表示渲染成功
+fn render_emoji_glyph(pixels: &mut [u8], w: u32, h: u32, font: &fontdue::Font) -> bool {
+    let ch: char = '\u{1F308}'; // 🌈
+    let char_index = font.lookup_glyph_index(ch);
+    if char_index == 0 {
+        return false;
+    }
+
+    // 在 64px 中渲染 48px 大小
+    let px_size = 48.0;
+    let (metrics, bitmap) = font.rasterize(ch, px_size);
+
+    if metrics.width == 0 || metrics.height == 0 {
+        return false;
+    }
+
+    let gw = metrics.width as i32;
+    let gh = metrics.height as i32;
+
+    // 居中位置
+    let offset_x = (w as i32 - gw) / 2 + metrics.xmin as i32;
+    let offset_y = (h as i32 - gh) / 2 + metrics.ymin as i32;
+
+    // 找 glyph 的垂直边界（排除噪声像素）
+    let mut top = f32::MAX;
+    let mut bottom = f32::MIN;
+    for py in 0..gh {
+        for px in 0..gw {
+            if bitmap[(py * gw + px) as usize] > 10 {
+                let py_f = py as f32 + metrics.ymin as f32;
+                top = top.min(py_f);
+                bottom = bottom.max(py_f);
+            }
+        }
+    }
+    if bottom <= top {
+        return false;
+    }
+    let total_height = bottom - top;
+    // 顶部 ~55% 为彩虹弧，底部 ~45% 为云朵
+    let rainbow_split = 0.55;
+
+    // 着色：按 Y 位置分配色彩
+    for py in 0..gh {
+        for px in 0..gw {
+            let coverage = bitmap[(py * gw + px) as usize];
+            if coverage == 0 {
+                continue;
+            }
+
+            let bx = offset_x + px;
+            let by = offset_y + py;
+            if bx < 0 || bx >= w as i32 || by < 0 || by >= h as i32 {
+                continue;
+            }
+
+            let idx = ((by as u32 * w + bx as u32) * 4) as usize;
+            let py_f = py as f32 + metrics.ymin as f32;
+            let ny = (py_f - top) / total_height; // 0=顶部, 1=底部
+
+            if ny < rainbow_split {
+                // 彩虹弧区域：按 Y 位置分配色带（顶部=红 → 底部=紫）
+                let band = ((ny / rainbow_split) * 5.5).floor() as usize;
+                let band = band.min(5);
+                let (r, g, b) = RAINBOW_BANDS[band];
+                pixels[idx] = r;
+                pixels[idx + 1] = g;
+                pixels[idx + 2] = b;
+                pixels[idx + 3] = coverage;
+            } else {
+                // 云朵区域 — 暖白色
+                pixels[idx] = 255;
+                pixels[idx + 1] = 252;
+                pixels[idx + 2] = 245;
+                pixels[idx + 3] = coverage;
+            }
+        }
+    }
+
+    true
+}
+
+// ── 程序化回退 ──────────────────────────────────────────────
+
+/// 程序化生成彩虹图标（回退方案）
+fn generate_rainbow_procedural(pixels: &mut [u8], w: u32, h: u32) {
+    let cx = w as f32 / 2.0;
+    let cy = h as f32 * 0.50;
+
+    // Pass 1: 彩虹弧
     for y in 0..h {
         for x in 0..w {
             let idx = ((y * w + x) * 4) as usize;
-            let cx = w as f32 / 2.0;
-            let cy = h as f32 / 2.0;
             let dx = x as f32 - cx;
-            let dy = y as f32 - cy;
+            let dy = (y as f32 - cy) * 0.82;
             let dist = (dx * dx + dy * dy).sqrt();
-            let _angle = dy.atan2(dx);
 
-            // 彩虹半圆环
-            let inner_r = 6.0;
-            let outer_r = 26.0;
-            let band_count = 7;
+            let angle = dy.atan2(dx);
+            let angle_span = std::f32::consts::PI * 0.7;
+            let in_arc = angle.abs() < angle_span;
+
+            let inner_r = 7.0;
+            let outer_r = 25.0;
+            let band_count = 6;
             let band_width = (outer_r - inner_r) / band_count as f32;
 
-            if dy < 0.0 && dist >= inner_r && dist <= outer_r {
-                // 计算所在色带
+            if in_arc && dist >= inner_r && dist <= outer_r {
                 let band = ((dist - inner_r) / band_width) as usize;
                 let band = band.min(band_count - 1);
                 let (r, g, b) = RAINBOW_BANDS[band];
-                // 边缘柔化
-                let edge_dist = (dist - inner_r).min(outer_r - dist).min(band_width / 2.0);
-                let alpha = (edge_dist * 255.0 / (band_width / 2.0)).min(255.0) as u8;
+
+                let edge_dist = (dist - inner_r).min(outer_r - dist).min(band_width * 0.45);
+                let alpha = (edge_dist / (band_width * 0.45) * 255.0).min(255.0) as u8;
+
+                let end_fade = 1.0 - ((angle.abs() - angle_span * 0.7) / (angle_span * 0.3)).max(0.0);
+                let end_alpha = (alpha as f32 * end_fade) as u8;
 
                 pixels[idx] = r;
                 pixels[idx + 1] = g;
                 pixels[idx + 2] = b;
-                pixels[idx + 3] = alpha;
-            } else if dist < 12.0 && dy > -8.0 {
-                // 云朵（白色椭圆）
-                let cloud_alpha = if dy > 0.0 || dy > -8.0 && dist < 10.0 {
-                    let cloud_dist = ((dx * dx * 0.5 + dy * dy * 1.5).sqrt()).max(1.0);
-                    ((1.0 - (cloud_dist / 12.0)).max(0.0) * 220.0) as u8
-                } else {
-                    0
-                };
-                pixels[idx] = 255;
-                pixels[idx + 1] = 255;
-                pixels[idx + 2] = 255;
-                pixels[idx + 3] = cloud_alpha;
-            } else {
-                pixels[idx + 3] = 0; // 透明
+                pixels[idx + 3] = end_alpha;
             }
         }
     }
-    RainbowIcon {
-        width: w,
-        height: h,
-        pixels,
+
+    // Pass 2: 云朵
+    let cloud_centers = [(cx * 0.48, cy * 1.38), (cx * 0.62, cy * 1.40), (cx * 0.75, cy * 1.32)];
+    let cloud_radii = [9.0, 10.0, 8.0];
+    for y in 0..h {
+        for x in 0..w {
+            let idx = ((y * w + x) * 4) as usize;
+            let mut max_cloud_a: u8 = 0;
+            let mut cloud_r = 255u8;
+            let mut cloud_g = 255u8;
+            let mut cloud_b = 255u8;
+
+            for (i, (ccx, ccy)) in cloud_centers.iter().enumerate() {
+                let dx = x as f32 - ccx;
+                let dy = (y as f32 - ccy) * 1.3;
+                let d = (dx * dx + dy * dy).sqrt();
+                let r = cloud_radii[i];
+                if d < r {
+                    let a = ((1.0 - d / r) * 220.0) as u8;
+                    if a > max_cloud_a {
+                        max_cloud_a = a;
+                        cloud_r = 255;
+                        cloud_g = 252;
+                        cloud_b = 245;
+                    }
+                }
+            }
+
+            if max_cloud_a > pixels[idx + 3] {
+                pixels[idx] = cloud_r;
+                pixels[idx + 1] = cloud_g;
+                pixels[idx + 2] = cloud_b;
+                pixels[idx + 3] = max_cloud_a;
+            }
+        }
     }
 }
 
-const RAINBOW_BANDS: [(u8, u8, u8); 7] = [
-    (255, 0, 0),     // 红
-    (255, 128, 0),   // 橙
-    (255, 255, 0),   // 黄
-    (0, 200, 0),     // 绿
-    (0, 100, 255),   // 蓝
-    (75, 0, 200),    // 靛
-    (180, 0, 180),   // 紫
+/// 彩虹六色带
+const RAINBOW_BANDS: [(u8, u8, u8); 6] = [
+    (230, 30, 30),    // 红
+    (255, 155, 0),    // 橙
+    (255, 230, 0),    // 黄
+    (0, 190, 0),      // 绿
+    (0, 120, 255),    // 蓝
+    (150, 40, 200),   // 紫
 ];
 
 /// 在像素缓冲区中心绘制彩虹图标
@@ -148,7 +340,7 @@ pub fn draw_breathe_glow(buffer: &mut [u8], alpha: f32) {
                 // 渐变色光晕（柔和的彩虹渐变）
                 let angle = dy.atan2(dx);
                 let norm_angle = (angle / std::f32::consts::TAU + 0.5).fract();
-                let band = ((norm_angle * 6.0) as usize).min(6);
+                let band = ((norm_angle * 5.0) as usize).min(5);
                 let (r, g, b) = RAINBOW_BANDS[band];
 
                 // Alpha blend with existing

@@ -11,6 +11,9 @@ use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorIcon, Window, WindowId};
 
+#[cfg(target_os = "windows")]
+use winit::platform::windows::WindowAttributesExtWindows;
+
 /// 悬浮窗口位置模式
 pub enum PositionMode {
     /// 桌面右下角（默认）
@@ -89,13 +92,19 @@ impl FloatingApp {
 
 impl ApplicationHandler for FloatingApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window_attrs = Window::default_attributes()
+        let mut window_attrs = Window::default_attributes()
             .with_title("Iris JetCrab")
             .with_inner_size(PhysicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
             .with_transparent(true)
             .with_decorations(false)
             .with_window_level(winit::window::WindowLevel::AlwaysOnTop)
             .with_cursor(CursorIcon::Default);
+
+        // Windows: 不显示在任务栏
+        #[cfg(target_os = "windows")]
+        {
+            window_attrs = window_attrs.with_skip_taskbar(true);
+        }
 
         let window = event_loop.create_window(window_attrs).unwrap();
 

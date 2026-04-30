@@ -1771,9 +1771,10 @@ pub async fn source_file_handler(
     }
 }
 
-/// 彩虹 emoji SVG favicon
+// 彩虹 emoji SVG favicon（内嵌 Iris 项目信息）
 fn rainbow_favicon_svg() -> &'static str {
-    r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f0f0f0" rx="14"/><text x="50" y="82" text-anchor="middle" font-size="72">&#127752;</text></svg>"##
+    r##"<!-- Iris JetCrab v0.1.1 - Rainbow Favicon -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#f8f4ff" rx="14"/><text x="50" y="82" text-anchor="middle" font-size="72">&#127752;</text><text x="50" y="96" text-anchor="middle" font-size="6" font-family="sans-serif" fill="#aaa">Iris</text></svg>"##
 }
 
 /// 检查路径是否为图片文件
@@ -1784,16 +1785,29 @@ fn is_image_path(path: &str) -> bool {
         || lower.ends_with(".ico") || lower.ends_with(".svg")
 }
 
-/// 生成占位 SVG 图片
+/// 生成占位 SVG 图片（含 Iris 项目标识）
 fn placeholder_svg(path: &str) -> String {
     let filename = path.split('/').last().unwrap_or(path);
     let safe_name = if filename.len() > 30 { format!("{}...", &filename[..27]) } else { filename.to_string() };
     format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
-  <rect width="400" height="300" fill="#f5f5f5" rx="12"/>
-  <rect x="1.5" y="1.5" width="397" height="297" fill="none" stroke="#e0e0e0" stroke-width="2" rx="12"/>
+        r##"<!-- Iris JetCrab v0.1.1 - Placeholder Image -->
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#faf8ff"/>
+      <stop offset="100%" stop-color="#f5f0ff"/>
+    </linearGradient>
+    <linearGradient id="border" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8d5ff"/>
+      <stop offset="50%" stop-color="#b8d4ff"/>
+      <stop offset="100%" stop-color="#ffe0b0"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg)" rx="12"/>
+  <rect x="2" y="2" width="396" height="296" fill="none" stroke="url(#border)" stroke-width="2" rx="12"/>
   <text x="200" y="140" text-anchor="middle" font-size="64">&#128196;</text>
-  <text x="200" y="200" text-anchor="middle" font-size="15" font-family="sans-serif" fill="#b0b0b0">{} (placeholder)</text>
+  <text x="200" y="195" text-anchor="middle" font-size="14" font-family="sans-serif" fill="#b0a8c0">{}</text>
+  <text x="200" y="285" text-anchor="middle" font-size="10" font-family="sans-serif" fill="#ccc0d8">Iris JetCrab placeholder</text>
 </svg>"##,
         safe_name
     )
