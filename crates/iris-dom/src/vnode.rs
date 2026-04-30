@@ -291,6 +291,7 @@ pub struct DiffResult {
 }
 
 /// 补丁操作
+#[allow(missing_docs)]
 #[derive(Debug)]
 pub enum Patch {
     /// 插入节点

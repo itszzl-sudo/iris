@@ -380,6 +380,7 @@ impl HMRManager {
     }
 
     /// 停止监听
+    #[allow(dead_code)]
     pub fn stop(&mut self) {
         if let Some(watcher) = self.watcher.take() {
             drop(watcher);

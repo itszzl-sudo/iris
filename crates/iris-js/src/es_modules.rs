@@ -12,6 +12,7 @@ pub struct EsModules {
     /// 已注册的模块代码
     module_codes: HashMap<String, String>,
     /// 已执行的模块导出
+    #[allow(dead_code)]
     module_exports: HashMap<String, HashMap<String, JsValue>>,
 }
 

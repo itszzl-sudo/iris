@@ -9,6 +9,7 @@
 //! 3. 合并重叠的脏矩形以减少绘制调用
 //! 4. 只重绘脏矩形区域，而不是整个屏幕
 
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub struct DirtyRect {
     /// 矩形位置 (x, y)

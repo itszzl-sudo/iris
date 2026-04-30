@@ -30,6 +30,7 @@ pub enum WebSocketMessage {
 /// WebSocket 连接
 pub struct WebSocket {
     /// 连接 URL
+    #[allow(dead_code)]
     url: String,
     /// 连接状态
     state: WebSocketState,

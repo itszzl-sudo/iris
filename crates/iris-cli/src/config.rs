@@ -148,6 +148,7 @@ impl IrisConfig {
     }
     
     /// 保存配置到文件
+    #[allow(dead_code)]
     pub fn save(&self, project_root: &Path) -> Result<()> {
         let config_path = project_root.join("iris.config.json");
         let content = serde_json::to_string_pretty(self)?;

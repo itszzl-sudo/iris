@@ -23,9 +23,11 @@ pub struct GlyphInfo {
     pub uv: [f32; 4],
     /// 字形在图集中的像素位置
     pub atlas_x: u32,
+    /// 字形在图集中的 Y 位置
     pub atlas_y: u32,
-    /// 字形尺寸
+    /// 字形宽度
     pub width: u32,
+    /// 字形高度
     pub height: u32,
 }
 

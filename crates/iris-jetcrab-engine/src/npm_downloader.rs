@@ -36,6 +36,7 @@ const INTERNAL_PACKAGES: &[&str] = &[
 ];
 
 /// 包版本信息
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub struct PackageVersion {
     pub version: String,
@@ -89,6 +90,7 @@ impl NpmDownloader {
     }
 
     /// 确保 node_modules 目录存在
+    #[allow(dead_code)]
     fn ensure_node_modules(&self) -> Result<()> {
         if !self.node_modules_path.exists() {
             fs::create_dir_all(&self.node_modules_path)

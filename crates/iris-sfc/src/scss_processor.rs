@@ -6,6 +6,8 @@
 //!
 //! - SCSS 编译（变量、嵌套、mixin、函数等）
 //! - Less 编译（基础支持）
+
+#![allow(dead_code)]
 //! - Source map 生成（可选）
 //! - 错误处理和诊断
 //!

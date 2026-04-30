@@ -36,6 +36,7 @@ static SELECTOR_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// 简单类名、ID、元素选择器
 /// 匹配：.class, #id, element, .class:hover 等
+#[allow(dead_code)]
 static SIMPLE_SELECTOR_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"([.#]?[a-zA-Z_-][a-zA-Z0-9_-]*)").unwrap()
 });

@@ -445,6 +445,7 @@ impl VTree {
     }
 
     /// 获取父节点和索引的可变引用
+    #[allow(dead_code)]
     fn get_parent_and_index_mut<'a>(
         &self,
         root: &'a mut DOMNode,

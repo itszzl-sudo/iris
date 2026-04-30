@@ -16,6 +16,7 @@ use std::rc::Rc;
 /// 负责在 JavaScript 环境中注入和操作 DOM API。
 pub struct DOMBindings {
     /// DOM 树（共享所有权）
+    #[allow(dead_code)]
     dom_tree: Rc<RefCell<DOMTree>>,
 }
 

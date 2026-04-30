@@ -7,11 +7,13 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicU32;
 
 /// 定时器 ID 计数器
+#[allow(dead_code)]
 static TIMER_ID: AtomicU32 = AtomicU32::new(1);
 
 /// Web APIs 管理器
 pub struct WebAPIs {
     /// 定时器存储
+    #[allow(dead_code)]
     timers: HashMap<u32, tokio::task::JoinHandle<()>>,
 }
 

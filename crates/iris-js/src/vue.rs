@@ -17,6 +17,7 @@ pub struct VNodeRegistry {
 }
 
 impl VNodeRegistry {
+    /// 创建新的 VNode 注册表
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
@@ -83,7 +84,7 @@ impl VNodeRegistry {
     }
 }
 
-/// 全局 VNode 注册表实例（通过 RefCell 实现内部可变性）
+// 全局 VNode 注册表实例（通过 RefCell 实现内部可变性）
 thread_local! {
     static VNODE_REGISTRY: RefCell<VNodeRegistry> = RefCell::new(VNodeRegistry::new());
 }

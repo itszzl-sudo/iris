@@ -22,6 +22,7 @@ pub struct PackageInfo {
 }
 
 /// package.json 结构
+#[allow(missing_docs)]
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct PackageJson {
     pub name: String,

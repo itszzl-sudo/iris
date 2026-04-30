@@ -198,6 +198,8 @@ struct WindowState {
     /// 是否暂停
     suspended: bool,
     /// 对应的 Vue 文件
+    /// Vue 文件路径
+    #[allow(dead_code)]
     vue_file: PathBuf,
 }
 

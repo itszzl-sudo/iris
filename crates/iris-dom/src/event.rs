@@ -107,6 +107,7 @@ impl EventType {
 }
 
 /// 鼠标事件数据
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub struct MouseEventData {
     /// X 坐标
@@ -122,6 +123,7 @@ pub struct MouseEventData {
 }
 
 /// 键盘事件数据
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub struct KeyboardEventData {
     /// 键码
@@ -135,6 +137,7 @@ pub struct KeyboardEventData {
 }
 
 /// 事件数据
+#[allow(missing_docs)]
 #[derive(Debug, Clone)]
 pub enum EventData {
     Mouse(MouseEventData),

@@ -57,12 +57,14 @@ pub struct VueProjectCompiler {
     /// 已编译的模块缓存
     compiled_cache: HashMap<String, CompiledModule>,
     /// 正在编译的模块（用于检测循环依赖）
+    #[allow(dead_code)]
     compiling: HashSet<String>,
     /// 编译完成的模块
     compiled: HashSet<String>,
     /// npm 包缓存
     npm_packages: HashMap<String, PackageInfo>,
     /// package.json 中的依赖
+    #[allow(dead_code)]
     project_dependencies: HashMap<String, String>,
     /// TypeScript 编译器
     ts_compiler: TsCompiler,
@@ -488,6 +490,7 @@ impl VueProjectCompiler {
     }
 
     /// 拓扑排序（确保依赖先于使用者出现）
+    #[allow(dead_code)]
     fn topological_sort(&self, graph: &HashMap<String, Vec<String>>) -> Result<Vec<String>> {
         let mut visited = HashSet::new();
         let mut stack = HashSet::new();
@@ -506,6 +509,7 @@ impl VueProjectCompiler {
     }
 
     /// DFS 拓扑排序
+    #[allow(dead_code)]
     fn dfs_topo_sort(
         &self,
         module: &str,

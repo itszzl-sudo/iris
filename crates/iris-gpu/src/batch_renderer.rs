@@ -1018,6 +1018,7 @@ impl BatchRenderer {
     }
 
     /// 从字节数据加载纹理。
+    #[allow(deprecated)]
     pub fn load_texture_from_bytes(
         &mut self,
         device: &wgpu::Device,

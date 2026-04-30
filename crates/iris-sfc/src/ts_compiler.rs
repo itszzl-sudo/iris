@@ -40,6 +40,7 @@ pub struct TsCompilerConfig {
 /// 注意：当前只使用 ES2020，其他版本为未来功能预留
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
+#[allow(missing_docs)]
 pub enum EsVersion {
     ES2015,
     ES2016,
@@ -107,6 +108,7 @@ impl Default for TypeCheckConfig {
 
 /// 类型检查结果
 #[derive(Debug)]
+#[allow(missing_docs)]
 pub enum TypeCheckResult {
     /// 类型检查通过
     Success,

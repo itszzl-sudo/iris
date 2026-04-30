@@ -15,6 +15,7 @@ pub fn print_warning(msg: &str) {
 }
 
 /// 打印错误消息
+#[allow(dead_code)]
 pub fn print_error(msg: &str) {
     eprintln!("{} {}", "✗".red(), msg);
 }

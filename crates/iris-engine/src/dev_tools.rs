@@ -9,7 +9,9 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::error_handling::{ErrorReporter, IrisError, ErrorSource, ErrorSeverity};
+use crate::error_handling::{ErrorReporter, IrisError};
+#[cfg(test)]
+use crate::error_handling::{ErrorSource, ErrorSeverity};
 
 /// 组件信息
 #[derive(Debug, Clone)]

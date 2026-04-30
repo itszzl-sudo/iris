@@ -141,6 +141,7 @@ impl CompilerCache {
     ///
     /// 遍历变更的文件路径，推导出对应的缓存 key 并移除
     /// 返回已移除的模块数量
+    #[allow(dead_code)]
     pub async fn invalidate_modules(&self, changed_paths: &[PathBuf]) -> usize {
         let mut cache = self.compiled_modules.lock().await;
         let mut removed = 0usize;
@@ -175,12 +176,14 @@ impl CompilerCache {
     }
 
     /// 获取缓存模块数量
+    #[allow(dead_code)]
     pub async fn cached_count(&self) -> usize {
         self.compiled_modules.lock().await.len()
     }
 
     /// 清除所有缓存（用于 HMR 完整刷新）
     /// 浏览器会重新请求各模块，触发按需编译
+    #[allow(dead_code)]
     pub async fn rebuild(&self) -> Result<()> {
         info!("Clearing compiled module cache (on-demand rebuild)");
         self.compiled_modules.lock().await.clear();

@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use crate::cssom::CSSStyleDeclaration;
 
 /// CSSRule 类型枚举
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum CSSRuleType {
     /// 样式规则: selector { ... }

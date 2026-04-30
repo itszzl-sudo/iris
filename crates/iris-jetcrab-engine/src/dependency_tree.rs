@@ -357,6 +357,7 @@ impl DependencyTree {
 }
 
 /// 依赖变化类型
+#[allow(missing_docs)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChangeType {
     Added,
@@ -365,6 +366,7 @@ pub enum ChangeType {
 }
 
 /// 变化的依赖
+#[allow(missing_docs)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChangedDependency {
     pub name: String,

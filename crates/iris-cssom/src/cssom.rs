@@ -33,6 +33,7 @@ pub struct CSSStyleDeclaration {
     /// 属性映射
     properties: HashMap<String, CSSPropertyValue>,
     /// 父样式表引用（可选）
+    #[allow(dead_code)]
     parent_stylesheet: Option<String>,
 }
 

@@ -5,10 +5,11 @@
 
 use iris_dom::vnode::VNode;
 use iris_gpu::{BatchRenderer, DrawCommand};
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// 渐变停止点
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct GradientStop {
     position: f32,
     color: [f32; 4],
@@ -50,6 +51,7 @@ struct TextInfo {
 }
 
 /// 动画类型
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum AnimationType {
     /// CSS Transition: 属性过渡动画
@@ -67,6 +69,7 @@ enum AnimationType {
 }
 
 /// 缓动函数
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 enum EasingFunction {
     Linear,
@@ -77,6 +80,7 @@ enum EasingFunction {
 }
 
 /// 动画状态
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct AnimationState {
     animation: AnimationType,
@@ -92,6 +96,7 @@ struct AnimationState {
 /// 负责将虚拟 DOM 树转换为 GPU 绘制命令。
 pub struct VNodeRenderer;
 
+#[allow(dead_code)]
 impl VNodeRenderer {
     /// 渲染虚拟 DOM 树到 GPU
     ///

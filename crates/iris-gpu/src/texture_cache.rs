@@ -46,6 +46,7 @@ impl TextureCache {
     /// # 返回
     ///
     /// 返回纹理 ID（索引）
+    #[allow(deprecated)]
     pub fn create_texture_from_rgba(
         &mut self,
         device: &wgpu::Device,

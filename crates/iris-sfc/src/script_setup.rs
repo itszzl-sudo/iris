@@ -7,6 +7,8 @@
 //! - `withDefaults()` - 设置 props 默认值
 //!
 //! ## 转换示例
+
+#![allow(dead_code)]
 //!
 //! **输入** (`<script setup>`):
 //! ```vue
@@ -58,6 +60,7 @@
 use regex::Regex;
 use std::sync::LazyLock;
 use tracing::warn;
+
 
 /// Script 属性
 #[derive(Debug, Clone)]

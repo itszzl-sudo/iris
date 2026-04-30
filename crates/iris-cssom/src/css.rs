@@ -5,6 +5,7 @@
 use cssparser::{Parser, ParserInput};
 
 /// CSS 选择器类型
+#[allow(missing_docs)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum SelectorType {
     /// 标签选择器: div, p, span
