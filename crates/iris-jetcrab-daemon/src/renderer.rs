@@ -4,8 +4,8 @@ use crate::particles::ParticleSystem;
 use std::sync::OnceLock;
 
 /// 窗口尺寸常量
-pub const WINDOW_WIDTH: u32 = 80;
-pub const WINDOW_HEIGHT: u32 = 80;
+pub const WINDOW_WIDTH: u32 = 800;
+pub const WINDOW_HEIGHT: u32 = 1200;
 
 /// 彩虹图标 RGBA 像素数据
 pub struct RainbowIcon {
@@ -360,7 +360,7 @@ pub fn draw_icon(buffer: &mut [u8], icon: &RainbowIcon) {
 pub fn draw_breathe_glow(buffer: &mut [u8], alpha: f32) {
     let cx = WINDOW_WIDTH as f32 / 2.0;
     let cy = WINDOW_HEIGHT as f32 / 2.0;
-    let radius = 35.0;
+    let radius = (WINDOW_WIDTH.min(WINDOW_HEIGHT) as f32 / 2.0) * 0.85;
 
     for y in 0..WINDOW_HEIGHT {
         for x in 0..WINDOW_WIDTH {
@@ -399,7 +399,7 @@ pub fn draw_breathe_glow(buffer: &mut [u8], alpha: f32) {
     }
 }
 
-/// 绘制拖拽彩虹轨迹
+/// 绘制拖拽彩虹轨迹（心形）
 pub fn draw_trail(buffer: &mut [u8], particles: &ParticleSystem) {
     let trail = &particles.trail;
     let len = trail.len();
@@ -407,21 +407,21 @@ pub fn draw_trail(buffer: &mut [u8], particles: &ParticleSystem) {
         return;
     }
 
-    // 从最新到最旧绘制
+    // 从最新到最旧绘制心形
     for i in 0..len {
         let alpha_pct = ParticleSystem::trail_alpha(i, len);
         let (r, g, b) = ParticleSystem::trail_color(i, len);
         let pt = &trail[i];
 
-        // 轨迹点大小随新旧变化（最近的更大）
-        let radius = if particles.is_dragging {
-            3.0 + (i as f32 / len as f32) * 4.0
+        // 心形大小随新旧变化（最近的更大）
+        let size = if particles.is_dragging {
+            4 + (i as f32 / len as f32 * 8.0) as i32
         } else {
-            2.0 + (i as f32 / len as f32) * 3.0
+            2 + (i as f32 / len as f32 * 5.0) as i32
         };
-        let alpha = (alpha_pct * 200.0) as u8;
+        let alpha = (alpha_pct * 220.0) as u8;
 
-        draw_circle(buffer, pt.x, pt.y, radius as i32, r, g, b, alpha);
+        draw_heart(buffer, pt.x, pt.y, size, r, g, b, alpha);
     }
 }
 
@@ -477,26 +477,35 @@ fn set_pixel(buffer: &mut [u8], x: i32, y: i32, r: u8, g: u8, b: u8, a: u8) {
     buffer[idx + 3] = (out_a * 255.0) as u8;
 }
 
-/// 绘制实心圆（带透明度）
-fn draw_circle(buffer: &mut [u8], cx: i32, cy: i32, radius: i32, r: u8, g: u8, b: u8, a: u8) {
-    if a == 0 || radius <= 0 {
+/// 绘制心形（带透明度）- 使用心形隐式方程 (x²+y²-1)³ - x²y³ ≤ 0
+fn draw_heart(buffer: &mut [u8], cx: i32, cy: i32, size: i32, r: u8, g: u8, b: u8, a: u8) {
+    if a == 0 || size <= 0 {
         return;
     }
-    let min_x = (cx - radius).max(0);
-    let max_x = (cx + radius).min(WINDOW_WIDTH as i32 - 1);
-    let min_y = (cy - radius).max(0);
-    let max_y = (cy + radius).min(WINDOW_HEIGHT as i32 - 1);
+    let min_x = (cx - size).max(0);
+    let max_x = (cx + size).min(WINDOW_WIDTH as i32 - 1);
+    let min_y = (cy - size).max(0);
+    let max_y = (cy + size).min(WINDOW_HEIGHT as i32 - 1);
 
-    for y in min_y..=max_y {
-        for x in min_x..=max_x {
-            let dx = (x - cx) as f32;
-            let dy = (y - cy) as f32;
-            let dist = (dx * dx + dy * dy).sqrt();
-            if dist <= radius as f32 {
+    // 心形在归一化空间 [-1.3, 1.3] × [-1.3, 1.2]
+    let scale = size as f32 / 1.3;
+
+    for py in min_y..=max_y {
+        for px in min_x..=max_x {
+            let dx = (px - cx) as f32;
+            let dy = (py - cy) as f32;
+            // 归一化到心形方程空间
+            let nx = dx / scale;
+            let ny = -dy / scale; // 翻转 Y 使心尖朝下
+            let nx2 = nx * nx;
+            let ny2 = ny * ny;
+            // 心形隐式方程: (x² + y² - 1)³ - x²y³ ≤ 0
+            let val = (nx2 + ny2 - 1.0).powi(3) - nx2 * ny.powi(3);
+            if val <= 0.0 {
                 // 边缘柔化
-                let edge = (radius as f32 - dist).min(2.0) / 2.0;
+                let edge = (0.0f32.max(-val) / 0.08).min(1.0);
                 let alpha = ((a as f32) * edge).min(255.0) as u8;
-                set_pixel(buffer, x, y, r, g, b, alpha);
+                set_pixel(buffer, px, py, r, g, b, alpha);
             }
         }
     }

@@ -2,15 +2,15 @@
 
 use std::time::Instant;
 
-/// 彩虹颜色循环
+/// 彩虹颜色循环（暖色调：去除了绿、蓝、紫等冷色）
 const RAINBOW_COLORS: [(u8, u8, u8); 7] = [
-    (255, 0, 0),     // 红
+    (255, 50, 80),   // 玫红
+    (255, 80, 60),   // 珊瑚
     (255, 165, 0),   // 橙
-    (255, 255, 0),   // 黄
-    (0, 255, 0),     // 绿
-    (0, 0, 255),     // 蓝
-    (75, 0, 130),    // 靛
-    (238, 130, 238), // 紫
+    (255, 120, 60),  // 朱红（替代金黄）
+    (255, 255, 100), // 暖黄
+    (255, 100, 120), // 粉红
+    (255, 0, 80),    // 玫瑰
 ];
 
 /// 拖拽轨迹点
@@ -90,16 +90,16 @@ impl ParticleSystem {
             .as_nanos() as u64;
         let mut rng = SimpleRng::new(seed.wrapping_add(self.sparkles.len() as u64));
 
-        for _ in 0..3 {
+        for _ in 0..5 {
             let angle = rng.next_f32() * std::f32::consts::TAU;
-            let speed = rng.next_f32() * 80.0 + 20.0;
-            let life = rng.next_f32() * 0.5 + 0.3;
-            let size = rng.next_f32() * 3.0 + 2.0;
+            let speed = rng.next_f32() * 120.0 + 30.0;
+            let life = rng.next_f32() * 0.6 + 0.4;
+            let size = rng.next_f32() * 4.0 + 2.5;
             let color_idx = (rng.next_f32() * 7.0) as usize % 7;
 
             self.sparkles.push(Sparkle {
-                x: cx + (rng.next_f32() - 0.5) * 10.0,
-                y: cy + (rng.next_f32() - 0.5) * 10.0,
+                x: cx + (rng.next_f32() - 0.5) * 20.0,
+                y: cy + (rng.next_f32() - 0.5) * 20.0,
                 vx: angle.cos() * speed,
                 vy: angle.sin() * speed,
                 life: 1.0,
