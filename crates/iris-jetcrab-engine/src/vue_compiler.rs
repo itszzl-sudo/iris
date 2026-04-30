@@ -165,6 +165,15 @@ impl VueProjectCompiler {
         })
     }
 
+    /// 编译单个文件（按需编译）
+    ///
+    /// 不解析依赖图，只编译指定的单个文件
+    /// 由浏览器端的原生 ESM 模块加载器负责按需请求每个依赖
+    pub fn compile_file(&mut self, file_path: &str) -> Result<CompiledModule> {
+        debug!("On-demand compiling single file: {}", file_path);
+        self.compile_single_module(file_path)
+    }
+
     /// 从入口文件开始，递归构建依赖图
     fn build_dependency_graph(&mut self, entry_path: &Path) -> Result<HashMap<String, Vec<String>>> {
         let mut graph = HashMap::new();
@@ -560,33 +569,57 @@ impl VueProjectCompiler {
                 deps: vec![],
             }
         } else if module_path.ends_with(".css") {
-            // CSS 文件
+            // CSS 文件 - 应用 PostCSS 转换（autoprefixer/nesting）
+            let postcss_config = iris_sfc::postcss_processor::PostCssConfig::default();
+            let postcss_result = iris_sfc::postcss_processor::process_css(
+                &content,
+                &postcss_config,
+                module_path
+            );
+            if postcss_result.transformed {
+                debug!("PostCSS applied to CSS: {} -> {} bytes", postcss_result.original_size, postcss_result.output_size);
+            }
             CompiledModule {
                 script: format!("// CSS module: {}\nexport default {{}}", module_path),
                 styles: vec![StyleBlock {
-                    code: content,
+                    code: postcss_result.css,
                     scoped: false,
                 }],
                 deps: vec![],
             }
         } else if module_path.ends_with(".scss") || module_path.ends_with(".sass") {
-            // SCSS/SASS 文件 - 使用 grass 编译器
+            // SCSS/SASS 文件 - 使用 grass 编译器，然后 PostCSS 转换
             let css_code = self.compile_scss(&content, module_path)?;
+            let postcss_config = iris_sfc::postcss_processor::PostCssConfig::default();
+            let postcss_result = iris_sfc::postcss_processor::process_css(
+                &css_code,
+                &postcss_config,
+                module_path
+            );
+            if postcss_result.transformed {
+                debug!("PostCSS applied to SCSS: {} -> {} bytes", postcss_result.original_size, postcss_result.output_size);
+            }
             CompiledModule {
                 script: format!("// SCSS module: {}\nexport default {{}}", module_path),
                 styles: vec![StyleBlock {
-                    code: css_code,
+                    code: postcss_result.css,
                     scoped: false,
                 }],
                 deps: vec![],
             }
         } else if module_path.ends_with(".less") {
-            // Less 文件 - TODO: 等待稳定的 Less 编译器
-            warn!("Less compilation not yet available (waiting for stable rust-less crate): {}", module_path);
+            // Less 文件 - 保留原始内容，应用 PostCSS 转换
+            warn!("Less compilation not yet available: {}", module_path);
+            let postcss_config = iris_sfc::postcss_processor::PostCssConfig::default();
+            let postcss_result = iris_sfc::postcss_processor::process_css(
+                &content,
+                &postcss_config,
+                module_path
+            );
             CompiledModule {
                 script: format!("// Less module: {}\nexport default {{}}", module_path),
                 styles: vec![StyleBlock {
-                    code: content, // 保留原始内容
+                    code: postcss_result.css,
                     scoped: false,
                 }],
                 deps: vec![],

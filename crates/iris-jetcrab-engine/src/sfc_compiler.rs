@@ -153,6 +153,14 @@ pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
     })
 }
 
+/// 规范化文件路径，统一使用 / 作为分隔符
+/// 确保 Windows 和 Unix 系统返回一致的路径格式
+fn normalize_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    // 清理路径中的 ./（如 /src/./Foo.vue → /src/Foo.vue）
+    normalized.replace("/./", "/")
+}
+
 /// 解析模块导入路径
 pub fn resolve_module(import_path: &str, importer: &str) -> Result<String> {
     debug!("Resolving import: {} from {}", import_path, importer);
@@ -162,41 +170,43 @@ pub fn resolve_module(import_path: &str, importer: &str) -> Result<String> {
         // 使用 Path::parent() 获取导入者所在的目录，兼容 Windows 和 Unix 路径
         let importer_path = std::path::Path::new(importer);
         if let Some(parent_dir) = importer_path.parent() {
-            // 使用 Path::join 正确处理 ../ 和 ./ 路径（Windows 上用 \, Unix 上用 /）
+            // 使用 Path::join 正确处理 ../ 和 ./ 路径
             let resolved = parent_dir.join(import_path);
-            let resolved_path = resolved.as_path();
+
+            // 规范化路径分隔符为 /
+            let resolved_str = normalize_path(&resolved.to_string_lossy());
+            let normalized_path = std::path::Path::new(&resolved_str);
 
             // 1. 如果路径已存在且是文件，直接返回
-            if resolved_path.is_file() {
-                return Ok(resolved.to_string_lossy().to_string());
+            if normalized_path.is_file() {
+                return Ok(resolved_str);
             }
 
             // 2. 尝试常见扩展名
             let extensions = [".vue", ".ts", ".tsx", ".js", ".jsx", ".mjs"];
             for ext in &extensions {
-                let with_ext_str = format!("{}{}", resolved.to_string_lossy(), ext);
+                let with_ext_str = format!("{}{}", resolved_str, ext);
                 if std::path::Path::new(&with_ext_str).is_file() {
                     return Ok(with_ext_str);
                 }
             }
 
             // 3. 如果是目录，尝试 index 文件
-            if resolved_path.is_dir() {
+            if normalized_path.is_dir() {
                 let index_files = ["index.ts", "index.js", "index.tsx", "index.jsx", "index.mjs"];
                 for index_file in &index_files {
-                    let index_path = resolved_path.join(index_file);
-                    if index_path.is_file() {
-                        return Ok(index_path.to_string_lossy().to_string());
+                    let index_str = format!("{}/{}", resolved_str, index_file);
+                    if std::path::Path::new(&index_str).is_file() {
+                        return Ok(index_str);
                     }
                 }
             }
 
             // 4. 所有尝试都失败，回退到添加 .vue 后缀
-            let resolved_str = resolved.to_string_lossy();
             if !resolved_str.ends_with(".vue") && !resolved_str.ends_with(".js") {
                 return Ok(format!("{}.vue", resolved_str));
             }
-            return Ok(resolved_str.to_string());
+            return Ok(resolved_str);
         }
     }
 

@@ -15,6 +15,7 @@ mod scss_processor;
 mod script_setup;
 mod template_compiler;
 pub mod ts_compiler;
+pub mod postcss_processor;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -685,6 +686,9 @@ fn compile_script(
 
 /// 编译样式块。
 fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
+    // PostCSS 配置（全部启用）
+    let postcss_config = postcss_processor::PostCssConfig::default();
+
     styles
         .iter()
         .map(|style| {
@@ -717,7 +721,24 @@ fn compile_styles(styles: &[StyleRaw]) -> Vec<StyleBlock> {
                 style.content.clone()
             };
 
-            // 第二步：应用 CSS Modules 或 Scoped CSS
+            // 第二步：PostCSS 转换（SCSS/Less/CSS 编译后的 autoprefixer/nesting）
+            let postcss_result = postcss_processor::process_css(
+                &css_content,
+                &postcss_config,
+                &format!("style[lang={}]", style.lang)
+            );
+
+            if postcss_result.transformed {
+                debug!(
+                    "PostCSS applied: {} -> {} bytes",
+                    postcss_result.original_size,
+                    postcss_result.output_size
+                );
+            }
+
+            let css_content = postcss_result.css;
+
+            // 第三步：应用 CSS Modules 或 Scoped CSS
             if style.module {
                 // CSS Modules: 作用域化类名
                 let hash = css_modules::generate_short_hash(&css_content);

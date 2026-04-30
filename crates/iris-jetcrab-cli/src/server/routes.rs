@@ -130,7 +130,7 @@ pub async fn project_info_handler(
     
     // 收集项目信息
     let vue_files_count = utils::count_vue_files(project_root).unwrap_or(0);
-    let (cached_count, _) = cache_lock.stats();
+    let (cached_count, _) = cache_lock.stats().await;
     
     let info = json!({
         "project_root": project_root.to_string_lossy(),
@@ -374,9 +374,13 @@ fn default_index_html() -> String {
         };
         
         // HMR WebSocket 客户端
-        let hmrConnected = false;
-        let hmrWs = null;
-        let moduleCacheTimestamp = Date.now();
+        var hmrConnected = false;
+        var hmrWs = null;
+        var moduleCacheTimestamp = Date.now();
+        
+        // 模块级 HMR 注册表：跟踪已加载的模块
+        var hmrModuleRegistry = {};
+        var hmrPendingModules = {};
         
         function connectHMR() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -396,9 +400,17 @@ fn default_index_html() -> String {
                         console.log('[HMR] Event:', data.type);
                         
                         if (data.type === 'file-changed') {
-                            console.log('[HMR] File changed, waiting for rebuild...');
+                            console.log(`[HMR] ⏺ File changed: ${data.file_name} (${data.path}), waiting for rebuild...`);
+                        } else if (data.type === 'style-update') {
+                            // 模块级 HMR: 样式热替换（无 JS 重执行）
+                            console.log(`[HMR] 🎨 Style updated: ${data.path}`);
+                            applyStyleUpdate(data.path, data.css);
+                        } else if (data.type === 'module-update') {
+                            // 模块级 HMR: Vue/TS 模块热替换
+                            console.log(`[HMR] 📦 Module update: ${data.path} (${data.module_type})`);
+                            hotReloadModule(data.path, data.module_type, data.timestamp);
                         } else if (data.type === 'rebuild-complete') {
-                            console.log(`[HMR] Rebuild completed in ${data.duration_ms}ms`);
+                            console.log(`[HMR] ✅ Rebuild completed in ${data.duration_ms}ms (invalidated ${data.cleared_modules} modules)`);
                             // 更新缓存时间戳，使下次 import 使用新 URL
                             moduleCacheTimestamp = Date.now();
                             // 重新加载应用
@@ -412,7 +424,7 @@ fn default_index_html() -> String {
                 };
                 
                 hmrWs.onclose = () => {
-                    console.log('[HMR] WebSocket disconnected, retrying in 3s...');
+                    console.log('[HMR] ⚠️ WebSocket disconnected, retrying in 3s...');
                     hmrConnected = false;
                     hmrWs = null;
                     setTimeout(connectHMR, 3000);
@@ -443,8 +455,102 @@ fn default_index_html() -> String {
             // 从 window 上清除 Vue app 实例
             delete window.__iris_app;
         }
+
+        // 模块级 HMR: 样式热替换（直接替换 style 内容，无 JS 重执行）
+        function applyStyleUpdate(path, cssContent) {
+            // 查找已存在的 data-iris-hmr style（通过路径标识）
+            const pathId = 'iris-style-' + path.replace(/[^a-zA-Z0-9]/g, '-');
+            let styleEl = document.getElementById(pathId);
+            
+            if (!styleEl) {
+                // 未找到现有 style，创建新元素
+                styleEl = document.createElement('style');
+                styleEl.id = pathId;
+                styleEl.setAttribute('data-iris-hmr', '');
+                document.head.appendChild(styleEl);
+            }
+            
+            // 替换 CSS 内容
+            styleEl.textContent = cssContent;
+            console.log(`[HMR] ✅ Style applied: ${path}`);
+        }
         
-        // 重新加载应用（HMR 热替换）
+        // 模块级 HMR: 热替换单个模块（Vue/TS）
+        async function hotReloadModule(path, moduleType, timestamp) {
+            try {
+                // 1. 标记该模块需要重载
+                hmrPendingModules[path] = { timestamp, moduleType };
+                
+                // 2. 动态 import 已更新的模块（带缓存失效参数）
+                const cacheBuster = `?t=${Date.now()}`;
+                const moduleUrl = path.startsWith('/') ? path : `/src/${path}`;
+                const fullUrl = `${moduleUrl}${cacheBuster}`;
+                
+                // 3. 对于 Vue 组件，标记 HMR 生效
+                if (moduleType === 'vue') {
+                    // Vue 3 组件热替换：如果 __VUE_HMR_RUNTIME__ 存在，用它进行精确更新
+                    if (window.__VUE_HMR_RUNTIME__) {
+                        try {
+                            const module = await import(fullUrl);
+                            console.log(`[HMR] 🔄 Vue component hot-reloaded: ${path}`);
+                            // Vue HMR runtime 会处理组件替换
+                            return;
+                        } catch (err) {
+                            console.warn(`[HMR] Vue HMR failed, falling back to re-fetch:`, err);
+                        }
+                    }
+                    
+                    // 4. 没有 Vue HMR runtime，通过 fetch 获取新编译的模块
+                    const response = await fetch(fullUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const jsCode = await response.text();
+                    console.log(`[HMR] 🔄 Module re-fetched (${jsCode.length} bytes): ${path}`);
+                    
+                    // 5. 对于 Vue 组件，只能重新渲染
+                    // 找到 Vue 应用实例并重新挂载
+                    const app = window.__iris_app;
+                    if (app && app.unmount && app.mount) {
+                        console.log('[HMR] Re-rendering Vue app...');
+                        // 简单重挂载
+                        const container = document.getElementById('app');
+                        container.innerHTML = '';
+                        // 卸载旧的 style
+                        document.querySelectorAll('style[data-iris-hmr]').forEach(el => el.remove());
+                        // 执行新的模块代码
+                        const scriptEl = document.createElement('script');
+                        scriptEl.type = 'module';
+                        scriptEl.textContent = jsCode;
+                        document.body.appendChild(scriptEl);
+                    } else {
+                        // 没有 Vue app 实例，直接执行
+                        const scriptEl = document.createElement('script');
+                        scriptEl.type = 'module';
+                        scriptEl.textContent = jsCode;
+                        document.body.appendChild(scriptEl);
+                    }
+                } else {
+                    // 非 Vue 模块 (TS/JS)：直接加载
+                    try {
+                        await import(fullUrl);
+                        console.log(`[HMR] 🔄 Script module hot-reloaded: ${path}`);
+                    } catch (err) {
+                        console.warn(`[HMR] Dynamic import failed for ${path}:`, err);
+                    }
+                }
+                
+                // 清除待处理标记
+                delete hmrPendingModules[path];
+            } catch (error) {
+                console.error(`[HMR] ❌ Failed to hot-reload module ${path}:`, error);
+                delete hmrPendingModules[path];
+            }
+        }
+        
+        // 重新加载应用（页面级 HMR）
+        // 清理旧实例 → 清除缓存时间戳 → 重新 fetch 入口 → 创建新 script 执行
         async function reloadApp() {
             try {
                 cleanupApp();
@@ -689,7 +795,7 @@ pub async fn resolve_dependencies_handler(
         // 下载完成，广播完成事件
         info!("All downloads completed");
         ws_manager_clone.broadcast(HmrEvent::RebuildComplete {
-            modules_count: packages_clone.len(),
+            cleared_modules: packages_clone.len(),
             duration_ms: 0,
         });
     });
