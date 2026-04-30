@@ -18,17 +18,22 @@ pub struct RainbowIcon {
 static RAINBOW_ICON: OnceLock<RainbowIcon> = OnceLock::new();
 
 /// ============================================================
-/// 彩虹图标生成：优先使用系统 emoji 字体渲染 🌈 字符
+/// 彩虹图标生成：优先加载 iris.png，回退到 emoji 字体渲染
 /// ============================================================
 
 /// 生成彩虹图标（缓存为全局静态，仅首次调用时实际生成）
 pub fn generate_rainbow_icon() -> &'static RainbowIcon {
     RAINBOW_ICON.get_or_init(|| {
+        // 优先尝试加载 iris.png
+        if let Some(icon) = load_png_icon() {
+            return icon;
+        }
+
         let w = 64u32;
         let h = 64u32;
         let mut pixels = vec![0u8; (w * h * 4) as usize];
 
-        // 尝试从系统 emoji 字体加载 🌈 轮廓
+        // 回退：尝试从系统 emoji 字体加载 🌈 轮廓
         if let Some(font_data) = load_emoji_font_data() {
             let font_data = extract_from_ttc_if_needed(&font_data);
             if let Some(fd) = font_data {
@@ -40,10 +45,75 @@ pub fn generate_rainbow_icon() -> &'static RainbowIcon {
             }
         }
 
-        // 回退：程序化生成
+        // 最终回退：程序化生成
         generate_rainbow_procedural(&mut pixels, w, h);
         RainbowIcon { width: w, height: h, pixels }
     })
+}
+
+// ── PNG 图标加载 ────────────────────────────────────────────
+
+/// 从文件系统加载 iris.png，缩放到 64x64 并转为 RGBA
+fn load_png_icon() -> Option<RainbowIcon> {
+    use image::GenericImageView;
+
+    let search_paths: [std::path::PathBuf; 4] = [
+        // 1. 当前工作目录
+        "iris.png".into(),
+        // 2. 可执行文件所在目录
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.join("iris.png")))
+            .unwrap_or_default(),
+        // 3. 配置目录 (AppData/Roaming/iris-jetcrab)
+        dirs::config_dir()
+            .map(|p| p.join("iris-jetcrab").join("iris.png"))
+            .unwrap_or_default(),
+        // 4. 项目根目录(crate 父目录的父目录)
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| {
+                p.parent()
+                    .and_then(|p| p.parent())
+                    .and_then(|p| p.parent())
+                    .and_then(|p| p.parent())
+                    .map(|p| p.join("iris.png"))
+            })
+            .unwrap_or_default(),
+    ];
+
+    for path in search_paths.iter() {
+        if !path.exists() || !path.is_file() {
+            continue;
+        }
+        match image::open(path) {
+            Ok(img) => {
+                let (orig_w, orig_h) = img.dimensions();
+                // 缩放到 64x64 (使用 Lanczos3 滤镜，适合大幅缩小)
+                let resized = img.resize_exact(
+                    64,
+                    64,
+                    image::imageops::FilterType::Lanczos3,
+                );
+                let pixels = resized.into_rgba8().into_raw();
+                tracing::info!(
+                    "Loaded iris.png ({}x{}) from {:?}, resized to 64x64",
+                    orig_w,
+                    orig_h,
+                    path
+                );
+                return Some(RainbowIcon {
+                    width: 64,
+                    height: 64,
+                    pixels,
+                });
+            }
+            Err(e) => {
+                tracing::warn!("Failed to decode iris.png at {:?}: {}", path, e);
+            }
+        }
+    }
+    None
 }
 
 // ── 跨平台 emoji 字体加载 ──────────────────────────────────

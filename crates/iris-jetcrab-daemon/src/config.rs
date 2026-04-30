@@ -25,6 +25,44 @@ pub struct DaemonConfig {
     pub auto_start_server: bool,
     /// 管理 API 端口（内部）
     pub daemon_port: u16,
+
+    // ── AI 云厂商模型服务 ───────────────────────────────
+    /// AI 服务商 (openai / anthropic / custom)
+    pub ai_provider: String,
+    /// API Key
+    pub ai_api_key: String,
+    /// 模型名称 (如 gpt-4o, claude-3-sonnet)
+    pub ai_model: String,
+    /// 自定义 API 端点
+    pub ai_endpoint: String,
+
+    // ── AI 本地模型 ────────────────────────────────────
+    /// HuggingFace 模型仓库
+    pub ai_model_repo: String,
+    /// GGUF 文件名
+    pub ai_model_file: String,
+    /// 模型缓存目录
+    pub ai_cache_dir: Option<String>,
+    /// 推理设备 (cpu / gpu)
+    pub ai_device: String,
+    /// 温度参数 (0.0~1.0)
+    pub ai_temperature: f32,
+    /// 最大生成 token 数
+    pub ai_max_tokens: usize,
+    /// 是否已下载完成
+    pub ai_model_downloaded: bool,
+
+    // ── NPM 包管理器 ───────────────────────────────────
+    /// NPM registry 镜像
+    pub npm_registry: String,
+    /// NPM 代理
+    pub npm_proxy: Option<String>,
+
+    // ── Mock API Server ────────────────────────────────
+    /// 是否启用 Mock 服务器
+    pub mock_enabled: bool,
+    /// 模拟延迟（毫秒）
+    pub mock_delay_ms: u64,
 }
 
 impl Default for DaemonConfig {
@@ -38,6 +76,25 @@ impl Default for DaemonConfig {
             show_icon: true,
             auto_start_server: false,
             daemon_port: 19999,
+            // AI 云服务
+            ai_provider: "openai".into(),
+            ai_api_key: String::new(),
+            ai_model: "gpt-4o".into(),
+            ai_endpoint: "https://api.openai.com/v1".into(),
+            // AI 本地模型
+            ai_model_repo: "Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF".into(),
+            ai_model_file: "qwen2.5-coder-0.5b-instruct-q4_k_m.gguf".into(),
+            ai_cache_dir: None,
+            ai_device: "cpu".into(),
+            ai_temperature: 0.15,
+            ai_max_tokens: 4096,
+            ai_model_downloaded: false,
+            // NPM
+            npm_registry: "https://registry.npmjs.org/".into(),
+            npm_proxy: None,
+            // Mock
+            mock_enabled: false,
+            mock_delay_ms: 0,
         }
     }
 }

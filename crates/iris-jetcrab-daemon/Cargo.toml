@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 # Iris shared
 iris-core.workspace = true
+iris-ai.workspace = true
 
 # GUI
 winit = { workspace = true }

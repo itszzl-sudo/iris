@@ -23,6 +23,9 @@ use process_manager::ProcessManager;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Iris AI 下载进度类型
+pub type AiProgressOption = Mutex<Option<iris_ai::downloader::DownloadProgress>>;
+
 /// 守护进程全局状态
 pub struct DaemonState {
     /// 配置（Mutex 以便 API 中修改）
@@ -35,6 +38,10 @@ pub struct DaemonState {
     pub process_manager: Mutex<Option<ProcessManager>>,
     /// 管理面板端口
     pub daemon_port: u16,
+    /// AI 模型下载进度
+    pub model_download_progress: AiProgressOption,
+    /// AI 模型下载停止标志
+    pub model_download_stop: AtomicBool,
 }
 
 impl DaemonState {
@@ -46,6 +53,8 @@ impl DaemonState {
             render_success: AtomicBool::new(false),
             process_manager: Mutex::new(None),
             daemon_port,
+            model_download_progress: Mutex::new(None),
+            model_download_stop: AtomicBool::new(false),
         }
     }
 }
@@ -108,6 +117,24 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         auto_start: Option<String>,
         auto_start_server: Option<bool>,
         projects: Option<Vec<String>>,
+        // AI 云服务
+        ai_provider: Option<String>,
+        ai_api_key: Option<String>,
+        ai_model: Option<String>,
+        ai_endpoint: Option<String>,
+        // AI 本地模型
+        ai_model_repo: Option<String>,
+        ai_model_file: Option<String>,
+        ai_cache_dir: Option<String>,
+        ai_device: Option<String>,
+        ai_temperature: Option<f32>,
+        ai_max_tokens: Option<usize>,
+        // NPM
+        npm_registry: Option<String>,
+        npm_proxy: Option<String>,
+        // Mock
+        mock_enabled: Option<bool>,
+        mock_delay_ms: Option<u64>,
     }
 
     #[derive(Deserialize)]
@@ -130,6 +157,7 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
             "show_icon": config.show_icon,
             "default_project": config.default_project,
             "auto_start": config.auto_start,
+            "ai_model_downloaded": config.ai_model_downloaded,
         }))
     }
 
@@ -147,6 +175,25 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
             "default_project": config.default_project,
             "auto_start": config.auto_start,
             "auto_start_server": config.auto_start_server,
+            // AI 云服务
+            "ai_provider": config.ai_provider,
+            "ai_api_key": config.ai_api_key,
+            "ai_model": config.ai_model,
+            "ai_endpoint": config.ai_endpoint,
+            // AI 本地模型
+            "ai_model_repo": config.ai_model_repo,
+            "ai_model_file": config.ai_model_file,
+            "ai_cache_dir": config.ai_cache_dir,
+            "ai_device": config.ai_device,
+            "ai_temperature": config.ai_temperature,
+            "ai_max_tokens": config.ai_max_tokens,
+            "ai_model_downloaded": config.ai_model_downloaded,
+            // NPM
+            "npm_registry": config.npm_registry,
+            "npm_proxy": config.npm_proxy,
+            // Mock
+            "mock_enabled": config.mock_enabled,
+            "mock_delay_ms": config.mock_delay_ms,
         }))
     }
 
@@ -163,6 +210,24 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         if let Some(v) = update.auto_start { config.auto_start = Some(v); }
         if let Some(v) = update.auto_start_server { config.auto_start_server = v; }
         if let Some(v) = update.projects { config.projects = v; }
+        // AI 云服务
+        if let Some(v) = update.ai_provider { config.ai_provider = v; }
+        if let Some(v) = update.ai_api_key { config.ai_api_key = v; }
+        if let Some(v) = update.ai_model { config.ai_model = v; }
+        if let Some(v) = update.ai_endpoint { config.ai_endpoint = v; }
+        // AI 本地模型
+        if let Some(v) = update.ai_model_repo { config.ai_model_repo = v; }
+        if let Some(v) = update.ai_model_file { config.ai_model_file = v; }
+        if let Some(v) = update.ai_cache_dir { config.ai_cache_dir = Some(v); }
+        if let Some(v) = update.ai_device { config.ai_device = v; }
+        if let Some(v) = update.ai_temperature { config.ai_temperature = v; }
+        if let Some(v) = update.ai_max_tokens { config.ai_max_tokens = v; }
+        // NPM
+        if let Some(v) = update.npm_registry { config.npm_registry = v; }
+        if let Some(v) = update.npm_proxy { config.npm_proxy = Some(v); }
+        // Mock
+        if let Some(v) = update.mock_enabled { config.mock_enabled = v; }
+        if let Some(v) = update.mock_delay_ms { config.mock_delay_ms = v; }
         config.save();
         Json(serde_json::json!({"status": "ok"}))
     }
@@ -301,6 +366,207 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         }))
     }
 
+    // ── AI 配置 ──────────────────────────────────────
+    async fn handle_ai_config(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        let config = state.config.lock().unwrap();
+        Json(serde_json::json!({
+            "ai_provider": config.ai_provider,
+            "ai_api_key": config.ai_api_key,
+            "ai_model": config.ai_model,
+            "ai_endpoint": config.ai_endpoint,
+            "ai_model_repo": config.ai_model_repo,
+            "ai_model_file": config.ai_model_file,
+            "ai_cache_dir": config.ai_cache_dir,
+            "ai_device": config.ai_device,
+            "ai_temperature": config.ai_temperature,
+            "ai_max_tokens": config.ai_max_tokens,
+            "ai_model_downloaded": config.ai_model_downloaded,
+        }))
+    }
+
+    async fn handle_update_ai_config(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+        Json(update): Json<ConfigUpdate>,
+    ) -> Json<serde_json::Value> {
+        let mut config = state.config.lock().unwrap();
+        if let Some(v) = update.ai_provider { config.ai_provider = v; }
+        if let Some(v) = update.ai_api_key { config.ai_api_key = v; }
+        if let Some(v) = update.ai_model { config.ai_model = v; }
+        if let Some(v) = update.ai_endpoint { config.ai_endpoint = v; }
+        if let Some(v) = update.ai_model_repo { config.ai_model_repo = v; }
+        if let Some(v) = update.ai_model_file { config.ai_model_file = v; }
+        if let Some(v) = update.ai_cache_dir { config.ai_cache_dir = Some(v); }
+        if let Some(v) = update.ai_device { config.ai_device = v; }
+        if let Some(v) = update.ai_temperature { config.ai_temperature = v; }
+        if let Some(v) = update.ai_max_tokens { config.ai_max_tokens = v; }
+        config.save();
+        Json(serde_json::json!({"status": "ok"}))
+    }
+
+    // ── AI 模型下载 ───────────────────────────────────
+    async fn handle_ai_model_download(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::value::Value> {
+        // 检查是否已有下载进行中
+        {
+            let prog = state.model_download_progress.lock().unwrap();
+            if let Some(ref p) = *prog {
+                if matches!(p.status, iris_ai::downloader::DownloadStatus::Downloading | iris_ai::downloader::DownloadStatus::Connecting | iris_ai::downloader::DownloadStatus::Resuming) {
+                    return Json(serde_json::json!({"status": "error", "message": "下载已在进行中"}));
+                }
+            }
+        }
+
+        state.model_download_stop.store(false, Ordering::SeqCst);
+        let state_clone = state.clone();
+
+        // 后台线程执行下载
+        std::thread::spawn(move || {
+            let config = state_clone.config.lock().unwrap();
+            let repo = config.ai_model_repo.clone();
+            let filename = config.ai_model_file.clone();
+            let cache_dir = config.ai_cache_dir.clone()
+                .map(|d| std::path::PathBuf::from(d))
+                .unwrap_or_else(|| {
+                    let home = std::env::var("USERPROFILE")
+                        .or_else(|_| std::env::var("HOME"))
+                        .unwrap_or_else(|_| ".".into());
+                    std::path::Path::new(&home).join(".cache").join("iris-ai")
+                });
+            drop(config);
+
+            let state_cb = state_clone.clone();
+            let downloader = iris_ai::downloader::ModelDownloader::new(repo, filename, cache_dir)
+                .with_progress_callback(move |progress| {
+                    if state_cb.model_download_stop.load(Ordering::SeqCst) {
+                        // 停止标志已设置
+                        return;
+                    }
+                    let mut p = state_cb.model_download_progress.lock().unwrap();
+                    *p = Some(progress.clone());
+                });
+
+            match downloader.get_or_download() {
+                Ok(result) => {
+                    let mut config = state_clone.config.lock().unwrap();
+                    config.ai_model_downloaded = true;
+                    config.save();
+                    let mut p = state_clone.model_download_progress.lock().unwrap();
+                    *p = Some(iris_ai::downloader::DownloadProgress {
+                        bytes_downloaded: result.file_size,
+                        total_bytes: result.file_size,
+                        percentage: 100.0,
+                        speed_bytes_per_sec: 0.0,
+                        speed_display: "完成".into(),
+                        status: iris_ai::downloader::DownloadStatus::Completed,
+                        status_text: "下载完成".into(),
+                        elapsed_secs: 0.0,
+                        eta_secs: 0.0,
+                        eta_display: "--".into(),
+                    });
+                }
+                Err(e) => {
+                    let mut p = state_clone.model_download_progress.lock().unwrap();
+                    *p = Some(iris_ai::downloader::DownloadProgress {
+                        bytes_downloaded: 0,
+                        total_bytes: 0,
+                        percentage: 0.0,
+                        speed_bytes_per_sec: 0.0,
+                        speed_display: "错误".into(),
+                        status: iris_ai::downloader::DownloadStatus::Error,
+                        status_text: format!("下载失败: {}", e),
+                        elapsed_secs: 0.0,
+                        eta_secs: 0.0,
+                        eta_display: "--".into(),
+                    });
+                }
+            }
+        });
+
+        Json(serde_json::json!({"status": "ok", "message": "下载已启动"}))
+    }
+
+    async fn handle_ai_model_status(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        let p = state.model_download_progress.lock().unwrap();
+        if let Some(ref progress) = *p {
+            Json(serde_json::json!({
+                "status": "ok",
+                "downloaded": progress.bytes_downloaded,
+                "total": progress.total_bytes,
+                "percentage": progress.percentage,
+                "speed": progress.speed_display,
+                "state": match progress.status {
+                    iris_ai::downloader::DownloadStatus::Connecting => "connecting",
+                    iris_ai::downloader::DownloadStatus::Downloading => "downloading",
+                    iris_ai::downloader::DownloadStatus::Resuming => "resuming",
+                    iris_ai::downloader::DownloadStatus::Completed => "completed",
+                    iris_ai::downloader::DownloadStatus::Error => "error",
+                },
+                "status_text": progress.status_text,
+                "eta": progress.eta_display,
+            }))
+        } else {
+            Json(serde_json::json!({"status": "idle", "message": "暂无下载任务"}))
+        }
+    }
+
+    async fn handle_ai_model_stop(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        state.model_download_stop.store(true, Ordering::SeqCst);
+        Json(serde_json::json!({"status": "ok", "message": "下载已请求停止"}))
+    }
+
+    // ── NPM 配置 ──────────────────────────────────────
+    async fn handle_npm_config(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        let config = state.config.lock().unwrap();
+        Json(serde_json::json!({
+            "npm_registry": config.npm_registry,
+            "npm_proxy": config.npm_proxy,
+        }))
+    }
+
+    async fn handle_update_npm_config(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+        Json(update): Json<ConfigUpdate>,
+    ) -> Json<serde_json::Value> {
+        let mut config = state.config.lock().unwrap();
+        if let Some(v) = update.npm_registry { config.npm_registry = v; }
+        if let Some(v) = update.npm_proxy { config.npm_proxy = Some(v); }
+        config.save();
+        Json(serde_json::json!({"status": "ok"}))
+    }
+
+    // ── Mock API 配置 ────────────────────────────────
+    async fn handle_mock_config(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+    ) -> Json<serde_json::Value> {
+        let config = state.config.lock().unwrap();
+        Json(serde_json::json!({
+            "mock_enabled": config.mock_enabled,
+            "mock_port": config.mock_port,
+            "mock_delay_ms": config.mock_delay_ms,
+        }))
+    }
+
+    async fn handle_update_mock_config(
+        AxumState(state): AxumState<Arc<DaemonState>>,
+        Json(update): Json<ConfigUpdate>,
+    ) -> Json<serde_json::Value> {
+        let mut config = state.config.lock().unwrap();
+        if let Some(v) = update.mock_enabled { config.mock_enabled = v; }
+        if let Some(v) = update.mock_port { config.mock_port = v; }
+        if let Some(v) = update.mock_delay_ms { config.mock_delay_ms = v; }
+        config.save();
+        Json(serde_json::json!({"status": "ok"}))
+    }
+
     // -- 管理面板
     async fn handle_management_page(
         AxumState(state): AxumState<Arc<DaemonState>>,
@@ -309,13 +575,49 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         let running = state.server_running.load(Ordering::SeqCst);
         let render_ok = state.render_success.load(Ordering::SeqCst);
         let show_checked = if config.show_icon { "checked" } else { "" };
+        let mock_checked = if config.mock_enabled { "checked" } else { "" };
+        // AI provider selection
+        let sel_openai = if config.ai_provider == "openai" { "selected" } else { "" };
+        let sel_anthropic = if config.ai_provider == "anthropic" { "selected" } else { "" };
+        let sel_custom = if config.ai_provider == "custom" { "selected" } else { "" };
+        let sel_cpu = if config.ai_device == "cpu" { "selected" } else { "" };
+        let sel_cuda = if config.ai_device == "cuda" { "selected" } else { "" };
+        let sel_vulkan = if config.ai_device == "vulkan" { "selected" } else { "" };
+        let sel_metal = if config.ai_device == "metal" { "selected" } else { "" };
+        let ai_model_dl_badge = if config.ai_model_downloaded { "已下载" } else { "未下载" };
+
         let html = MANAGEMENT_HTML
             .replace("{HTTP_PORT}", &config.http_port.to_string())
             .replace("{MOCK_PORT}", &config.mock_port.to_string())
             .replace("{DAEMON_PORT}", &config.daemon_port.to_string())
             .replace("{SHOW_ICON_CHECKED}", show_checked)
             .replace("{SERVER_STATUS}", if running { "running" } else { "stopped" })
-            .replace("{RENDER_STATUS}", if render_ok { "success" } else { "unknown" });
+            .replace("{RENDER_STATUS}", if render_ok { "success" } else { "unknown" })
+            // AI 云服务
+            .replace("{SELECTED_OPENAI}", sel_openai)
+            .replace("{SELECTED_ANTHROPIC}", sel_anthropic)
+            .replace("{SELECTED_CUSTOM}", sel_custom)
+            .replace("{AI_API_KEY}", &config.ai_api_key)
+            .replace("{AI_MODEL}", &config.ai_model)
+            .replace("{AI_ENDPOINT}", &config.ai_endpoint)
+            // AI 本地模型
+            .replace("{AI_MODEL_REPO}", &config.ai_model_repo)
+            .replace("{AI_MODEL_FILE}", &config.ai_model_file)
+            .replace("{AI_CACHE_DIR}", config.ai_cache_dir.as_deref().unwrap_or(""))
+            .replace("{AI_DEVICE}", &config.ai_device)
+            .replace("{AI_TEMPERATURE}", &config.ai_temperature.to_string())
+            .replace("{AI_MAX_TOKENS}", &config.ai_max_tokens.to_string())
+            .replace("{AI_MODEL_DL_BADGE}", ai_model_dl_badge)
+            .replace("{SELECTED_CPU}", sel_cpu)
+            .replace("{SELECTED_CUDA}", sel_cuda)
+            .replace("{SELECTED_VULKAN}", sel_vulkan)
+            .replace("{SELECTED_METAL}", sel_metal)
+            // NPM
+            .replace("{NPM_REGISTRY}", &config.npm_registry)
+            .replace("{NPM_PROXY}", config.npm_proxy.as_deref().unwrap_or(""))
+            // Mock
+            .replace("{MOCK_ENABLED}", mock_checked)
+            .replace("{MOCK_DELAY}", &config.mock_delay_ms.to_string());
         Html(html)
     }
 
@@ -329,6 +631,15 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         .route("/api/server/start", post(handle_start_server))
         .route("/api/server/stop", post(handle_stop_server))
         .route("/api/server/health", get(handle_server_health))
+        // AI 配置
+        .route("/api/ai/config", get(handle_ai_config).put(handle_update_ai_config))
+        .route("/api/ai/model/download", post(handle_ai_model_download))
+        .route("/api/ai/model/status", get(handle_ai_model_status))
+        .route("/api/ai/model/stop", post(handle_ai_model_stop))
+        // NPM 配置
+        .route("/api/npm/config", get(handle_npm_config).put(handle_update_npm_config))
+        // Mock 配置
+        .route("/api/mock/config", get(handle_mock_config).put(handle_update_mock_config))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -503,6 +814,13 @@ border-radius: 50%;
 }
 .toggle input:checked + .slider { background: #667eea; }
 .toggle input:checked + .slider::before { transform: translateX(20px); }
+
+/* 进度条 */
+.progress-bar { width:100%; height:12px; background:#e9ecef; border-radius:6px; overflow:hidden; margin:8px 0; }
+.progress-fill { height:100%; background:linear-gradient(90deg,#667eea,#764ba2); border-radius:6px; transition:width 0.3s; }
+.dl-info { display:flex; gap:16px; font-size:0.85em; color:#666; margin:4px 0; flex-wrap:wrap; }
+.badge-downloaded { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.8em; background:#28a745; color:#fff; }
+.badge-not-downloaded { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.8em; background:#ffc107; color:#333; }
 </style>
 </head>
 <body>
@@ -577,6 +895,123 @@ border-radius: 50%;
 </div>
 <div style="margin-top:12px;">
 <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
+</div>
+</div>
+
+<!-- AI 云服务配置 -->
+<div class="card">
+<h2>🤖 AI 云服务配置</h2>
+<div class="form-group">
+<label>服务商</label>
+<select id="cfgAiProvider">
+<option value="openai" {SELECTED_OPENAI}>OpenAI</option>
+<option value="anthropic" {SELECTED_ANTHROPIC}>Anthropic</option>
+<option value="custom" {SELECTED_CUSTOM}>自定义</option>
+</select>
+</div>
+<div class="form-group">
+<label>API Key</label>
+<input type="password" id="cfgAiApiKey" value="{AI_API_KEY}" placeholder="sk-..." />
+</div>
+<div class="form-group">
+<label>模型</label>
+<input type="text" id="cfgAiModel" value="{AI_MODEL}" placeholder="gpt-4o" />
+</div>
+<div class="form-group">
+<label>API Endpoint</label>
+<input type="text" id="cfgAiEndpoint" value="{AI_ENDPOINT}" placeholder="https://api.openai.com/v1" />
+</div>
+<div style="margin-top:12px;">
+<button class="btn btn-primary" onclick="saveAiConfig()">💾 保存 AI 配置</button>
+</div>
+</div>
+
+<!-- AI 本地模型管理 -->
+<div class="card">
+<h2>📦 AI 本地模型管理</h2>
+<div class="form-group">
+<label>模型仓库 (HuggingFace Repo)</label>
+<input type="text" id="cfgAiModelRepo" value="{AI_MODEL_REPO}" placeholder="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF" />
+</div>
+<div class="form-group">
+<label>模型文件</label>
+<input type="text" id="cfgAiModelFile" value="{AI_MODEL_FILE}" placeholder="*.gguf" />
+</div>
+<div class="form-group">
+<label>缓存目录</label>
+<input type="text" id="cfgAiCacheDir" value="{AI_CACHE_DIR}" placeholder="留空使用默认缓存路径" />
+</div>
+<div class="form-group">
+<label>运行设备</label>
+<select id="cfgAiDevice">
+<option value="cpu" {SELECTED_CPU}>CPU</option>
+<option value="cuda" {SELECTED_CUDA}>CUDA</option>
+<option value="vulkan" {SELECTED_VULKAN}>Vulkan</option>
+<option value="metal" {SELECTED_METAL}>Metal</option>
+</select>
+</div>
+<div class="form-row">
+<div class="form-group" style="flex:1;">
+<label>Temperature</label>
+<input type="number" step="0.1" min="0" max="2" id="cfgAiTemperature" value="{AI_TEMPERATURE}" />
+</div>
+<div class="form-group" style="flex:1;">
+<label>Max Tokens</label>
+<input type="number" step="1" min="1" id="cfgAiMaxTokens" value="{AI_MAX_TOKENS}" />
+</div>
+</div>
+<div style="margin:12px 0; display:flex; align-items:center; gap:12px;">
+<button class="btn btn-primary" onclick="startModelDownload()">⬇️ 开始下载</button>
+<button class="btn btn-danger" onclick="stopModelDownload()">⏹️ 停止下载</button>
+<span id="aiModelBadge" class="badge-not-downloaded">{AI_MODEL_DL_BADGE}</span>
+</div>
+<div id="modelProgressArea" style="display:none;">
+<div class="progress-bar"><div class="progress-fill" id="modelProgressFill" style="width:0%"></div></div>
+<div class="dl-info">
+<span id="modelDlPercent">0%</span>
+<span id="modelDlSpeed">0 B/s</span>
+<span id="modelDlEta">ETA: --</span>
+<span id="modelDlStatus">等待中...</span>
+</div>
+</div>
+</div>
+
+<!-- NPM 配置 -->
+<div class="card">
+<h2>📦 NPM 包管理器配置</h2>
+<div class="form-group">
+<label>镜像源 (Registry)</label>
+<input type="text" id="cfgNpmRegistry" value="{NPM_REGISTRY}" placeholder="https://registry.npmjs.org/" />
+</div>
+<div class="form-group">
+<label>代理 (Proxy)</label>
+<input type="text" id="cfgNpmProxy" value="{NPM_PROXY}" placeholder="http://127.0.0.1:1080 (留空=无代理)" />
+</div>
+<div style="margin-top:12px;">
+<button class="btn btn-primary" onclick="saveNpmConfig()">💾 保存 NPM 配置</button>
+</div>
+</div>
+
+<!-- Mock API 配置 -->
+<div class="card">
+<h2>🎭 Mock API Server 配置</h2>
+<div class="form-group" style="display:flex; align-items:center; gap:12px;">
+<label style="margin:0;">启用 Mock Server</label>
+<label class="toggle">
+<input type="checkbox" id="cfgMockEnabled" {MOCK_ENABLED} />
+<span class="slider"></span>
+</label>
+</div>
+<div class="form-group">
+<label>端口</label>
+<input type="number" id="cfgMockPort" value="{MOCK_PORT}" />
+</div>
+<div class="form-group">
+<label>模拟延迟 (ms)</label>
+<input type="number" id="cfgMockDelay" value="{MOCK_DELAY}" placeholder="0" />
+</div>
+<div style="margin-top:12px;">
+<button class="btn btn-primary" onclick="saveMockConfig()">💾 保存 Mock 配置</button>
 </div>
 </div>
 
@@ -713,6 +1148,122 @@ body: JSON.stringify({ http_port: httpPort, mock_port: mockPort, daemon_port: da
 });
 if (data && data.status === 'ok') {
 showToast('配置已保存', 'success');
+}
+}
+
+// ── AI 配置函数 ──────────────────────────────
+
+async function saveAiConfig() {
+const provider = document.getElementById('cfgAiProvider').value;
+const apiKey = document.getElementById('cfgAiApiKey').value;
+const model = document.getElementById('cfgAiModel').value;
+const endpoint = document.getElementById('cfgAiEndpoint').value;
+const data = await api('/api/ai/config', {
+method: 'PUT',
+body: JSON.stringify({ ai_provider: provider, ai_api_key: apiKey, ai_model: model, ai_endpoint: endpoint })
+});
+if (data && data.status === 'ok') {
+showToast('AI 配置已保存', 'success');
+}
+}
+
+async function startModelDownload() {
+const data = await api('/api/ai/model/download', { method: 'POST' });
+if (data) {
+if (data.status === 'ok') {
+showToast('模型下载已启动', 'success');
+document.getElementById('modelProgressArea').style.display = 'block';
+pollModelStatus();
+} else {
+showToast(data.message || '启动失败', 'error');
+}
+}
+}
+
+async function stopModelDownload() {
+const data = await api('/api/ai/model/stop', { method: 'POST' });
+if (data && data.status === 'ok') {
+showToast('已请求停止下载', 'info');
+}
+}
+
+let modelPollTimer = null;
+async function pollModelStatus() {
+if (modelPollTimer) clearInterval(modelPollTimer);
+const data = await api('/api/ai/model/status');
+if (data && data.status === 'ok') {
+document.getElementById('modelProgressArea').style.display = 'block';
+const pct = data.percentage || 0;
+document.getElementById('modelProgressFill').style.width = pct + '%';
+document.getElementById('modelDlPercent').textContent = pct.toFixed(1) + '%';
+document.getElementById('modelDlSpeed').textContent = data.speed || '0 B/s';
+document.getElementById('modelDlEta').textContent = 'ETA: ' + (data.eta || '--');
+document.getElementById('modelDlStatus').textContent = data.status_text || data.state || '';
+if (data.state === 'completed') {
+showToast('模型下载完成', 'success');
+document.getElementById('aiModelBadge').className = 'badge-downloaded';
+document.getElementById('aiModelBadge').textContent = '已下载';
+clearInterval(modelPollTimer); modelPollTimer = null;
+return;
+}
+if (data.state === 'error') {
+showToast('下载失败: ' + (data.status_text || ''), 'error');
+clearInterval(modelPollTimer); modelPollTimer = null;
+return;
+}
+modelPollTimer = setInterval(async () => {
+const d = await api('/api/ai/model/status');
+if (d && d.status === 'ok') {
+document.getElementById('modelProgressFill').style.width = (d.percentage || 0) + '%';
+document.getElementById('modelDlPercent').textContent = (d.percentage || 0).toFixed(1) + '%';
+document.getElementById('modelDlSpeed').textContent = d.speed || '0 B/s';
+document.getElementById('modelDlEta').textContent = 'ETA: ' + (d.eta || '--');
+document.getElementById('modelDlStatus').textContent = d.status_text || d.state || '';
+if (d.state === 'completed') {
+showToast('模型下载完成', 'success');
+document.getElementById('aiModelBadge').className = 'badge-downloaded';
+document.getElementById('aiModelBadge').textContent = '已下载';
+clearInterval(modelPollTimer); modelPollTimer = null;
+}
+if (d.state === 'error') {
+showToast('下载失败: ' + (d.status_text || ''), 'error');
+clearInterval(modelPollTimer); modelPollTimer = null;
+}
+} else {
+clearInterval(modelPollTimer); modelPollTimer = null;
+}
+}, 1000);
+} else if (data && data.status === 'idle') {
+// 无下载任务
+}
+}
+
+// ── NPM 配置 ────────────────────────────────
+
+async function saveNpmConfig() {
+const registry = document.getElementById('cfgNpmRegistry').value;
+const proxy = document.getElementById('cfgNpmProxy').value;
+const data = await api('/api/npm/config', {
+method: 'PUT',
+body: JSON.stringify({ npm_registry: registry, npm_proxy: proxy || null })
+});
+if (data && data.status === 'ok') {
+showToast('NPM 配置已保存', 'success');
+}
+}
+
+// ── Mock 配置 ───────────────────────────────
+
+async function saveMockConfig() {
+const enabled = document.getElementById('cfgMockEnabled').checked;
+const port = parseInt(document.getElementById('cfgMockPort').value) || 3100;
+const delay = parseInt(document.getElementById('cfgMockDelay').value) || 0;
+const data = await api('/api/mock/config', {
+method: 'PUT',
+body: JSON.stringify({ mock_enabled: enabled, mock_port: port, mock_delay_ms: delay })
+});
+if (data && data.status === 'ok') {
+showToast('Mock 配置已保存', 'success');
 }
 }
 
