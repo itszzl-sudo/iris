@@ -6,46 +6,8 @@
     </header>
 
     <main class="content">
-      <div class="card">
-        <h2>Features</h2>
-        <ul>
-          <li>Rust + WebGPU Rendering aa</li>
-          <li>Vue 3 SFC Support</li>
-          <li>GPU Hardware Acceleration</li>
-          <li>Hot Module Replacement</li>
-          <li>Native Window Rendering</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <h2>Performance</h2>
-        <div class="stats">
-          <div class="stat">
-            <span class="stat-value">5ms</span>
-            <span class="stat-label">Frame Time</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">60fps</span>
-            <span class="stat-label">Render FPS</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value">75MB</span>
-            <span class="stat-label">Memory</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Tech Stack</h2>
-        <div class="tech-grid">
-          <span class="tech-badge">Rust</span>
-          <span class="tech-badge">WebGPU</span>
-          <span class="tech-badge">Vue 3</span>
-          <span class="tech-badge">wgpu</span>
-          <span class="tech-badge">winit</span>
-          <span class="tech-badge">Boa JS</span>
-        </div>
-      </div>
+      <!-- Mock API Demo -->
+      <MockTableDemo />
     </main>
 
     <footer class="footer">
@@ -55,8 +17,10 @@
 </template>
 
 <script>
-// Empty script - just template rendering
-console.log('App loaded')
+import MockTableDemo from './MockTableDemo.vue';
+export default {
+  components: { MockTableDemo },
+};
 </script>
 
 <style>

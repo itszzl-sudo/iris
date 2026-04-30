@@ -1,0 +1,107 @@
+{
+  "mock": {
+    "enabled": true,
+    "autoScan": true,
+    "delay": 0,
+    "endpoints": {
+      "/api/users": {
+        "GET": {
+          "status": 200,
+          "data": {
+            "type": "paginated",
+            "schema": {
+              "id": "auto-increment",
+              "name": "name",
+              "email": "email",
+              "phone": "phone",
+              "role": "role",
+              "department": "department",
+              "status": "status",
+              "avatar": "avatar",
+              "createdAt": "date"
+            },
+            "pageSize": 20,
+            "total": 100
+          }
+        }
+      },
+      "/api/users/:id": {
+        "GET": {
+          "status": 200,
+          "data": {
+            "type": "object",
+            "schema": {
+              "id": 1,
+              "name": "张三",
+              "email": "zhangsan@example.com",
+              "phone": "13800138000",
+              "role": "管理员",
+              "department": "技术部",
+              "status": "启用",
+              "avatar": "https://picsum.photos/seed/1/100/100",
+              "createdAt": "2024-01-15"
+            }
+          }
+        }
+      },
+      "/api/orders": {
+        "GET": {
+          "status": 200,
+          "data": {
+            "type": "paginated",
+            "schema": {
+              "id": "auto-increment",
+              "orderNo": "id",
+              "customer": "name",
+              "amount": "number:100:99999",
+              "status": "order-status",
+              "product": "title",
+              "quantity": "number:1:10",
+              "createdAt": "date"
+            },
+            "pageSize": 15,
+            "total": 88
+          }
+        }
+      },
+      "/api/products": {
+        "GET": {
+          "status": 200,
+          "data": {
+            "type": "paginated",
+            "schema": {
+              "id": "auto-increment",
+              "name": "title",
+              "category": "category",
+              "price": "number:10:9999",
+              "stock": "number:0:500",
+              "status": "status",
+              "image": "image:200:200",
+              "createdAt": "date"
+            },
+            "pageSize": 20,
+            "total": 200
+          }
+        }
+      },
+      "/api/login": {
+        "POST": {
+          "status": 200,
+          "delay": 500,
+          "data": {
+            "type": "object",
+            "schema": {
+              "token": "mock-jwt-token-{{random:32}}",
+              "user": {
+                "id": 1,
+                "name": "管理员",
+                "role": "admin",
+                "avatar": "https://picsum.photos/seed/admin/100/100"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

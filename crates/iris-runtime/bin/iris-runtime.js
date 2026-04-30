@@ -14,6 +14,7 @@ if (args[0] !== 'dev') {
   console.log('  --no-open          Do not open browser');
   console.log('  --no-hmr           Disable hot module replacement');
   console.log('  --debug            Enable debug output');
+  console.log('  --mock [config]    Enable Mock API Server (optional: config path)');
   console.log();
   process.exit(0);
 }
@@ -43,6 +44,16 @@ for (let i = 1; i < args.length; i++) {
       break;
     case '--debug':
       config.debug = true;
+      break;
+    case '--mock':
+      config.mock = { enabled: true };
+      // 检查下一个参数是否为配置文件路径
+      if (args[i + 1] && !args[i + 1].startsWith('--')) {
+        const nextArg = args[++i];
+        if (nextArg.endsWith('.json')) {
+          config.mock.configFile = nextArg;
+        }
+      }
       break;
   }
 }

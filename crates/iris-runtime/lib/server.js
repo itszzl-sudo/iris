@@ -16,6 +16,7 @@ import { vueModuleHandler } from './routes/vue-module.js';
 import { npmPackageHandler } from './routes/npm-package.js';
 import { setupWebSocketUpgrade, handleFileChanges } from './routes/hmr.js';
 import { apiHandler } from './routes/api.js';
+import { MockApiHandler } from './routes/mock-api.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,6 +30,7 @@ export async function startDevServer(config) {
     open: shouldOpen = true,
     enableHmr = true,
     debug = false,
+    mock = false,
   } = config;
   const startTime = Date.now();
 
@@ -48,6 +50,16 @@ export async function startDevServer(config) {
 
   const cache = new CompilerCache(root);
 
+  // 初始化 Mock API Server
+  let mockHandler = null;
+  if (mock) {
+    const mockOptions = typeof mock === 'object' ? mock : { enabled: true };
+    if (mockOptions.enabled !== false) {
+      mockHandler = new MockApiHandler(root, mockOptions);
+      await mockHandler.initialize();
+    }
+  }
+
   const portInUse = await isPortInUse(requestedPort);
   let port = requestedPort;
   if (portInUse) {
@@ -62,7 +74,7 @@ export async function startDevServer(config) {
 
   const server = createServer(async (req, res) => {
     try {
-      await handleRequest(req, res, { root, cache, projectInfo, enableHmr });
+      await handleRequest(req, res, { root, cache, projectInfo, enableHmr, mockHandler });
     } catch (error) {
       console.error(chalk.red('  ❌ Request error:'), error.message);
       if (debug) console.error(error);
@@ -120,11 +132,11 @@ export async function startDevServer(config) {
     process.exit(0);
   });
 
-  return { server, watcher, wss, cache };
+  return { server, watcher, wss, cache, mockHandler };
 }
 
 async function handleRequest(req, res, ctx) {
-  const { root, cache, projectInfo } = ctx;
+  const { root, cache, projectInfo, mockHandler } = ctx;
   const url = new URL(req.url, 'http://' + req.headers.host);
   const pathname = url.pathname;
 
@@ -143,6 +155,21 @@ async function handleRequest(req, res, ctx) {
   if (pathname.startsWith('/src/')) return sourceFileHandler(req, res, url, cache);
   if (pathname.startsWith('/@vue/')) return vueModuleHandler(req, res, url, cache);
   if (pathname.startsWith('/@npm/')) return npmPackageHandler(req, res, url, root);
+
+  // OPTIONS 预检请求
+  if (req.method === 'OPTIONS') {
+    if (pathname.startsWith('/api/') && mockHandler) {
+      if (mockHandler.handleOptions(req, res)) return;
+    }
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Mock API 路由（优先于真实 API）
+  if (pathname.startsWith('/api/') && mockHandler) {
+    if (await mockHandler.handle(req, res, url)) return;
+  }
 
   if (pathname.startsWith('/api/')) {
     if (await apiHandler(req, res, url, cache, root, projectInfo)) return;
