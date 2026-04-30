@@ -20,6 +20,9 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
+# Node.js
+node_modules/
+
 # Build artifacts
 *.exe
 *.dll
