@@ -1,0 +1,46 @@
+[package]
+name = "iris-jetcrab-daemon"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris JetCrab Daemon - Desktop floating rainbow icon with Vue project management"
+keywords = ["daemon", "tray", "vue", "dev-server", "desktop"]
+categories = ["development-tools", "gui"]
+
+[[bin]]
+name = "iris-jetcrab-daemon"
+path = "src/main.rs"
+
+[dependencies]
+# Iris shared
+iris-core.workspace = true
+
+# GUI
+winit = { workspace = true }
+softbuffer = "0.4.3"
+image = "0.25"
+
+# Config
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+dirs = "6.0"
+
+# Async
+tokio = { workspace = true, features = ["full"] }
+
+# HTTP
+axum = { version = "0.7", features = ["ws"] }
+reqwest = { version = "0.12", features = ["json"] }
+tower-http = { version = "0.5", features = ["cors"] }
+
+# Utility
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = "0.4"
+bytemuck = "1.0"
+which = "7.0"
