@@ -14,6 +14,7 @@ use futures_util::SinkExt;
 use tracing::{info, debug, warn};
 use crate::server::compiler_cache::CompilerCache;
 use crate::server::hmr::{WebSocketManager, HmrEvent};
+use crate::server::ai_inspector;
 use crate::utils;
 use anyhow::Result;
 
@@ -29,6 +30,7 @@ pub async fn index_handler(
     let project_root = &cache_lock.project_root;
     
     let html = generate_index_html(project_root);
+    let html = ai_inspector::inject_inspector_overlay(&html);
     Html(html)
 }
 
@@ -1715,6 +1717,27 @@ pub async fn source_file_handler(
                 js_code.push_str(&style.code.replace('`', "\\`"));
                 js_code.push_str("`;\n");
                 js_code.push_str("document.head.appendChild(style);\n");
+            }
+            
+            // 检测是否为入口文件，注入 __iris_app 暴露代码
+            let mut is_entry = path == "main.ts" || path == "main.js" || path == "main.tsx" || path == "main.jsx";
+            // 也检查 src/ 前缀的入口文件
+            if !is_entry {
+                let trimmed = path.trim_start_matches("src/");
+                is_entry = trimmed == "main.ts" || trimmed == "main.js" || trimmed == "main.tsx" || trimmed == "main.jsx";
+            }
+            if is_entry {
+                js_code.push_str("\n\n/* Iris Runtime: Expose Vue app instance for Inspector */\n");
+                js_code.push_str("(function() {\n");
+                js_code.push_str("  var irisCheck = setInterval(function() {\n");
+                js_code.push_str("    var appEl = document.getElementById('app');\n");
+                js_code.push_str("    if (appEl && appEl.__vue_app__) {\n");
+                js_code.push_str("      window.__iris_app = appEl.__vue_app__;\n");
+                js_code.push_str("      clearInterval(irisCheck);\n");
+                js_code.push_str("    }\n");
+                js_code.push_str("  }, 50);\n");
+                js_code.push_str("  setTimeout(function() { clearInterval(irisCheck); }, 5000);\n");
+                js_code.push_str("})();\n");
             }
             
             // 返回 JavaScript 模块

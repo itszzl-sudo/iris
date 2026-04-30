@@ -10,6 +10,7 @@ use colored::Colorize;
 use std::net::SocketAddr;
 use tracing::{info, warn};
 use crate::server::routes;
+use crate::server::ai_inspector;
 use crate::server::compiler_cache::CompilerCache;
 use crate::server::hmr::HMRManager;
 use crate::utils;
@@ -80,6 +81,12 @@ pub async fn start(root: String, port: u16, open: bool, enable_hmr: bool, debug:
         .route("/resolve.html", get(routes::resolve_page_handler))
         // HMR WebSocket
         .route("/@hmr", get(routes::hmr_handler))
+        // AI Inspector API
+        .route("/api/element-source", post(ai_inspector::element_source_handler))
+        .route("/api/file-content", get(ai_inspector::file_content_handler))
+        .route("/api/ai-edit", post(ai_inspector::ai_edit_handler))
+        .route("/api/apply-edit", post(ai_inspector::apply_edit_handler))
+        .route("/api/npm-package-info", get(ai_inspector::npm_package_info_handler))
         .with_state((cache, enable_hmr, ws_manager));
 
     // 添加 CORS

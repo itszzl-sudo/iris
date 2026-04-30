@@ -18,6 +18,9 @@ path = "src/main.rs"
 # JetCrab Engine (与 iris-engine 对等)
 iris-jetcrab-engine = { path = "../iris-jetcrab-engine" }
 
+# AI 代码编辑
+iris-ai = { path = "../iris-ai" }
+
 # 共享核心层
 iris-core.workspace = true
 iris-sfc.workspace = true

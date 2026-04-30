@@ -1,0 +1,32 @@
+[package]
+name = "iris-ai"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Iris AI — 本地小型语言模型，用于代码辅助编辑"
+
+[dependencies]
+# ML 推理框架（纯 Rust）
+candle-core = "0.10"
+candle-transformers = "0.10"
+candle-nn = "0.10"
+tokenizers = "0.22"
+hf-hub = "0.4"
+
+# HTTP 下载（支持断点续传）
+ureq = { version = "2.9", features = ["json"] }
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 工具
+anyhow = "1"
+tracing = "0.1"
+
+[lib]
+name = "iris_ai"
+path = "src/lib.rs"

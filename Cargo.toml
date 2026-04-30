@@ -14,6 +14,8 @@ members = [
   "crates/iris-jetcrab-engine",
   "crates/iris-jetcrab-cli",
   "crates/iris-sfc-wasm",
+  "crates/iris-ai",
+  "crates/iris-ai-cli",
 ]
 resolver = "2"
 
@@ -40,6 +42,8 @@ iris-cssom = { path = "crates/iris-cssom", version = "0.1.1" }
 iris-jetcrab = { path = "crates/iris-jetcrab", version = "0.1.1" }
 iris-jetcrab-engine = { path = "crates/iris-jetcrab-engine", version = "0.1.1" }
 iris-jetcrab-cli = { path = "crates/iris-jetcrab-cli", version = "0.1.1" }
+iris-ai = { path = "crates/iris-ai", version = "0.1.1" }
+iris-ai-cli = { path = "crates/iris-ai-cli", version = "0.1.1" }
 
 # External shared dependencies (to be expanded during development)
 tokio = { version = "1", features = ["full"] }

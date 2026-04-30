@@ -10,5 +10,6 @@ mod http_server;
 mod routes;
 mod hmr;
 mod compiler_cache;
+pub mod ai_inspector;
 
 pub use http_server::start;

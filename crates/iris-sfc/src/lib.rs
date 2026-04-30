@@ -591,7 +591,7 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
     );
 
     // 步骤 1: 解析 HTML 为 AST
-    let vnodes =
+    let (vnodes, component_names) =
         template_compiler::parse_template(template).map_err(|e| SfcError::TemplateError {
             message: format!("Failed to parse template: {}", e),
             file: file_name.to_string(),
@@ -599,8 +599,8 @@ fn compile_template(file_name: &str, template: &str) -> Result<String, SfcError>
             column: 1,
         })?;
 
-    // 步骤 2: 生成渲染函数
-    let render_fn = template_compiler::generate_render_fn(&vnodes);
+    // 步骤 2: 生成渲染函数（传入检测到的组件名）
+    let render_fn = template_compiler::generate_render_fn_with_components(&vnodes, &component_names);
 
     debug!(
         file = file_name,

@@ -3,10 +3,11 @@ use markup5ever_rcdom::{Handle, NodeData, RcDom};
 ///
 /// Parses HTML templates using html5ever and generates virtual DOM creation functions.
 /// Supports directives: v-if, v-for, v-bind, v-on, v-model, v-slot, v-once, v-pre, v-cloak, v-memo
+use std::collections::HashSet;
 use tracing::{debug, info};
 
 /// Virtual DOM node types representing the template AST
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VNode {
     /// HTML element node with tag, attributes, children, and directives
     Element {
@@ -25,7 +26,7 @@ pub enum VNode {
 }
 
 /// Vue directive types supported by the template compiler
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Directive {
     /// Conditional rendering: v-if="condition"
     VIf { condition: String },
@@ -65,8 +66,27 @@ pub enum Directive {
     VShow { condition: String },
 }
 
+/// 从原始 HTML 模板中检测 PascalCase 组件名
+/// 例如 <MockTableDemo>、<MyComponent>、</SomeThing>
+fn detect_components(html: &str) -> HashSet<String> {
+    let mut components = HashSet::new();
+    // 匹配 <ComponentName 或 </ComponentName，要求首字母大写
+    // 这能匹配大多数 Vue 组件用法
+    for cap in html.split('<').skip(1) {
+        let name = cap.trim_start_matches('/').split(|c: char| c.is_whitespace() || c == '>' || c == '/')
+            .next()
+            .unwrap_or("");
+        if !name.is_empty() && name.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false) {
+            components.insert(name.to_string());
+        }
+    }
+    components
+}
+
 /// Parse HTML template string into VNode AST
-pub fn parse_template(html: &str) -> Result<Vec<VNode>, String> {
+///
+/// 返回 (VNode 列表, 检测到的组件名集合)
+pub fn parse_template(html: &str) -> Result<(Vec<VNode>, HashSet<String>), String> {
     use html5ever::namespace_url;
     use html5ever::tendril::{Tendril, TendrilSink};
     use html5ever::{local_name, parse_fragment, ParseOpts, QualName};
@@ -82,10 +102,40 @@ pub fn parse_template(html: &str) -> Result<Vec<VNode>, String> {
     )
     .one(Tendril::from(html));
 
-    let nodes = convert_dom_to_vnodes(&dom.document);
+    let mut nodes = convert_dom_to_vnodes(&dom.document);
+
+    // html5ever 的 parse_fragment 会额外包裹 <html><body> 标签
+    // 需要去掉这些自动生成的包裹层，只保留实际的模板内容
+    nodes = strip_auto_wrappers(nodes);
+
+    // 从原始模板中检测 PascalCase 组件名
+    // html5ever 将所有标签都转换为小写，我们需要恢复组件名的大小写
+    let component_names = detect_components(html);
+    if !component_names.is_empty() {
+        debug!("Detected components: {:?}", component_names);
+    }
 
     debug!(node_count = nodes.len(), "Template parsing completed");
-    Ok(nodes)
+    Ok((nodes, component_names))
+}
+
+/// 去除 html5ever 自动生成的 <html> 和 <body> 包裹层
+fn strip_auto_wrappers(nodes: Vec<VNode>) -> Vec<VNode> {
+    let mut result = nodes;
+    // 处理单层包裹：如果顶层只有一个 <html> 元素，展开其子节点
+    while result.len() == 1 {
+        match &result[0] {
+            VNode::Element { tag, children, .. } => {
+                if tag == "html" || tag == "body" {
+                    result = children.clone();
+                } else {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+    result
 }
 
 /// Convert html5ever DOM tree to VNode AST
@@ -292,6 +342,12 @@ pub fn parse_text(text: &str) -> (String, bool) {
 /// Generate JavaScript render function from VNode AST
 pub fn generate_render_fn(nodes: &[VNode]) -> String {
     info!(node_count = nodes.len(), "Generating render function");
+    generate_render_fn_with_components(nodes, &HashSet::new())
+}
+
+/// 生成渲染函数，支持 PascalCase 组件名识别
+pub fn generate_render_fn_with_components(nodes: &[VNode], components: &HashSet<String>) -> String {
+    info!(node_count = nodes.len(), "Generating render function with {} components", components.len());
 
     // render 函数不接收参数，h 通过 import 导入
     let mut code = String::from("function render() {\n  return ");
@@ -299,12 +355,12 @@ pub fn generate_render_fn(nodes: &[VNode]) -> String {
     if nodes.is_empty() {
         code.push_str("null");
     } else if nodes.len() == 1 {
-        code.push_str(&generate_vnode(&nodes[0]));
+        code.push_str(&generate_vnode_with_components(&nodes[0], components));
     } else {
         code.push_str("[\n");
         for node in nodes {
             code.push_str("    ");
-            code.push_str(&generate_vnode(node));
+            code.push_str(&generate_vnode_with_components(node, components));
             code.push_str(",\n");
         }
         code.push_str("  ]");
@@ -315,7 +371,13 @@ pub fn generate_render_fn(nodes: &[VNode]) -> String {
 }
 
 /// Generate code for a single VNode
+/// Generate code for a single VNode (without component detection)
 fn generate_vnode(node: &VNode) -> String {
+    generate_vnode_with_components(node, &HashSet::new())
+}
+
+/// Generate code for a single VNode with component detection
+fn generate_vnode_with_components(node: &VNode, components: &HashSet<String>) -> String {
     match node {
         VNode::Element {
             tag,
@@ -328,7 +390,7 @@ fn generate_vnode(node: &VNode) -> String {
                 return directive_code;
             }
 
-            generate_element(tag, attrs, children)
+            generate_element_with_components(tag, attrs, children, components)
         }
         VNode::Text {
             content,
@@ -342,15 +404,38 @@ fn generate_vnode(node: &VNode) -> String {
                 format!("{:?}", content)
             }
         }
-        VNode::Comment { content } => {
-            format!("comment({:?})", content)
+        VNode::Comment { .. } => {
+            // HTML 注释在渲染中没有意义，跳过生成
+            String::new()
         }
     }
 }
 
 /// Generate element node code with tag, attributes, and children
+/// Generate element node code
 fn generate_element(tag: &str, attrs: &[(String, String)], children: &[VNode]) -> String {
-    let mut code = format!("h({:?}, ", tag);
+    generate_element_with_components(tag, attrs, children, &HashSet::new())
+}
+
+/// Generate element node code with component detection
+fn generate_element_with_components(tag: &str, attrs: &[(String, String)], children: &[VNode], components: &HashSet<String>) -> String {
+    // 检查是否是 PascalCase 组件
+    let is_component = components.iter().any(|c| c.to_lowercase() == tag.to_lowercase());
+    let tag_ref = if is_component {
+        // 找到正确的 PascalCase 组件名
+        components.iter().find(|c| c.to_lowercase() == tag.to_lowercase())
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| format!("{:?}", tag))
+    } else {
+        format!("{:?}", tag)
+    };
+    
+    let mut code = if is_component {
+        // 组件使用引用而非字符串：h(MockTableDemo, ...)
+        format!("h({}, ", tag_ref)
+    } else {
+        format!("h({:?}, ", tag)
+    };
 
     code.push_str(&render_attrs(attrs));
 
@@ -360,7 +445,7 @@ fn generate_element(tag: &str, attrs: &[(String, String)], children: &[VNode]) -
         code.push_str(", [\n");
         for child in children {
             code.push_str("      ");
-            code.push_str(&generate_vnode(child));
+            code.push_str(&generate_vnode_with_components(child, components));
             code.push_str(",\n");
         }
         code.push_str("    ])");
@@ -696,14 +781,14 @@ mod tests {
     #[test]
     fn test_parse_simple_element() {
         let html = r#"<div class="container">Hello</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         assert_eq!(nodes.len(), 1);
     }
 
     #[test]
     fn test_parse_vfor() {
         let html = r#"<li v-for="item in items">{{ item.name }}</li>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         assert_eq!(nodes.len(), 1);
 
         let render_fn = generate_render_fn(&nodes);
@@ -714,7 +799,7 @@ mod tests {
     fn test_parse_von() {
         // Test that @click directive generates correct render function
         let html = r#"<button @click="handleClick">Click</button>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         // Should generate valid render function
@@ -743,7 +828,7 @@ mod tests {
     fn test_parse_vonce() {
         // Test that v-once directive generates correct render function
         let html = r#"<div v-once>{{ staticContent }}</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         // Should generate valid render function
@@ -753,7 +838,7 @@ mod tests {
     #[test]
     fn test_generate_vonce() {
         let html = r#"<div v-once>{{ message }}</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         assert!(
@@ -766,7 +851,7 @@ mod tests {
     fn test_parse_vpre() {
         // Test that v-pre directive generates correct render function
         let html = r#"<div v-pre>{{ raw }}</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         // Should generate valid render function
@@ -780,7 +865,7 @@ mod tests {
     fn test_parse_vcloak() {
         // Test that v-cloak directive generates correct render function
         let html = r#"<div v-cloak>{{ message }}</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         // Should generate valid render function
@@ -791,7 +876,7 @@ mod tests {
     fn test_parse_vmemo() {
         // Test that v-memo directive generates correct render function
         let html = r#"<div v-memo="[count, text]">{{ content }}</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         // Should generate valid render function
@@ -801,7 +886,7 @@ mod tests {
     #[test]
     fn test_generate_vmemo() {
         let html = r#"<li v-memo="[item.id]">{{ item.name }}</li>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         assert!(
@@ -818,14 +903,14 @@ mod tests {
     fn test_parse_vtext() {
         // Test that v-text directive parses correctly
         let html = r#"<span v-text="message"></span>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         assert_eq!(nodes.len(), 1);
     }
 
     #[test]
     fn test_generate_vtext() {
         let html = r#"<span v-text="message"></span>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         assert!(
@@ -839,14 +924,14 @@ mod tests {
     fn test_parse_vhtml() {
         // Test that v-html directive parses correctly
         let html = r#"<div v-html="rawHtml"></div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         assert_eq!(nodes.len(), 1);
     }
 
     #[test]
     fn test_generate_vhtml() {
         let html = r#"<div v-html="rawHtml"></div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         assert!(render_fn.contains("innerHTML"), "Should contain innerHTML");
@@ -857,14 +942,14 @@ mod tests {
     fn test_parse_vshow() {
         // Test that v-show directive parses correctly
         let html = r#"<div v-show="isVisible">Content</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         assert_eq!(nodes.len(), 1);
     }
 
     #[test]
     fn test_generate_vshow() {
         let html = r#"<div v-show="isVisible">Content</div>"#;
-        let nodes = parse_template(html).unwrap();
+        let (nodes, _) = parse_template(html).unwrap();
         let render_fn = generate_render_fn(&nodes);
 
         assert!(
@@ -888,9 +973,10 @@ mod tests {
         ];
 
         for (html, name) in test_cases {
-            let nodes = parse_template(html);
-            assert!(nodes.is_ok(), "Failed to parse {}", name);
-            assert!(!nodes.unwrap().is_empty(), "Empty result for {}", name);
+            let result = parse_template(html);
+            assert!(result.is_ok(), "Failed to parse {}", name);
+            let (nodes, _) = result.unwrap();
+            assert!(!nodes.is_empty(), "Empty result for {}", name);
         }
     }
 }

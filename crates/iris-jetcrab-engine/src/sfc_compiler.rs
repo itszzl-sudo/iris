@@ -94,6 +94,20 @@ pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
     let parsed = iris_sfc::compile_from_string(filename, source)
         .context(format!("Failed to parse {}", filename))?;
 
+   // 从文件名提取相对路径（用于 __file 注入）
+    let component_file = filename
+        .trim_start_matches('\\')
+        .trim_start_matches('/')
+        .replace('\\', "/");
+    // 裁剪为相对于项目的路径
+    let component_file = if let Some(pos) = component_file.rfind("/src/") {
+        &component_file[pos+1..]
+    } else if let Some(pos) = component_file.rfind("/examples/") {
+        &component_file[pos+1..]
+    } else {
+        &component_file
+    }.to_string();
+
     // 合并 render 函数到 script 中
     let script = if !parsed.render_fn.is_empty() {
         // 如果 script 为空，创建完整的组件导出
@@ -131,6 +145,16 @@ pub fn compile_sfc(source: &str, filename: &str) -> Result<CompiledModule> {
         }
     } else {
         parsed.script.clone()
+    };
+
+    // 注入 __file 属性到 export default 中
+    // 使 Vue 组件实例的 type.__file 可用，用于 Inspector 源映射
+    let script = if script.contains("export default {") && !component_file.is_empty() {
+        // 在 export default { 之后插入 __file
+        let file_attr = format!("  __file: {:?},", component_file);
+        script.replacen("export default {", &format!("export default {{\n{}", file_attr), 1)
+    } else {
+        script
     };
 
     // 提取样式部分
