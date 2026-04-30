@@ -47,3 +47,12 @@ wgpu = "24"
 html5ever = "0.27"
 markup5ever_rcdom = "0.3"
 cssparser = "0.33"
+
+# ============================================
+# Release profile（WASM 优化：压缩体积 + LTO）
+# ============================================
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

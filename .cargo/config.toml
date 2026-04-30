@@ -77,6 +77,10 @@ retry = 3
 # 7. 环境变量优化（可选）
 # ============================================
 
+[env]
+# 抑制 cargo 编译 warning 输出
+RUSTFLAGS = "-Awarnings"
+
 # 在 PowerShell 中设置：
 # $env:CARGO_BUILD_JOBS = "8"  # 并行编译数
 # $env:CARGO_NET_RETRY = "3"   # 重试次数

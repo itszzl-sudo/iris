@@ -67,9 +67,3 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 wasm = ["console_error_panic_hook"]
-
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-strip = true
