@@ -53,67 +53,30 @@ pub fn generate_rainbow_icon() -> &'static RainbowIcon {
 
 // ── PNG 图标加载 ────────────────────────────────────────────
 
-/// 从文件系统加载 iris.png，缩放到 64x64 并转为 RGBA
+/// 从嵌入的资源解码 iris.png（预压缩为 64x64）
 fn load_png_icon() -> Option<RainbowIcon> {
-    use image::GenericImageView;
+    // include_bytes! 在编译时嵌入资源文件
+    let png_data = include_bytes!("../res/iris.png");
 
-    let search_paths: [std::path::PathBuf; 4] = [
-        // 1. 当前工作目录
-        "iris.png".into(),
-        // 2. 可执行文件所在目录
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.join("iris.png")))
-            .unwrap_or_default(),
-        // 3. 配置目录 (AppData/Roaming/iris-jetcrab)
-        dirs::config_dir()
-            .map(|p| p.join("iris-jetcrab").join("iris.png"))
-            .unwrap_or_default(),
-        // 4. 项目根目录(crate 父目录的父目录)
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| {
-                p.parent()
-                    .and_then(|p| p.parent())
-                    .and_then(|p| p.parent())
-                    .and_then(|p| p.parent())
-                    .map(|p| p.join("iris.png"))
+    match image::load_from_memory(png_data) {
+        Ok(img) => {
+            let rgba = img.into_rgba8();
+            let pixels = rgba.into_raw();
+            tracing::info!(
+                "Loaded embedded iris.png ({} bytes), decoded to 64x64 RGBA",
+                png_data.len()
+            );
+            Some(RainbowIcon {
+                width: 64,
+                height: 64,
+                pixels,
             })
-            .unwrap_or_default(),
-    ];
-
-    for path in search_paths.iter() {
-        if !path.exists() || !path.is_file() {
-            continue;
         }
-        match image::open(path) {
-            Ok(img) => {
-                let (orig_w, orig_h) = img.dimensions();
-                // 缩放到 64x64 (使用 Lanczos3 滤镜，适合大幅缩小)
-                let resized = img.resize_exact(
-                    64,
-                    64,
-                    image::imageops::FilterType::Lanczos3,
-                );
-                let pixels = resized.into_rgba8().into_raw();
-                tracing::info!(
-                    "Loaded iris.png ({}x{}) from {:?}, resized to 64x64",
-                    orig_w,
-                    orig_h,
-                    path
-                );
-                return Some(RainbowIcon {
-                    width: 64,
-                    height: 64,
-                    pixels,
-                });
-            }
-            Err(e) => {
-                tracing::warn!("Failed to decode iris.png at {:?}: {}", path, e);
-            }
+        Err(e) => {
+            tracing::error!("Failed to decode embedded iris.png: {}", e);
+            None
         }
     }
-    None
 }
 
 // ── 跨平台 emoji 字体加载 ──────────────────────────────────

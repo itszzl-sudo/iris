@@ -41,9 +41,10 @@ pub struct FloatingApp {
     pos_y: i32,
     /// 拖拽相关
     dragging: bool,
-    drag_offset_x: i32,
-    drag_offset_y: i32,
-    /// 最近光标位置
+    /// 拖拽偏移（窗口相对坐标，记录按下时的光标位置）
+    drag_offset_x: f64,
+    drag_offset_y: f64,
+    /// 最近光标位置（窗口相对坐标）
     cursor_x: f64,
     cursor_y: f64,
     /// 渲染帧时间
@@ -65,8 +66,8 @@ impl FloatingApp {
             pos_x: 0,
             pos_y: 0,
             dragging: false,
-            drag_offset_x: 0,
-            drag_offset_y: 0,
+            drag_offset_x: 0.0,
+            drag_offset_y: 0.0,
             cursor_x: 0.0,
             cursor_y: 0.0,
             last_frame: Instant::now(),
@@ -144,17 +145,25 @@ impl ApplicationHandler for FloatingApp {
                 self.cursor_x = position.x;
                 self.cursor_y = position.y;
                 if self.dragging {
-                    let new_x = (position.x as i32) - self.drag_offset_x;
-                    let new_y = (position.y as i32) - self.drag_offset_y;
+                    // position 是窗口相对坐标
+                    // delta = 当前光标位置 - 按下时光标位置（同一坐标系：窗口相对）
+                    let dx = position.x - self.drag_offset_x;
+                    let dy = position.y - self.drag_offset_y;
+                    // 新窗口位置 = 旧窗口位置 + delta（消除反馈环路）
+                    let new_x = self.pos_x + dx.round() as i32;
+                    let new_y = self.pos_y + dy.round() as i32;
                     self.pos_x = new_x;
                     self.pos_y = new_y;
+                    // 重置偏移，使下一次移动基于新的窗口位置计算纯增量
+                    self.drag_offset_x = position.x;
+                    self.drag_offset_y = position.y;
                     if let Some(window) = &self.window {
                         let _ = window.set_outer_position(PhysicalPosition::new(new_x as f64, new_y as f64));
                     }
-                    // 记录轨迹点
+                    // 记录轨迹点（屏幕绝对坐标 — 窗口中心）
                     self.particles.add_trail_point(
-                        position.x as i32 - self.drag_offset_x + WINDOW_WIDTH as i32 / 2,
-                        position.y as i32 - self.drag_offset_y + WINDOW_HEIGHT as i32 / 2,
+                        new_x + WINDOW_WIDTH as i32 / 2,
+                        new_y + WINDOW_HEIGHT as i32 / 2,
                     );
                 }
             }
@@ -205,8 +214,8 @@ impl ApplicationHandler for FloatingApp {
                         ElementState::Pressed => {
                             self.dragging = true;
                             self.particles.set_dragging(true);
-                            self.drag_offset_x = cursor_pos.0 as i32;
-                            self.drag_offset_y = cursor_pos.1 as i32;
+                            self.drag_offset_x = cursor_pos.0;
+                            self.drag_offset_y = cursor_pos.1;
                         }
                         ElementState::Released => {
                             self.dragging = false;
