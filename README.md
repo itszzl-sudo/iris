@@ -6,10 +6,13 @@
 
 *Zero Build · High Performance · Vue 3 Native Support*
 
-[![Version](https://img.shields.io/badge/version-0.1.0--preview-blue)](https://gitee.com/wanquanbuhuime/iris)
+*Part of the [irisverse](https://www.npmjs.com/org/irisverse) ecosystem on npm*
+
+[![Version](https://img.shields.io/badge/version-0.1.0--preview-blue)](https://github.com/itszzl-sudo/iris)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange)](https://www.rust-lang.org/)
 [![WebGPU](https://img.shields.io/badge/WebGPU-wgpu%2025.0-green)](https://wgpu.rs/)
 [![Tests](https://img.shields.io/badge/tests-382%20passed-brightgreen)](https://github.com/itszzl-sudo/iris)
+[![npm](https://img.shields.io/badge/npm-irisverse-blue)](https://www.npmjs.com/org/irisverse)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 [English](README.md) | [中文](README.zh-CN.md)
@@ -31,6 +34,7 @@
 - 📝 **Vue 3 Native** - script setup, reactivity, composition API
 - 🔥 **Hot Reload** - File watching with instant reload
 - 🧪 **382 Tests** - 100% pass rate, enterprise-grade quality
+- 🌐 **irisverse Ecosystem** - Part of the [irisverse](https://www.npmjs.com/org/irisverse) npm organization
 
 ---
 
@@ -392,7 +396,7 @@ We welcome all forms of contributions!
 
 ```bash
 # Clone the repository
-git clone https://gitee.com/wanquanbuhuime/iris.git
+git clone https://github.com/itszzl-sudo/iris.git
 cd iris
 
 # Run tests

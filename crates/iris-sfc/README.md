@@ -741,7 +741,7 @@ MIT License
 
 ```bash
 # 克隆仓库
-git clone https://gitee.com/wanquanbuhuime/iris.git
+git clone https://github.com/itszzl-sudo/iris.git
 cd iris
 
 # 运行测试
@@ -759,8 +759,8 @@ cargo clippy
 ## 📞 支持
 
 - **文档**: 查看本 README
-- **问题**: 提交 [Issue](https://gitee.com/wanquanbuhuime/iris/issues)
-- **讨论**: 参与 [Discussions](https://gitee.com/wanquanbuhuime/iris/discussions)
+- **问题**: 提交 [Issue](https://github.com/itszzl-sudo/iris/issues)
+- **讨论**: 参与 [Discussions](https://github.com/itszzl-sudo/iris/discussions)
 
 ---
 

@@ -261,7 +261,7 @@ thiserror = "1.0"
 ## 维护者
 
 - **名称**: Iris Team
-- **仓库**: https://gitee.com/wanquanbuhuime/iris
+- **仓库**: https://github.com/itszzl-sudo/iris
 - **许可**: MIT
 
 ---

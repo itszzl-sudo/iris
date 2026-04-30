@@ -6,10 +6,13 @@
 
 *零构建 · 高性能 · Vue 3 原生支持*
 
-[![Version](https://img.shields.io/badge/version-0.1.0--preview-blue)](https://gitee.com/wanquanbuhuime/iris)
+*属于 [irisverse](https://www.npmjs.com/org/irisverse) npm 生态系统*
+
+[![Version](https://img.shields.io/badge/version-0.1.0--preview-blue)](https://github.com/itszzl-sudo/iris)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange)](https://www.rust-lang.org/)
 [![WebGPU](https://img.shields.io/badge/WebGPU-wgpu%2025.0-green)](https://wgpu.rs/)
 [![Tests](https://img.shields.io/badge/tests-382%20passed-brightgreen)](https://github.com/itszzl-sudo/iris)
+[![npm](https://img.shields.io/badge/npm-irisverse-blue)](https://www.npmjs.com/org/irisverse)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 [English](README.md) | [中文](README.zh-CN.md)
@@ -31,6 +34,7 @@
 - 📝 **Vue 3 原生支持** - script setup、响应式、组合式 API
 - 🔥 **热更新** - 文件监听与即时重载
 - 🧪 **382 个测试** - 100% 通过率，企业级质量保障
+- 🌐 **irisverse 生态系统** - 属于 [irisverse](https://www.npmjs.com/org/irisverse) npm 组织
 
 ---
 
@@ -328,7 +332,7 @@ iris build App.vue
 
 ```bash
 # 克隆示例
-git clone https://gitee.com/wanquanbuhuime/iris-examples.git
+git clone https://github.com/itszzl-sudo/iris-examples.git
 
 # 运行演示
 cd iris-examples/demo
@@ -367,7 +371,7 @@ cargo test --workspace
 
 ```bash
 # 克隆仓库
-git clone https://gitee.com/wanquanbuhuime/iris.git
+git clone https://github.com/itszzl-sudo/iris.git
 cd iris
 
 # 运行测试
