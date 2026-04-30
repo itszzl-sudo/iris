@@ -18,28 +18,28 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Iris Team"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/iris-engine/iris"
+repository = "https://github.com/itszzl-sudo/iris"
 rust-version = "1.78"
 
 [workspace.dependencies]
 # Iris internal crates
-iris-core = { path = "crates/iris-core", version = "0.1.0" }
-iris-gpu = { path = "crates/iris-gpu", version = "0.1.0" }
-iris-layout = { path = "crates/iris-layout", version = "0.1.0" }
-iris-dom = { path = "crates/iris-dom", version = "0.1.0" }
-iris-js = { path = "crates/iris-js", version = "0.1.0" }
-iris-sfc = { path = "crates/iris-sfc", version = "0.1.0" }
-iris-app = { path = "crates/iris-app", version = "0.1.0" }
-iris-engine = { path = "crates/iris-engine", version = "0.1.0" }
-iris-cli = { path = "crates/iris-cli", version = "0.1.0" }
-iris-cssom = { path = "crates/iris-cssom", version = "0.1.0" }
-iris-jetcrab = { path = "crates/iris-jetcrab", version = "0.1.0" }
-iris-jetcrab-engine = { path = "crates/iris-jetcrab-engine", version = "0.1.0" }
-iris-jetcrab-cli = { path = "crates/iris-jetcrab-cli", version = "0.1.0" }
+iris-core = { path = "crates/iris-core", version = "0.1.1" }
+iris-gpu = { path = "crates/iris-gpu", version = "0.1.1" }
+iris-layout = { path = "crates/iris-layout", version = "0.1.1" }
+iris-dom = { path = "crates/iris-dom", version = "0.1.1" }
+iris-js = { path = "crates/iris-js", version = "0.1.1" }
+iris-sfc = { path = "crates/iris-sfc", version = "0.1.1" }
+iris-app = { path = "crates/iris-app", version = "0.1.1" }
+iris-engine = { path = "crates/iris-engine", version = "0.1.1" }
+iris-cli = { path = "crates/iris-cli", version = "0.1.1" }
+iris-cssom = { path = "crates/iris-cssom", version = "0.1.1" }
+iris-jetcrab = { path = "crates/iris-jetcrab", version = "0.1.1" }
+iris-jetcrab-engine = { path = "crates/iris-jetcrab-engine", version = "0.1.1" }
+iris-jetcrab-cli = { path = "crates/iris-jetcrab-cli", version = "0.1.1" }
 
 # External shared dependencies (to be expanded during development)
 tokio = { version = "1", features = ["full"] }
