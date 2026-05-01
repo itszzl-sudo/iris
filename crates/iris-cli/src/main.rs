@@ -27,7 +27,7 @@ use commands::{build::BuildCommand, dev::DevCommand, info::InfoCommand};
 
 /// Iris CLI - Build and develop Vue 3 applications with Rust+WebGPU runtime
 #[derive(Parser)]
-#[command(name = "iris")]
+#[command(name = "iris-cli")]
 #[command(author = "Iris Team")]
 #[command(version = "0.1.0")]
 #[command(about = "Iris Runtime CLI for Vue 3 applications", long_about = None)]
