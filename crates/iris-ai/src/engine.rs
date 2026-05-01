@@ -31,7 +31,7 @@ impl InferenceEngine {
         Self { config, model_loaded: false }
     }
 
-    /// 加载模型（验证文件 + 自动下载）
+    /// 加载模型（验证 GGUF 文件头 + 自动下载）
     pub fn load(&mut self) -> Result<()> {
         let model_path = self.resolve_model_path()?;
         let meta = std::fs::metadata(&model_path)
@@ -40,6 +40,24 @@ impl InferenceEngine {
 
         if size_mb < 10.0 {
             warn!("模型文件过小 ({:.1} MB)，可能无效", size_mb);
+        }
+
+        // 验证 GGUF 文件头
+        {
+            let mut file = File::open(&model_path)
+                .context("无法打开模型文件进行验证")?;
+            let content = gguf_file::Content::read(&mut file)
+                .context("GGUF 文件头验证失败 — 文件可能已损坏或不是有效的 GGUF 模型")?;
+            let metadata_count = content.metadata.len();
+            let tensor_count = content.tensor_infos.len();
+            info!(
+                "📋 GGUF 模型: {} 个元数据项, {} 个张量",
+                metadata_count, tensor_count,
+            );
+            // 尝试读取架构信息
+            if let Some(arch) = content.metadata.get("general.architecture") {
+                info!("  架构: {:?}", arch);
+            }
         }
 
         info!(
@@ -184,5 +202,69 @@ impl InferenceEngine {
         );
         let result = dl.get_or_download()?;
         Ok(result.model_path)
+    }
+}
+
+// ============================================================
+// 单元测试
+// ============================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AiConfig;
+
+    fn test_config() -> AiConfig {
+        AiConfig::default()
+            .with_model_path(std::path::PathBuf::from("/tmp/non-existent-test-model.gguf"))
+    }
+
+    #[test]
+    fn test_engine_new_not_loaded() {
+        let engine = InferenceEngine::new(test_config());
+        assert!(!engine.is_loaded(), "引擎初始状态应为未加载");
+    }
+
+    #[test]
+    fn test_engine_load_fails_nonexistent() {
+        let mut engine = InferenceEngine::new(test_config());
+        let result = engine.load();
+        assert!(result.is_err(), "不存在的文件应返回错误");
+        assert!(!engine.is_loaded(), "加载失败后仍应标记为未加载");
+    }
+
+    #[test]
+    fn test_engine_load_fails_invalid_file() {
+        let dir = std::env::temp_dir().join("iris-ai-test-engine");
+        let _ = std::fs::create_dir_all(&dir);
+        let fake_path = dir.join("fake-model.gguf");
+        // 写入无效数据（不是 GGUF 格式）
+        std::fs::write(&fake_path, b"NOT_A_GGUF_FILE\x00\x01\x02\x03").unwrap();
+
+        let mut engine = InferenceEngine::new(
+            AiConfig::default().with_model_path(fake_path.clone())
+        );
+        let result = engine.load();
+        assert!(result.is_err(), "无效 GGUF 文件应返回错误");
+        assert!(
+            format!("{:?}", result).contains("GGUF"),
+            "错误信息应包含 GGUF 相关描述: {:?}",
+            result
+        );
+        assert!(!engine.is_loaded());
+
+        // 清理
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_generate_fails_when_not_loaded() {
+        let mut engine = InferenceEngine::new(test_config());
+        let result = engine.generate("test prompt");
+        assert!(result.is_err(), "未加载模型时应返回错误");
+        assert!(
+            format!("{:?}", result).contains("未加载"),
+            "错误信息应提示模型未加载"
+        );
     }
 }

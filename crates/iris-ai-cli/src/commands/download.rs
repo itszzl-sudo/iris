@@ -70,11 +70,13 @@ pub async fn run(
 
 /// 打印下载进度
 fn print_progress(p: &DownloadProgress) {
-    // 每 5% 打印一次
-    let prev_pct = unsafe { LAST_PCT };
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static LAST_PCT: AtomicU32 = AtomicU32::new(0);
+
+    let prev_pct = LAST_PCT.load(Ordering::Relaxed);
     let current_pct = (p.percentage / 5.0).floor() as u32 * 5;
     if current_pct > prev_pct {
-        unsafe { LAST_PCT = current_pct };
+        LAST_PCT.store(current_pct, Ordering::Relaxed);
         print!("\r  {} {:3.0}% | {} | {}  ",
             match p.status {
                 DownloadStatus::Resuming => "🔄".yellow(),
@@ -92,6 +94,3 @@ fn print_progress(p: &DownloadProgress) {
         println!();
     }
 }
-
-/// 上一个打印的百分比（仅用于抑制频繁输出）
-static mut LAST_PCT: u32 = 0;

@@ -17,6 +17,54 @@ use crate::utils;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// 尝试向守护进程注册项目，如果守护进程正在运行则返回 true
+async fn try_register_with_daemon(root: &str, port: u16) -> bool {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(300))
+        .build()
+        .unwrap();
+    // 检查守护进程默认端口范围 19999~20500
+    for try_port in 19999..20500u16 {
+        let status_url = format!("http://127.0.0.1:{}/api/status", try_port);
+        match client.get(&status_url).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    // 找到守护进程，发送注册请求
+                    let register_url = format!("http://127.0.0.1:{}/api/project/register", try_port);
+                    let body = serde_json::json!({
+                        "path": root,
+                        "port": port,
+                    });
+                    match reqwest::Client::new()
+                        .post(&register_url)
+                        .json(&body)
+                        .timeout(std::time::Duration::from_secs(5))
+                        .send()
+                        .await
+                    {
+                        Ok(reg_resp) => {
+                            if reg_resp.status().is_success() {
+                                if let Ok(data) = reg_resp.json::<serde_json::Value>().await {
+                                    let already = data.get("already_running").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    let msg = data.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                                    println!("{}", format!("🔗 已注册到守护进程 (端口 {}): {}", try_port, msg).bright_cyan());
+                                    if already {
+                                        println!("{}", "ℹ️  项目已在守护进程中运行，无需重复启动".bright_yellow());
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                    return true; // 即使注册失败，也认为找到了守护进程
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+    false
+}
+
 /// 启动开发服务器
 pub async fn start(root: String, port: u16, open: bool, enable_hmr: bool, debug: bool) -> Result<()> {
     // 初始化日志
@@ -41,6 +89,12 @@ pub async fn start(root: String, port: u16, open: bool, enable_hmr: bool, debug:
         return Ok(());
     }
     println!("{} {}", "✅ Vue:".bright_green(), "Project detected".bright_white());
+
+    // 尝试向守护进程注册项目，如果守护进程正在运行则优先使用 daemon 管理
+    if try_register_with_daemon(&project_root.to_string_lossy(), port).await {
+        println!("{}", "⏹️  由守护进程管理项目生命周期，CLI 退出。".bright_cyan());
+        return Ok(());
+    }
 
     // 创建 HMR 管理器
     let mut hmr_manager = HMRManager::new(project_root.clone(), enable_hmr);

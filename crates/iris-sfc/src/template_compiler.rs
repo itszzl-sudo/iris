@@ -329,12 +329,57 @@ fn parse_vfor(value: &str) -> Option<(String, String)> {
 
 /// Parse text node content and detect interpolation expressions
 /// Returns (content, is_interpolation)
+/// For mixed text with interpolations (e.g. "Hello {{ name }}, count={{ n }}"),
+/// returns a concatenation expression like `"Hello " + name + ", count=" + n`
+/// with is_interpolation=true so the code generator outputs the expression directly.
 pub fn parse_text(text: &str) -> (String, bool) {
     if text.starts_with("{{") && text.ends_with("}}") {
-        // Interpolation expression: {{ expression }}
-        (text[2..text.len() - 2].trim().to_string(), true)
+        // Single interpolation: {{ expression }}
+        let expr = text[2..text.len() - 2].trim().to_string();
+        (expr, true)
+    } else if let Some(start_pos) = text.find("{{") {
+        // Mixed text with one or more interpolations
+        let mut result = String::new();
+        let mut remaining = text;
+        let mut first = true;
+
+        while let Some(start) = remaining.find("{{") {
+            // Static part before {{
+            let static_part = &remaining[..start];
+            if !static_part.is_empty() {
+                if !first { result.push_str(" + "); }
+                result.push_str(&format!("{:?}", static_part));
+                first = false;
+            }
+
+            // Find the closing }}
+            if let Some(end) = remaining[start..].find("}}") {
+                let expr = remaining[start + 2..start + end].trim();
+                if !expr.is_empty() {
+                    if !first { result.push_str(" + "); }
+                    result.push_str(expr);
+                    first = false;
+                }
+                remaining = &remaining[start + end + 2..];
+            } else {
+                // No closing }} found, treat rest as literal
+                let rest = &remaining[start..];
+                if !first { result.push_str(" + "); }
+                result.push_str(&format!("{:?}", rest));
+                first = false;
+                break;
+            }
+        }
+
+        // Remaining static text
+        if !remaining.is_empty() {
+            if !first { result.push_str(" + "); }
+            result.push_str(&format!("{:?}", remaining));
+        }
+
+        (result, true)
     } else {
-        // Plain text
+        // Plain text (no interpolation markers)
         (text.to_string(), false)
     }
 }
@@ -978,5 +1023,23 @@ mod tests {
             let (nodes, _) = result.unwrap();
             assert!(!nodes.is_empty(), "Empty result for {}", name);
         }
+    }
+
+    #[test]
+    fn test_ampersand_in_template() {
+        // 测试 `&amp;` 在模板中的处理
+        let html = r#"<p>GET /api/users?page={{ page }}&amp;pageSize={{ pageSize }}</p>"#;
+        let (nodes, _) = parse_template(html).unwrap();
+        assert_eq!(nodes.len(), 1);
+        let render_fn = generate_render_fn(&nodes);
+        println!("Render fn output: {}", render_fn);
+        // 渲染函数中应该生成有效的字符串拼接表达式
+        assert!(render_fn.contains("page") || render_fn.contains("pageSize"), "Should reference page and pageSize");
+        // &pageSize 应该在字符串字面量中（被引号包裹），不在字符串外
+        // 检查是否在字符串外包含裸的 &符号（不是被引号包裹的）
+        // 有时渲染函数输出 "&pageSize=" 这样的字符串字面量，其中包含 &pageSize 子串是正常的
+        // 我们需要确保 & 不会出现在 JavaScript 表达式上下文中
+        assert!(render_fn.contains("\"&pageSize=") || render_fn.contains("'&pageSize="),
+            "&pageSize should be wrapped in a string literal");
     }
 }

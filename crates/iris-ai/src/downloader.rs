@@ -314,11 +314,15 @@ impl ModelDownloader {
             .context("无法创建模型缓存目录")?;
 
         // ----- 2. 构建下载 URL -----
+        // 使用 HuggingFace 直链，避免硬编码预签名 URL
         let url = format!(
             "https://huggingface.co/{}/resolve/main/{}",
             self.repo, self.filename
         );
-        info!("🌐 模型下载地址: {}", url);
+        info!(
+            "🌐 模型下载: {}/{}",
+            self.repo, self.filename
+        );
 
         // ----- 3. HEAD 请求获取服务端信息 -----
         let (server_size, etag, last_modified) = self.head_request(&url)?;
@@ -614,3 +618,4 @@ mod tests {
         assert!(speed > 900_000.0 && speed < 1_100_000.0);
     }
 }
+

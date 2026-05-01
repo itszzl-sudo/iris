@@ -81,6 +81,25 @@ enum Commands {
 
     /// 显示 AI 助手配置信息
     Info,
+
+    /// 审查代码 — 用 AI 分析代码质量并发现问题
+    Review {
+        /// 要审查的文件路径（支持多个）
+        #[arg(required = true)]
+        files: Vec<String>,
+
+        /// 输出格式 (text / json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// GGUF 模型文件路径（可选，跳过自动下载）
+        #[arg(long)]
+        model_path: Option<String>,
+
+        /// 温度参数 0.0~1.0（越低越精确，默认 0.15）
+        #[arg(long, default_value_t = 0.15)]
+        temperature: f32,
+    },
 }
 
 #[tokio::main]
@@ -105,6 +124,9 @@ async fn main() -> Result<()> {
         }
         Commands::Info => {
             commands::info::run()?
+        }
+        Commands::Review { files, format, model_path, temperature } => {
+            commands::review::run(files, format, model_path, temperature).await?
         }
     }
 

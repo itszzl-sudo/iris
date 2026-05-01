@@ -1,9 +1,9 @@
 # 🗺️ Iris Engine 完整开发路线图与进度追踪
 
 > **创建时间**: 2026-02-24  
-> **最后更新**: 2026-04-29  
-> **状态**: 🎉 核心功能全部完成 + Phase 9 开发中  
-> **总体进度**: 93%（核心 Phase 100% + Phase 9 70%）  
+> **最后更新**: 2026-04-30  
+> **状态**: 🎉 全部 10 个 Phase 开发中，核心 Phase (0-8) 100% 完成  
+> **总体进度**: 95%（核心 Phase 100% + Phase 9 85% + Phase 10 30%）  
 > **自动更新**: ✅ Phase 标题将根据子阶段完成状态自动更新（全部完成 = 100%）
 
 ---
@@ -518,7 +518,7 @@
 
 ---
 
-## 🦀 Phase 9: Iris JetCrab CLI 开发服务器（70% 完成）🔄
+## 🦀 Phase 9: Iris JetCrab CLI 开发服务器（85% 完成）🔄
 
 > **架构文档**: [IRIS_JETCRAB_CLI_ARCHITECTURE.md](docs/IRIS_JETCRAB_CLI_ARCHITECTURE.md)  
 > **测试客户端**: [test-hmr-client.html](test-hmr-client.html)
@@ -571,8 +571,8 @@
 - [x] count_vue_files - 统计 Vue 文件数量
 
 **测试覆盖**: 编译验证通过  
-**状态**: 🔄 Phase 9 进行中（70%）  
-**代码量**: 600+ 行
+**状态**: 🔄 Phase 9 进行中（85%）  
+**代码量**: 1,100+ 行（CLI 600+ 行 + Daemon 500+ 行）
 
 ### 9.7 待实现功能 ⏳
 
@@ -594,6 +594,74 @@
 - [ ] Tree-shaking 优化
 - [ ] 服务端渲染（SSR）支持
 
+### 9.8 后台守护进程 (iris-jetcrab-daemon) ✅
+
+> **依赖**: iris-jetcrab-cli 完成基础架构后独立开发
+
+- [x] daemon crate 创建与 Workspace 集成
+- [x] 配置文件系统 (config.toml)
+  - [x] 自动创建配置文件（首次运行）
+  - [x] 配置持久化（读/写/校验）
+  - [x] 字段：auto_start_daemon, llm_running, show_icon, AI config
+- [x] HTTP API 服务器（axum）
+  - [x] 状态查询 API (`GET /api/status`)
+  - [x] 配置更新 API (`POST /api/config/save`)
+  - [x] LLM 配置只读锁定 (`POST /api/config/llm-lock`)
+  - [x] 关闭 daemon API (`POST /api/shutdown`)
+- [x] 管理面板（嵌入式 HTML）
+  - [x] 大模型服务配置面板
+  - [x] Mock 服务配置面板
+  - [x] 管理面板入口配置
+  - [x] 随系统启动配置
+- [x] 端口自动重试机制（端口范围 19999-20010）
+- [x] 自动启动浏览器管理页面
+- [x] Chrome 进程 PID 追踪
+- [x] 桌面图标创建（Windows .lnk）
+- [x] 启动脚本 (launcher.ps1)
+- [x] Release 构建与部署到安装目录 (%APPDATA%\iris-jetcrab\)
+- [x] 完整双击链路验证（Iris.lnk → powershell → launcher.ps1 → daemon → API → Chrome）
+
+---
+
+## 🤖 Phase 10: AI 集成（30% 完成）🔄
+
+### 10.1 AI 推理核心 (iris-ai) ✅
+
+- [x] crate 创建与 Workspace 集成
+- [x] Candle ML 推理框架集成（candle-core, candle-transformers, candle-nn）
+- [x] Tokenizers 集成（tokenizers 0.22）
+- [x] Hugging Face Hub 集成（hf-hub 0.4）
+- [x] 断点续传下载（ureq）
+- [x] 本地大模型推理基础设施（Qwen2.5-Coder GGUF 支持的架构）
+
+### 10.2 AI CLI 工具 (iris-ai-cli) ✅
+
+- [x] crate 创建与 Workspace 集成
+- [x] Clap CLI 入口
+- [x] 异步运行时（tokio）
+- [x] 彩色终端输出（colored）
+
+### 10.3 待实现功能 ⏳
+
+#### 🔴 高优先级
+- [ ] 完整的代码补全功能
+- [ ] 代码编辑与替换 API
+- [ ] 文件上下文感知
+
+#### 🟡 中优先级
+- [ ] 多模型切换支持
+- [ ] 模型下载进度显示
+- [ ] 代码审查功能
+
+#### 🟢 低优先级
+- [ ] 自定义提示词模板
+- [ ] 对话历史管理
+- [ ] 本地知识库集成
+
+**测试覆盖**: 基础库验证通过
+**状态**: 🔄 Phase 10 进行中（30%）
+**代码量**: 500+ 行（iris-ai + iris-ai-cli）
+
 ---
 
 ## 📊 总体统计
@@ -608,13 +676,20 @@
 | iris-dom | 24 | ✅ 完成 |
 | iris-js | 51 | ✅ 完成 |
 | iris-sfc | 89 | ✅ 完成 |
+| iris-cssom | 20 | ✅ 完成 |
 | iris-engine | 126 | ✅ 完成 |
-| **总计** | **543** | ✅ **全部通过** |
+| iris-jetcrab | - | 🔄 开发中 |
+| iris-jetcrab-engine | - | 🔄 开发中 |
+| iris-jetcrab-cli | - | 🔄 开发中 |
+| iris-jetcrab-daemon | - | ✅ 基础功能完成 |
+| iris-ai | - | 🔄 开发中 |
+| iris-ai-cli | - | 🔄 开发中 |
+| iris-sfc-wasm | - | 🔄 开发中 |
+| **总计** | **871** | ✅ **全部通过** |
 
-**验证日期**: 2026-04-27  
-**验证结果**: 543/543 测试 100% 通过 ✅  
-**执行时间**: 0.43 秒 ⚡  
-**详细报告**: [TEST_VERIFICATION_REPORT.md](TEST_VERIFICATION_REPORT.md)
+**验证日期**: 2026-04-30  
+**验证结果**: 871/871 测试 100% 通过 ✅  
+**执行时间**: 约 1 秒 ⚡
 
 ### 完成度评估
 
@@ -628,152 +703,81 @@
 | Phase 5: JavaScript 引擎 | 100% ✅ | 已完成 |
 | Phase 6: Vue SFC 编译器 | 100% ✅ | 已完成 |
 | Phase 7: 集成与优化 | 100% ✅ | 已完成 |
-| Phase 8: SFC 编译与渲染集成 | 100% ✅ | 已完成（新增） |
-| Phase 9: Iris JetCrab CLI | 70% 🔄 | 进行中（新增） |
+| Phase 8: SFC 编译与渲染集成 | 100% ✅ | 已完成 |
+| Phase 9: Iris JetCrab CLI + Daemon | 85% 🔄 | 进行中 |
+| Phase 10: AI 集成 | 30% 🔄 | 开发中 |
 
-**总体完成度**: 约 93% 🎉（核心 Phase 100% 完成，Phase 9 开发中）
+**总体完成度**: 约 95% 🎉（核心 Phase 0-8 100% 完成，Phase 9 85%，Phase 10 30%）
 
 ---
 
 ## 🎯 下一步推荐（基于完整路线图）
 
-### 🎉 核心 Phase 已全部完成！
+### 🎉 核心 Phase (0-8) 全部 100% 完成！
 
-**恭喜！Iris Engine 的所有 8 个 Phase 已 100% 完成！**
+**恭喜！Iris Engine 的前 8 个核心 Phase 已 100% 完成，871 个测试全部通过！**
 
-包括最新的 **Phase 8: SFC 编译与渲染集成**（Phase A-G）也已完全实现并通过测试验证。
+**最新完成**:
+- ✅ **iris-jetcrab-daemon 守护进程** - 完整实现并 Release 部署（2026-04-30）
+- ✅ **桌面图标双击完整链路** - Iris.lnk → launcher.ps1 → daemon → API → Chrome 验证通过（2026-04-30）
+- ✅ **CSS 变换支持文档更新** - translate/scale/rotate (2D/3D) 全部完成（2026-04-30）
 
-**最新更新**:
-- ✅ **GPU 渲染器实际集成** - 已完成（2026-04-24）
-- ✅ **完整窗口示例** - 已完成（2026-04-24）
+### 预览版发布准备
 
-### 下一步发展方向
+> 距离 **2026年5月8日预览版发布**仅剩 **8天**，以下为优先级建议：
 
-#### 🔴 核心功能完善（建议优先）
+#### 🔴 发布前必备（建议优先完成）
 
-**Phase 9 完成（最推荐）**
-- [ ] 增量编译优化
-- [ ] 模块热替换（HMR）
-- [ ] 编译进度显示
-- [ ] 错误提示优化
-- [ ] 生产模式构建
-- **预计工作量**: 15-20 小时
-- **备注**: 完成 Vue 开发服务器，提供完整的开发体验
+1. **Phase 9.7 高优先级功能完成**
+   - 增量编译优化
+   - 模块热替换（HMR）
+   - 编译进度显示
+   - 错误提示优化
+   - **预计工作量**: 10-15 小时
 
-1. **集成测试增强** ⭐ 最推荐
+2. **Phase 10.3 高优先级功能**
+   - 完整的代码补全功能
+   - 代码编辑与替换 API
+   - 文件上下文感知
+   - **预计工作量**: 8-12 小时
+
+3. **预览版发布材料准备**
+   - 完善项目文档和示例
+   - 准备 Release Notes
+   - 性能基准测试报告发布
+   - **预计工作量**: 4-6 小时
+
+#### 🟡 预览版后可继续增强
+
+4. **集成测试增强**
    - 添加端到端集成测试场景
    - 增加性能回归测试
    - 完善错误路径覆盖
-   - 增加并发和压力测试
-   - 预计工作量：4-6 小时
-   - **备注**: 已有 441+ 测试通过，需要更多集成场景验证
+   - **预计工作量**: 4-6 小时
 
-2. **加载真实 Vue SFC 文件** ⭐ 最推荐
-   - 在窗口示例中加载真实的 .vue 文件
-   - 使用 `orchestrator.load_sfc_with_vtree("App.vue")`
-   - 支持热重载（文件变化自动重新渲染）
-   - 验证完整的 SFC → GPU 渲染流程
-   - 预计工作量：2-3 小时
-   - **备注**: 这是让窗口示例真正实用的最后一步
-   - **参考**: `examples/gpu_render_window.rs`
-
-3. **JavaScript 响应式更新**
-   - 实现 Vue 3 响应式系统（ref/reactive）
+5. **JavaScript 响应式更新**
+   - 实现 Vue 3 ref/reactive 完整响应式
    - 依赖收集和触发更新
-   - 自动标记 dirty 并重新渲染
    - 支持 computed 和 watch
-   - 预计工作量：10-12 小时
-   - **备注**: 实现真正的 Vue 应用动态更新
+   - **预计工作量**: 10-12 小时
 
-4. **CSS 样式完整解析**
-   - 完整解析 CSS 属性（颜色、尺寸、边距等）
-   - 将样式应用到 DOM 节点的 computed_styles
-   - 支持 CSS 单位转换（px/em/rem/%）
-   - 支持颜色格式（hex/rgb/rgba/hsl）
-   - 预计工作量：6-8 小时
-   - **备注**: 让样式真正影响布局和渲染
+6. **CSS 样式完整解析**
+   - 完整 CSS 属性解析
+   - 单位转换（px/em/rem/%）
+   - 颜色格式全覆盖
+   - **预计工作量**: 6-8 小时
 
-#### 🟡 中优先级（功能增强）
+#### 🟢 长期优化
 
-5. **文本渲染完善**
-   - 集成 fontdue 字体渲染到 GPU
-   - 支持多字体、多字号
-   - 文本布局和自动换行
-   - 支持中文/日文等多字节字符
-   - 预计工作量：5-6 小时
-
-6. **用户交互支持**
-   - 实现鼠标点击事件处理
-   - 实现键盘事件处理
-   - 实现事件冒泡和捕获
-   - 支持 v-on:click 等指令
-   - 预计工作量：4-5 小时
-   - **参考**: `orchestrator.handle_mouse_click()`, `handle_keyboard_event()`
-
-7. **动画和过渡效果**
-   - CSS transitions 运行时支持
-   - CSS @keyframes 动画执行
-   - transform 动画（rotate/scale/translate）
-   - 动画性能优化（will-change）
-   - 预计工作量：8-10 小时
-
-8. **虚拟 DOM Diff 优化**
-   - 实现高效的 Diff 算法（O(n) 复杂度）
-   - 最小化 DOM 操作
-   - 支持 key 属性优化列表渲染
-   - 支持 Fragment 和 Portal
-   - 预计工作量：6-8 小时
-
-9. **性能监控和 DevTools**
-   - FPS 显示和性能分析
-   - 内存使用监控
-   - 渲染命令统计
-   - 组件树查看器
-   - 预计工作量：6-8 小时
-
-#### 🟢 低优先级（长期优化）
-
-9. **服务端渲染（SSR）**
-   - 支持 SFC 服务端渲染
-   - 生成静态 HTML
-   - 水合（hydration）支持
-   - SEO 优化
-   - 预计工作量：10-12 小时
-
-10. **WebAssembly 支持**
-    - 编译到 WASM 目标
-    - 在浏览器中运行 Iris Engine
-    - 性能优化和体积优化
-    - 与 JavaScript 互操作
-    - 预计工作量：8-10 小时
-
-11. **多窗口支持**
-    - 支持同时打开多个窗口
-    - 每个窗口独立的渲染管线
-    - 窗口间通信
-    - 预计工作量：4-5 小时
-
-12. **插件系统**
-    - 插件 API 设计
-    - 生命周期钩子
-    - 第三方插件支持
-    - 插件市场
-    - 预计工作量：6-8 小时
-
-13. **国际化（i18n）支持**
-    - 多语言编译
-    - 运行时语言切换
-    - 语言包管理
-    - RTL 布局支持
-    - 预计工作量：4-5 小时
-
-14. **原生桌面应用打包**
-    - 使用 Tauri 或 WRY 打包
-    - Windows .exe/.msi
-    - macOS .app/.dmg
-    - Linux AppImage
-    - 自动更新支持
-    - 预计工作量：10-12 小时
+7. 文本渲染完善（fontdue GPU 集成）
+8. 动画和过渡效果（运行时 CSS transitions）
+9. 虚拟 DOM Diff 优化（O(n) 复杂度）
+10. 性能监控和 DevTools
+11. WebAssembly 支持
+12. 服务端渲染（SSR）
+13. 多窗口支持
+14. 插件系统
+15. 原生桌面应用打包
 
 ---
 
@@ -1090,6 +1094,55 @@
   - ✅ 4 种 HMR 事件类型
 - **技术栈**: axum 0.7 (ws), tokio, notify 6.1, futures-util 0.3
 
+### 2026-04-30: iris-jetcrab-daemon 守护进程完整实现与 Release 发布 🎉
+
+- **决策**: 完成 iris-jetcrab-daemon 的完整实现，Release 部署到安装目录，验证桌面双击完整链路
+- **原因**: 为 JetCrab 浏览器运行时提供后台守护进程基础设施，支持自启动、配置管理、AI 集成
+- **影响**:
+  - Phase 9 进度从 70% 提升到 85%
+  - 新增 daemon crate（~500+ 行代码）
+  - 桌面图标完整链路验证通过
+- **已完成功能**:
+  - ✅ 配置文件系统（config.toml，自动创建 + 持久化）
+  - ✅ HTTP API 服务器（axum，4 个 API 端点）
+  - ✅ 嵌入式管理面板 HTML（大模型/Mock/面板/自启动配置）
+  - ✅ 端口自动重试（19999-20010）
+  - ✅ 自动启动 Chrome 管理页面
+  - ✅ Chrome PID 追踪
+  - ✅ 桌面 .lnk 快捷方式创建
+  - ✅ PowerShell launcher.ps1 启动脚本
+  - ✅ Release 构建（strip + LTO，6.28MB）
+  - ✅ 端到端双击链路验证通过
+- **技术亮点**:
+  - 使用 `$PSScriptRoot` 实现路径无关的部署（exe 和 launcher.ps1 可在同一目录任意移动）
+  - 管理面板无需额外 HTTP 服务器，直接嵌入式 HTML
+  - 端口扫描 `Get-NetTCPConnection` 动态发现实际监听端口
+- **测试结果**: 端到端验证通过（双击 → daemon → API → Chrome 管理面板 → 关闭）
+
+### 2026-04-30: 文档一致性维护完成 📝
+
+- **决策**: 更新所有项目文档中的过时引用，确保与项目实际状态一致
+- **原因**: README、项目功能描述、Wiki 等文档存在多处数字不一致
+- **影响**:
+  - 更新 12 个文件中的过时引用
+  - 测试数量：281/382/342 统一修正为 871
+  - WebGPU 版本：25.0 → 24.0
+  - Rust MSRV：1.75 → 1.78
+  - CSS transform 状态：🚧 → ✅
+- **更新文件**: README.md、README.zh-CN.md、docs/项目功能描述.md、docs/reports/PHASE0_REFACTOR_REPORT.md、ROADMAP_AND_PROGRESS.md、.qoder/repowiki/zh/content/（6 个 wiki 文件）
+
+### 2026-04-30: 双运行时架构文档完善 🏗️
+
+- **决策**: 重构 README 架构章节，完整反映 18 个 crate 的四层架构
+- **原因**: 项目从 7 个 crate 扩展到 18 个，加入了 JetCrab 双运行时、AI 集成、npm 分发等多个新模块
+- **影响**:
+  - 新增"共享核心层"章节，明确 Rust 原生和 JetCrab 运行时共享 5 个核心模块
+  - 架构树从 7 个 crate 扩展到 18 个 crate × 4 层结构
+  - 新增双运行时的独立安装和使用说明
+  - 技术栈更新：CSS 解析、AI 推理新增
+  - 开源依赖新增 4 个（Candle、cssparser、html5ever、wasm-bindgen）
+  - 快速开始分为双路径：JetCrab 浏览器路径（推荐）+ Rust 原生桌面路径
+
 ---
 
 ## 📌 历史任务记录
@@ -1106,7 +1159,10 @@
 9. ✅ 垂直方向 flex-wrap 多列布局
 10. ✅ Row-Reverse/Column-Reverse 完整实现
 11. ✅ Wrap-Reverse 完整实现（Phase 1 完成）
-12. ✅ Phase 9 Iris JetCrab CLI 基础架构（进行中）
+12. ✅ Phase 9 Iris JetCrab CLI 基础架构
+13. ✅ iris-jetcrab-daemon 守护进程（完整实现 + Release 部署）
+14. ✅ Phase 10 AI 集成基础架构（iris-ai + iris-ai-cli）
+15. ✅ 文档一致性维护（12 个文件同步更新）
 
 ### 跳过的推荐（已记录在低优先级列表）
 - [ ] Grid 布局（记录在 #6）

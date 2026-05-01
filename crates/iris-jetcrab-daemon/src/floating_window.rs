@@ -11,9 +11,27 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{CursorIcon, Window, WindowId};
+use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::OnceLock;
 
 #[cfg(target_os = "windows")]
 use winit::platform::windows::WindowAttributesExtWindows;
+
+/// 图标区域（客户端坐标），用于 WM_NCHITTEST 判断
+#[cfg(target_os = "windows")]
+static ICON_CLIENT_RECT: OnceLock<(i32, i32, i32, i32)> = OnceLock::new();
+/// 原始窗口过程，用于转发非 WM_NCHITTEST 消息
+#[cfg(target_os = "windows")]
+static ORIGINAL_WNDPROC: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+#[cfg(target_os = "windows")]
+const WM_NCHITTEST: u32 = 0x0084;
+#[cfg(target_os = "windows")]
+const HTTRANSPARENT: isize = -1;
+#[cfg(target_os = "windows")]
+const HTCLIENT: isize = 1;
+#[cfg(target_os = "windows")]
+const GWLP_WNDPROC: i32 = -4;
 
 /// 悬浮窗口位置模式
 pub enum PositionMode {
@@ -217,6 +235,103 @@ impl FloatingApp {
     }
 }
 
+/// 使用独立配置文件目录启动浏览器打开指定 URL
+/// 根据 preferred_browser（auto/chrome/edge/firefox）选择对应浏览器，
+/// 以 `--user-data-dir`（Chrome/Edge）或 `--profile`（Firefox）隔离浏览器配置
+/// 若提供 daemon_state，记录子进程 PID 以便退出时清理
+fn launch_browser_with_user_data_dir(url: &str, preferred_browser: &str, daemon_state: Option<&crate::DaemonState>) {
+    // 浏览器用户数据目录：%APPDATA%/iris-jetcrab/browser-profile
+    let config_base = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("iris-jetcrab");
+    let profile_dir = config_base.join("browser-profile");
+    let _ = std::fs::create_dir_all(&profile_dir);
+    let profile_str = profile_dir.to_string_lossy().to_string();
+
+    // 按配置决定要尝试的浏览器顺序
+    let browser_order: &[&str] = match preferred_browser {
+        "chrome" => &["chrome"],
+        "edge" => &["edge"],
+        "firefox" => &["firefox"],
+        _ => &["chrome", "edge", "firefox"], // auto 依次尝试
+    };
+
+    for bt in browser_order {
+        if let Some(exe) = find_browser_exe(bt) {
+            let mut cmd = std::process::Command::new(exe);
+            match bt {
+                &"firefox" => {
+                    tracing::info!("Launching firefox {} with profile: {}", exe, profile_str);
+                    cmd.arg("--profile").arg(&profile_str).arg("-no-remote");
+                }
+                _ => {
+                    tracing::info!("Launching {} with user-data-dir: {}", exe, profile_str);
+                    cmd.arg(format!("--user-data-dir={}", profile_str));
+                }
+            }
+            if let Ok(child) = cmd.arg(url).spawn() {
+                // 记录浏览器子进程 PID，用于退出时清理
+                if let Some(state) = daemon_state {
+                    let pid = child.id();
+                    let key = format!("_doubleclick_{}", pid);
+                    state.browser_processes.lock().unwrap().insert(key, child);
+                }
+            }
+            return;
+        }
+    }
+
+    // 降级：使用系统默认浏览器
+    tracing::info!("No preferred browser found, falling back to default browser for: {}", url);
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", url])
+            .spawn();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn();
+    }
+}
+
+/// 在标准安装路径中查找指定浏览器的可执行文件路径
+fn find_browser_exe(browser_type: &str) -> Option<&'static str> {
+    #[cfg(windows)]
+    let paths = match browser_type {
+        "chrome" => &[
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ][..],
+        "edge" => &[
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ][..],
+        "firefox" => &[
+            r"C:\Program Files\Mozilla Firefox\firefox.exe",
+            r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
+        ][..],
+        _ => &[],
+    };
+    #[cfg(target_os = "macos")]
+    let paths = match browser_type {
+        "chrome" => &["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"][..],
+        "edge" => &["/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"][..],
+        "firefox" => &["/Applications/Firefox.app/Contents/MacOS/firefox"][..],
+        _ => &[],
+    };
+    #[cfg(target_os = "linux")]
+    let paths = match browser_type {
+        "chrome" => &["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"][..],
+        "edge" => &["/usr/bin/microsoft-edge"][..],
+        "firefox" => &["/usr/bin/firefox"][..],
+        _ => &[],
+    };
+    paths.iter().find(|p| std::path::Path::new(p).exists()).copied()
+}
+
 impl ApplicationHandler for FloatingApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         // 获取屏幕分辨率
@@ -269,23 +384,19 @@ impl ApplicationHandler for FloatingApp {
             let raw = handle.as_raw();
             if let winit::raw_window_handle::RawWindowHandle::Win32(win32) = raw {
                 let hwnd = win32.hwnd.get() as *mut std::ffi::c_void;
+                tracing::info!("Full canvas visible: 288x432 (no clip region)");
+
+                // 设置图标区域（客户端坐标）和窗口子类化实现点击穿透
+                let icon_x = (self.window_width as i32 - 64) / 2;
+                let icon_y = (self.window_height as i32 - 64) / 2 + 2;
+                ICON_CLIENT_RECT.set((icon_x, icon_y, icon_x + 64, icon_y + 64)).ok();
                 unsafe {
-                    #[link(name = "gdi32")]
                     extern "system" {
-                        fn CreateRectRgn(x1: i32, y1: i32, x2: i32, y2: i32) -> *mut std::ffi::c_void;
+                        fn SetWindowLongPtrW(hWnd: *mut std::ffi::c_void, nIndex: i32, dwNewLong: isize) -> isize;
                     }
-                    #[link(name = "user32")]
-                    extern "system" {
-                        fn SetWindowRgn(hWnd: *mut std::ffi::c_void, hRgn: *mut std::ffi::c_void, bRedraw: i32) -> i32;
-                    }
-                    let icon_x = (self.window_width as i32 - 64) / 2;
-                    let icon_y = (self.window_height as i32 - 64) / 2 + 2;
-                    let rgn = CreateRectRgn(icon_x, icon_y, icon_x + 64, icon_y + 64);
-                    if !rgn.is_null() {
-                        SetWindowRgn(hwnd, rgn, 1);
-                        tracing::info!("Set click-through region to icon area ({},{}) {}x{}",
-                            icon_x, icon_y, 64, 64);
-                    }
+                    let new_proc = wnd_proc as *const () as usize;
+                    let original = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, new_proc as isize);
+                    ORIGINAL_WNDPROC.store(original as *mut std::ffi::c_void, Ordering::Relaxed);
                 }
             }
         }
@@ -319,12 +430,24 @@ impl ApplicationHandler for FloatingApp {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_x = position.x;
                 self.cursor_y = position.y;
+                self.particles.record_interaction();
 
                 // 检测是否悬停在图标区域（居中 64x64）
                 let icon_left = (self.window_width as f64 - 64.0) / 2.0;
                 let icon_top = (self.window_height as f64 - 64.0) / 2.0 + 2.0;
-                self.hovering = position.x >= icon_left && position.x <= icon_left + 64.0
+                let in_rect = position.x >= icon_left && position.x <= icon_left + 64.0
                     && position.y >= icon_top && position.y <= icon_top + 64.0;
+                if in_rect {
+                    // 进一步检测图标像素透明度，仅非透明区域视为悬停
+                    let px = (position.x - icon_left) as u32;
+                    let py = (position.y - icon_top) as u32;
+                    let idx = ((py * 64 + px) * 4 + 3) as usize;
+                    self.hovering = idx < self.icon.pixels.len() && self.icon.pixels[idx] > 30;
+                } else {
+                    self.hovering = false;
+                }
+                tracing::info!("CURSOR: pos=({:.0},{:.0}) icon_area=({:.0},{:.0})->({:.0},{:.0}) hovering={}",
+                    position.x, position.y, icon_left, icon_top, icon_left+64.0, icon_top+64.0, self.hovering);
 
                 // 更新下载进度缓存
                 if let Some(ref st) = self.daemon_state {
@@ -379,24 +502,16 @@ impl ApplicationHandler for FloatingApp {
 
                     // 判断是否为合成事件（光标屏幕坐标无变化 = set_outer_position 触发）
                     // 同时要求最小移动 3px 才添加轨迹点，避免轨迹过度集中
-                    let cursor_moved = (cursor_screen_x - prev_screen_x).abs() > 3.0
-                        || (cursor_screen_y - prev_screen_y).abs() > 3.0;
+                    let cursor_moved = (cursor_screen_x - prev_screen_x).abs() > 8.0
+                        || (cursor_screen_y - prev_screen_y).abs() > 8.0;
 
                     // 仅在真实鼠标移动时添加轨迹点
                     if cursor_moved {
-                        // 轨迹水平位置跟随光标方向：中心 + (光标总位移 × 0.3)
-                        // 鼠标右移 → 心形向右扩散，鼠标左移 → 心形向左扩散
-                        let trail_pan = (cursor_screen_x - self.press_screen_x) * 0.3;
-                        let center_x = (self.window_width / 2) as f64;
-                        let clamp_max = (self.window_width - 5) as f64;
-                        let tx = (center_x + trail_pan)
-                            .clamp(4.0, clamp_max);
-                        // Y 坐标固定在图标下方（不遮挡图标）
-                        // 图标 64x64 居中，下边缘 = H/2+34
-                        // 轨迹放在图标下方约 20+px 处
+                        // 轨迹使用光标在窗口内的实际客户端坐标，让心形跟随光标位置
+                        let tx = position.x.clamp(4.0, (self.window_width - 5) as f64);
+                        // 避免轨迹遮挡图标：Y坐标在图标下方
                         let icon_bottom = (self.window_height as f64 / 2.0) + 34.0;
-                        let clamp_y = (self.window_height - 10) as f64;
-                        let ty = (icon_bottom + 20.0).min(clamp_y);
+                        let ty = position.y.max(icon_bottom + 5.0).min((self.window_height - 5) as f64);
                         self.particles.add_trail_point(
                             tx.round() as i32,
                             ty.round() as i32,
@@ -415,6 +530,7 @@ impl ApplicationHandler for FloatingApp {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
+                self.particles.record_interaction();
                 // 双击左键打开管理页面
                 let cursor_pos = (self.cursor_x, self.cursor_y);
                 if button == MouseButton::Left && state == ElementState::Pressed {
@@ -436,21 +552,22 @@ impl ApplicationHandler for FloatingApp {
                         
                         if CLICK_COUNT >= 2 {
                             CLICK_COUNT = 0;
-                            // 在浏览器中打开管理页面
-                            let url = format!("http://127.0.0.1:{}", self.daemon_port);
-                            tracing::info!("Double-click detected, opening management page: {}", url);
-                            #[cfg(target_os = "windows")]
-                            {
-                                let _ = std::process::Command::new("cmd")
-                                    .args(&["/c", "start", &url])
-                                    .spawn();
-                            }
-                            #[cfg(not(target_os = "windows"))]
-                            {
-                                let _ = std::process::Command::new("xdg-open")
-                                    .arg(&url)
-                                    .spawn();
-                            }
+                            // 检查是否有已连接的浏览器客户端
+                            let has_clients = self.daemon_state.as_ref().map_or(false, |state| {
+                                let clients = state.connected_clients.lock().unwrap();
+                                !clients.is_empty()
+                            });
+                            let url = if has_clients {
+                                format!("http://127.0.0.1:{}/open", self.daemon_port)
+                            } else {
+                                format!("http://127.0.0.1:{}", self.daemon_port)
+                            };
+                            tracing::info!("Double-click detected, has_clients={}, opening: {}", has_clients, url);
+                            let preferred = self.daemon_state.as_ref()
+                                .map(|state| state.config.lock().unwrap().preferred_browser.clone())
+                                .unwrap_or_else(|| "auto".to_string());
+                            let ds = self.daemon_state.as_deref();
+                            launch_browser_with_user_data_dir(&url, &preferred, ds);
                             return;
                         }
                     }
@@ -517,7 +634,7 @@ impl ApplicationHandler for FloatingApp {
                         let glow_alpha = self.particles.breathe_glow_alpha();
                         renderer::draw_breathe_glow(raw, w, h, glow_alpha);
 
-                        // 2. 彩虹图标（先画，作为背景层）
+                        // 2. 彩虹图标
                         renderer::draw_icon(raw, w, h, self.icon);
 
                         // 3. 拖拽轨迹（在图标上层，不会被遮挡）
@@ -526,18 +643,18 @@ impl ApplicationHandler for FloatingApp {
                         // 4. 星光粒子（最上层）
                         renderer::draw_sparkles(raw, w, h, &self.particles);
 
-                        // 5. 交换 R/B 通道适配 softbuffer BGRA 格式
+                        // 5. 悬停提示文字（在 swap 之前画，用 RGBA）
+                        if self.hovering {
+                            let tooltip_y = (h / 2 - 34 - 10) as i32;
+                            renderer::draw_tooltip(raw, w, h, "I Love Iris", (w / 2) as i32, tooltip_y);
+                        }
+
+                        // 6. 交换 R/B 通道适配 softbuffer BGRA 格式
                         for chunk in raw.chunks_exact_mut(4) {
                             chunk.swap(0, 2);
                         }
 
-                        // 6. 悬停提示文字
-                        if self.hovering {
-                            let tooltip_y = (h / 2 + 34 + 10) as i32; // 图标下方
-                            renderer::draw_tooltip(raw, w, h, "I \u{1f49e} iris", (w / 2) as i32, tooltip_y);
-                        }
-
-                        // 7. 下载进度条
+                        // 7. 下载进度条（swap 后画，将显示为对应的颜色）
                         if self.show_download {
                             let max_pct = self.model_dl_pct.max(self.npm_dl_pct);
                             if max_pct > 0.0 && max_pct < 100.0 {
@@ -561,4 +678,43 @@ impl ApplicationHandler for FloatingApp {
             _ => {}
         }
     }
+}
+
+/// Win32 窗口子过程：WM_NCHITTEST → 仅非透明图标像素返回 HTCLIENT，其余 HTTRANSPARENT
+/// 使图标中光晕和文字区域的鼠标事件穿透到窗口下方
+#[cfg(target_os = "windows")]
+unsafe extern "system" fn wnd_proc(
+    hwnd: *mut std::ffi::c_void,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+) -> isize {
+    #[repr(C)]
+    struct POINT { x: i32, y: i32 }
+    extern "system" {
+        fn ScreenToClient(hWnd: *mut std::ffi::c_void, lpPoint: *mut POINT) -> i32;
+        fn CallWindowProcW(lpPrevWndFunc: *mut std::ffi::c_void, hWnd: *mut std::ffi::c_void, Msg: u32, wParam: usize, lParam: isize) -> isize;
+    }
+    if msg == WM_NCHITTEST {
+        if let Some(&(ix, iy, ix2, iy2)) = ICON_CLIENT_RECT.get() {
+            let screen_x = (lparam & 0xFFFF) as i16 as i32;
+            let screen_y = ((lparam >> 16) & 0xFFFF) as i16 as i32;
+            let mut pt = POINT { x: screen_x, y: screen_y };
+            if ScreenToClient(hwnd, &mut pt) != 0 {
+                if pt.x >= ix && pt.x < ix2 && pt.y >= iy && pt.y < iy2 {
+                    // 在图标区域内：进一步检查像素是否非透明
+                    let px = (pt.x - ix) as usize;
+                    let py = (pt.y - iy) as usize;
+                    let icon = renderer::generate_rainbow_icon();
+                    let idx = (py * icon.width as usize + px) * 4 + 3;
+                    if idx < icon.pixels.len() && icon.pixels[idx] > 0 {
+                        return HTCLIENT;
+                    }
+                }
+            }
+            return HTTRANSPARENT;
+        }
+    }
+    let original = ORIGINAL_WNDPROC.load(Ordering::Relaxed);
+    CallWindowProcW(original, hwnd, msg, wparam, lparam)
 }

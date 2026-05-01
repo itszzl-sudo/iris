@@ -139,7 +139,19 @@ cargo publish --dry-run  # 测试
 cargo publish            # 实际发布
 ```
 
-### 6. 发布后验证
+### 6. 创建 GitHub Release
+
+```bash
+# 在 GitHub 创建 Release
+# - Tag: v0.1.0 (对应 Cargo.toml 版本)
+# - Title: v0.1.0
+# - 内容: 从 CHANGELOG.md 复制对应版本的更新日志
+# - 在 Release 描述末尾添加署名：
+```
+
+> Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
+
+### 7. 发布后验证
 
 ```bash
 # 在新项目中测试

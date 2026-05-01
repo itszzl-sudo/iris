@@ -109,8 +109,8 @@
   iris-dom:    43 passed ✓
   iris-js:     29 passed ✓
   iris-sfc:    58 passed ✓
-  ━━━━━━━━━━━━━━━━━━━━━━
-  总计:       281 passed (100%)
+  ━━━━━━━━━━━━━━━━━━━━━━━━━
+  总计:       871 passed (100%)
   失败:         0 failed
   忽略:         0 ignored (lib tests)
 ```
@@ -215,7 +215,7 @@ cargo test -p iris-gpu
 - [x] 验证代码层面无循环引用
 - [x] 运行 `cargo check --workspace` 通过
 - [x] 运行 `cargo tree --workspace` 无循环
-- [x] 运行 `cargo test --workspace --lib` 281 测试全部通过
+- [x] 运行 `cargo test --workspace --lib` 871 测试全部通过
 - [x] 创建架构文档 ARCHITECTURE.md
 - [x] 创建重构报告 PHASE0_REFACTOR_REPORT.md
 

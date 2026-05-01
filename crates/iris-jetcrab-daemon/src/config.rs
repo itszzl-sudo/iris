@@ -63,6 +63,20 @@ pub struct DaemonConfig {
     pub mock_enabled: bool,
     /// 模拟延迟（毫秒）
     pub mock_delay_ms: u64,
+
+    // ── 端口范围配置（守护进程自动换端口）─────────────────
+    /// 端口范围起始值
+    pub port_range_start: u16,
+    /// 端口范围大小（从起始值开始，连续多少个端口可用）
+    pub port_range_size: u16,
+
+    // ── 内嵌浏览器 ─────────────────────────────────────
+    /// 首选浏览器类型 (auto/chrome/edge/firefox)
+    pub preferred_browser: String,
+
+    // ── 系统启动 ────────────────────────────────────────
+    /// 是否随 Windows 系统启动
+    pub auto_start_daemon: bool,
 }
 
 impl Default for DaemonConfig {
@@ -95,6 +109,13 @@ impl Default for DaemonConfig {
             // Mock
             mock_enabled: false,
             mock_delay_ms: 0,
+            // 端口范围
+            port_range_start: 19999,
+            port_range_size: 500,
+            // 内嵌浏览器
+            preferred_browser: "auto".into(),
+            // 系统启动
+            auto_start_daemon: false,
         }
     }
 }
@@ -200,8 +221,11 @@ impl DaemonConfig {
                 self.http_port = defaults.http_port;
                 self.mock_port = defaults.mock_port;
                 self.daemon_port = defaults.daemon_port;
+                self.port_range_start = defaults.port_range_start;
+                self.port_range_size = defaults.port_range_size;
                 self.show_icon = defaults.show_icon;
                 self.auto_start_server = defaults.auto_start_server;
+                self.auto_start_daemon = defaults.auto_start_daemon;
             }
             "ai" => {
                 self.ai_provider = defaults.ai_provider;
@@ -223,8 +247,139 @@ impl DaemonConfig {
                 self.mock_enabled = defaults.mock_enabled;
                 self.mock_delay_ms = defaults.mock_delay_ms;
             }
+            "browser" => {
+                self.preferred_browser = defaults.preferred_browser;
+                self.port_range_start = defaults.port_range_start;
+                self.port_range_size = defaults.port_range_size;
+            }
             _ => {}
         }
         self.save();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_values() {
+        let cfg = DaemonConfig::default();
+        assert_eq!(cfg.http_port, 3000);
+        assert_eq!(cfg.mock_port, 3100);
+        assert_eq!(cfg.daemon_port, 19999);
+        assert!(cfg.show_icon);
+        assert!(!cfg.auto_start_server);
+        assert_eq!(cfg.ai_provider, "openai");
+        assert_eq!(cfg.ai_model, "gpt-4o");
+        assert_eq!(cfg.ai_endpoint, "https://api.openai.com/v1");
+        assert!(cfg.ai_api_key.is_empty());
+        assert_eq!(cfg.npm_registry, "https://registry.npmjs.org/");
+        assert!(!cfg.mock_enabled);
+    }
+
+    #[test]
+    fn test_default_temperature() {
+        assert!((DaemonConfig::default_temperature() - 0.15).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_default_max_tokens() {
+        assert_eq!(DaemonConfig::default_max_tokens(), 4096);
+    }
+
+    #[test]
+    fn test_add_project_normalizes_path() {
+        let mut cfg = DaemonConfig::default();
+        cfg.add_project("C:\\Users\\test\\my-project".into());
+        assert_eq!(cfg.projects, vec!["C:/Users/test/my-project"]);
+    }
+
+    #[test]
+    fn test_add_project_dedup() {
+        let mut cfg = DaemonConfig::default();
+        cfg.add_project("/home/test/proj".into());
+        cfg.add_project("/home/test/proj".into()); // 重复
+        assert_eq!(cfg.projects.len(), 1);
+    }
+
+    #[test]
+    fn test_remove_project_normalizes() {
+        let mut cfg = DaemonConfig::default();
+        cfg.add_project("C:\\Users\\test\\proj".into());
+        cfg.remove_project("C:\\Users\\test\\proj"); // 正反斜杠均可匹配
+        assert!(cfg.projects.is_empty());
+    }
+
+    #[test]
+    fn test_remove_project_cleans_default_and_auto() {
+        let mut cfg = DaemonConfig::default();
+        cfg.add_project("/home/test/proj".into());
+        cfg.default_project = Some("/home/test/proj".into());
+        cfg.auto_start = Some("/home/test/proj".into());
+        cfg.remove_project("/home/test/proj");
+        assert!(cfg.default_project.is_none());
+        assert!(cfg.auto_start.is_none());
+    }
+
+    #[test]
+    fn test_reset_section_general() {
+        let mut cfg = DaemonConfig::default();
+        cfg.http_port = 9999;
+        cfg.show_icon = false;
+        cfg.reset_section("general");
+        assert_eq!(cfg.http_port, 3000);
+        assert!(cfg.show_icon);
+    }
+
+    #[test]
+    fn test_reset_section_ai() {
+        let mut cfg = DaemonConfig::default();
+        cfg.ai_provider = "deepseek".into();
+        cfg.ai_model = "deepseek-chat".into();
+        cfg.ai_endpoint = "https://api.deepseek.com/v1".into();
+        cfg.reset_section("ai");
+        assert_eq!(cfg.ai_provider, "openai");
+        assert_eq!(cfg.ai_model, "gpt-4o");
+        assert_eq!(cfg.ai_endpoint, "https://api.openai.com/v1");
+    }
+
+    #[test]
+    fn test_reset_section_npm() {
+        let mut cfg = DaemonConfig::default();
+        cfg.npm_registry = "https://registry.npmmirror.com".into();
+        cfg.npm_proxy = Some("http://proxy:8080".into());
+        cfg.reset_section("npm");
+        assert_eq!(cfg.npm_registry, "https://registry.npmjs.org/");
+        assert!(cfg.npm_proxy.is_none());
+    }
+
+    #[test]
+    fn test_reset_section_mock() {
+        let mut cfg = DaemonConfig::default();
+        cfg.mock_enabled = true;
+        cfg.mock_delay_ms = 500;
+        cfg.reset_section("mock");
+        assert!(!cfg.mock_enabled);
+        assert_eq!(cfg.mock_delay_ms, 0);
+    }
+
+    #[test]
+    fn test_config_serialize_roundtrip() {
+        let cfg = DaemonConfig::default();
+        let s = toml::to_string_pretty(&cfg).expect("serialize");
+        let deser: DaemonConfig = toml::from_str(&s).expect("deserialize");
+        assert_eq!(deser.http_port, cfg.http_port);
+        assert_eq!(deser.daemon_port, cfg.daemon_port);
+        assert_eq!(deser.ai_provider, cfg.ai_provider);
+        assert_eq!(deser.ai_model, cfg.ai_model);
+        assert_eq!(deser.npm_registry, cfg.npm_registry);
+    }
+
+    #[test]
+    fn test_lazy_static_icon_path() {
+        let path = DaemonConfig::config_path();
+        assert!(path.ends_with("iris-jetcrab/config.toml"),
+            "config_path should end with iris-jetcrab/config.toml, got: {:?}", path);
     }
 }

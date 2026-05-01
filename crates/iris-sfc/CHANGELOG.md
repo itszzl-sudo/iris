@@ -148,6 +148,9 @@ defineEmits<T>()  →    export default {...}
 - [ ] 插件系统
 
 ---
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
+
+---
 
 ## [0.1.0] - 2024-XX-XX
 
@@ -157,6 +160,11 @@ defineEmits<T>()  →    export default {...}
 - Template compilation
 - Script transpilation
 - Style processing
+
+---
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
+
+---
 
 [Unreleased]: https://github.com/iris/iris-sfc/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/iris/iris-sfc/releases/tag/v0.1.0

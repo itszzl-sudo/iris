@@ -10,7 +10,8 @@
 //!   ├── config.rs      - AiConfig / AiDevice
 //!   ├── downloader.rs  - 断点续传/进度/网速的模型下载器
 //!   ├── engine.rs      - candle 推理引擎
-//!   └── prompt.rs      - code-edit prompt 模板
+//!   ├── prompt.rs      - code-edit prompt 模板
+//!   └── review.rs      - code-review 代码审查
 //! ```
 
 #![warn(missing_docs)]
@@ -19,12 +20,14 @@ mod config;
 pub mod downloader;
 mod engine;
 pub mod prompt;
+pub mod review;
 
 pub use config::{AiConfig, AiDevice};
 pub use downloader::{ModelDownloader, DownloadProgress, DownloadStatus, DownloadResult};
 pub use engine::InferenceEngine;
 
 use anyhow::Result;
+use std::time::Instant;
 use tracing::info;
 
 /// AI 助手 — 代码修改的主入口
@@ -70,5 +73,28 @@ impl AiAssistant {
     /// 检查 AI 模型是否已加载就绪
     pub fn is_ready(&self) -> bool {
         self.engine.as_ref().map(|e| e.is_loaded()).unwrap_or(false)
+    }
+
+    /// 执行代码审查
+    ///
+    /// 对给定代码进行静态分析，返回结构化审查报告，包含：
+    /// - Bug 风险、安全问题、性能问题、代码风格、最佳实践
+    ///
+    /// * `file_path` - 源文件路径（用于检测语言类型）
+    /// * `code` - 源代码内容
+    pub fn review_code(&mut self, file_path: &str, code: &str) -> Result<review::ReviewReport> {
+        let engine = self.engine.as_mut()
+            .ok_or_else(|| anyhow::anyhow!("AI not initialized"))?;
+        let prompt = review::build_code_review_prompt(file_path, code);
+        info!("AI reviewing: {}", file_path);
+
+        let start = Instant::now();
+        let response = engine.generate(&prompt)?;
+        let elapsed = start.elapsed().as_secs_f64();
+
+        let mut report = review::parse_review_response(file_path, &response);
+        report.elapsed_secs = elapsed;
+        info!("✅ Review complete: {} issues in {:.1}s", report.issues.len(), elapsed);
+        Ok(report)
     }
 }

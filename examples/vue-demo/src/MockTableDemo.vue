@@ -93,7 +93,7 @@
 
     <div class="mock-info">
       <h3>Mock API 信息</h3>
-      <p><strong>请求地址：</strong>GET /api/users?page={{ page }}&pageSize={{ pageSize }}</p>
+      <p><strong>请求地址：</strong>GET /api/users?page={{ page }}&amp;pageSize={{ pageSize }}</p>
       <p><strong>响应状态：</strong><span class="mock-status">Mock Data (200)</span></p>
       <p><strong>数据总览：</strong>当前第 {{ page }}/{{ totalPages }} 页，每页 {{ pageSize }} 条，共 {{ total }} 条</p>
       <p class="mock-tip">💡 提示：Mock 数据由 Iris Runtime 内置 Mock Engine 自动生成，可在项目根目录的 iris.mock.json 中自定义数据 Schema</p>

@@ -51,7 +51,6 @@ pub fn generate_rainbow_icon() -> &'static RainbowIcon {
 
 /// 从嵌入的资源解码 iris.png（预压缩为 64x64）
 fn load_png_icon() -> Option<RainbowIcon> {
-    // include_bytes! 在编译时嵌入资源文件
     let png_data = include_bytes!("../res/iris.png");
 
     match image::load_from_memory(png_data) {
@@ -62,6 +61,7 @@ fn load_png_icon() -> Option<RainbowIcon> {
                 "Loaded embedded iris.png ({} bytes), decoded to 64x64 RGBA",
                 png_data.len()
             );
+
             Some(RainbowIcon {
                 width: 64,
                 height: 64,
@@ -352,11 +352,23 @@ pub fn draw_icon(buffer: &mut [u8], w: u32, h: u32, icon: &RainbowIcon) {
     }
 }
 
-/// 绘制呼吸光晕
+/// 呼吸光晕（五色平滑渐变，中心最亮 → 边缘全透明，1.5秒呼吸周期）
 pub fn draw_breathe_glow(buffer: &mut [u8], w: u32, h: u32, alpha: f32) {
     let cx = w as f32 / 2.0;
     let cy = h as f32 / 2.0;
-    let radius = (w.min(h) as f32 / 2.0) * 0.85;
+    let radius = (w.min(h) as f32 / 2.0) * 0.75;
+
+    let glow_colors: [(u8, u8, u8); 5] = [
+        (230, 30, 30),    // 红
+        (255, 155, 0),    // 橙
+        (255, 230, 0),    // 黄
+        (0, 190, 0),      // 绿
+        (0, 120, 255),    // 蓝
+    ];
+    // 背景色（深蓝灰，使光晕边缘柔和融入）
+    const BG_R: u8 = 12;
+    const BG_G: u8 = 12;
+    const BG_B: u8 = 32;
 
     for y in 0..h {
         for x in 0..w {
@@ -365,26 +377,35 @@ pub fn draw_breathe_glow(buffer: &mut [u8], w: u32, h: u32, alpha: f32) {
             let dist = (dx * dx + dy * dy).sqrt();
 
             if dist < radius {
-                let glow = (1.0 - dist / radius) * alpha;
-                if glow < 0.01 {
-                    continue;
-                }
-                let idx = ((y * w + x) * 4) as usize;
-                let glow_alpha = (glow * 255.0) as u8;
+                // 平方衰减（中心最亮 → 边缘淡出）
+                let glow_pct = (1.0 - dist / radius).max(0.0).powf(2.0);
+                let glow_alpha = (glow_pct * alpha * 255.0) as u8;
+                if glow_alpha < 2 { continue; }
 
-                // 渐变色光晕（柔和的彩虹渐变）
+                let idx = ((y * w + x) * 4) as usize;
+
+                // 五色平滑插值（5段含蓝→红环绕）
                 let angle = dy.atan2(dx);
                 let norm_angle = (angle / std::f32::consts::TAU + 0.5).fract();
-                let band = ((norm_angle * 5.0) as usize).min(5);
-                let (r, g, b) = RAINBOW_BANDS[band];
+                let band_f = norm_angle * 5.0;
+                let bi = (band_f as usize).min(4);
+                let frac = band_f - bi as f32;
+                let (r1, g1, b1) = glow_colors[bi];
+                let (r2, g2, b2) = glow_colors[(bi + 1) % 5];
+                let rc = r1 as f32 * (1.0 - frac) + r2 as f32 * frac;
+                let gc = g1 as f32 * (1.0 - frac) + g2 as f32 * frac;
+                let bc = b1 as f32 * (1.0 - frac) + b2 as f32 * frac;
 
-                // Alpha blend with existing
+                // 向背景色渐变（glow_pct=1.0 纯五色，=0.0 纯背景色）
+                let r = (rc * glow_pct + BG_R as f32 * (1.0 - glow_pct)) as u8;
+                let g = (gc * glow_pct + BG_G as f32 * (1.0 - glow_pct)) as u8;
+                let b = (bc * glow_pct + BG_B as f32 * (1.0 - glow_pct)) as u8;
+
+                // Alpha blend
                 let sa = glow_alpha as f32 / 255.0;
                 let da = buffer[idx + 3] as f32 / 255.0;
                 let out_a = sa + da * (1.0 - sa);
-                if out_a <= 0.0 {
-                    continue;
-                }
+                if out_a <= 0.0 { continue; }
 
                 buffer[idx] = ((r as f32 * sa + buffer[idx] as f32 * da * (1.0 - sa)) / out_a) as u8;
                 buffer[idx + 1] = ((g as f32 * sa + buffer[idx + 1] as f32 * da * (1.0 - sa)) / out_a) as u8;
@@ -403,26 +424,51 @@ pub fn draw_trail(buffer: &mut [u8], w: u32, h: u32, particles: &ParticleSystem)
         return;
     }
 
-    // 从最新到最旧绘制心形
-    for i in 0..len {
-        let alpha_pct = ParticleSystem::trail_alpha(i, len);
-        let (r, g, b) = ParticleSystem::trail_color(i, len);
-        let pt = &trail[i];
-
-        let _scale = (w as f32 / 80.0).max(1.0);
-        // 心形大小随新旧变化（最近的更大）
-        let size = if particles.is_dragging {
+    // 预计算各点心形大小
+    let sizes: Vec<i32> = (0..len)
+        .map(|i| if particles.is_dragging {
             (6.0 + (i as f32 / len as f32 * 14.0)) as i32
         } else {
             (3.0 + (i as f32 / len as f32 * 8.0)) as i32
-        };
-        let alpha = (alpha_pct * 220.0) as u8;
+        })
+        .collect();
 
+    // 标记：较旧的点若与任一更新的点太近则跳过，防止重叠产生"米老鼠耳朵"
+    let mut skip = vec![false; len];
+    for i in 0..len {
+        if skip[i] { continue; }
+        for j in i + 1..len {
+            let dx = (trail[i].x - trail[j].x).abs();
+            let dy = (trail[i].y - trail[j].y).abs();
+            let min_dist = (sizes[i] + sizes[j]) as f32 * 0.5;
+            if (dx as f32) < min_dist && (dy as f32) < min_dist {
+                let dist_sq = (dx * dx + dy * dy) as f32;
+                if dist_sq < min_dist * min_dist {
+                    skip[i] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 从最新到最旧绘制心形（跳过已标记的和越界的）
+    for i in 0..len {
+        if skip[i] { continue; }
+        let alpha_pct = ParticleSystem::trail_alpha(i, len);
+        let (r, g, b) = ParticleSystem::trail_color(i, len);
+        let pt = &trail[i];
+        let size = sizes[i];
+        let alpha = (alpha_pct * 235.0) as u8;
+
+        // 跳过与画布边缘交叉的心形
+        if pt.x - size < 0 || pt.x + size >= w as i32 || pt.y - size < 0 || pt.y + size >= h as i32 {
+            continue;
+        }
         draw_heart(buffer, w, h, pt.x, pt.y, size, r, g, b, alpha);
     }
 }
 
-/// 绘制星光粒子
+/// 绘制星光粒子（大小增加一倍）
 pub fn draw_sparkles(buffer: &mut [u8], w: u32, h: u32, particles: &ParticleSystem) {
     for sparkle in &particles.sparkles {
         let (r, g, b) = particles.sparkle_color(sparkle);
@@ -435,18 +481,36 @@ pub fn draw_sparkles(buffer: &mut [u8], w: u32, h: u32, particles: &ParticleSyst
 
         // 主点
         set_pixel(buffer, w, h, x, y, r, g, b, alpha);
-        // 4个尖角
+        // 尖角（距离越大透明度越低）
         if size >= 2 {
-            set_pixel(buffer, w, h, x + 1, y, r, g, b, (alpha as f32 * 0.8) as u8);
-            set_pixel(buffer, w, h, x - 1, y, r, g, b, (alpha as f32 * 0.8) as u8);
-            set_pixel(buffer, w, h, x, y + 1, r, g, b, (alpha as f32 * 0.8) as u8);
-            set_pixel(buffer, w, h, x, y - 1, r, g, b, (alpha as f32 * 0.8) as u8);
+            let a = (alpha as f32 * 0.85) as u8;
+            for &(ox, oy) in &[(1,0),(-1,0),(0,1),(0,-1)] {
+                set_pixel(buffer, w, h, x + ox, y + oy, r, g, b, a);
+            }
         }
         if size >= 3 {
-            set_pixel(buffer, w, h, x + 2, y, r, g, b, (alpha as f32 * 0.4) as u8);
-            set_pixel(buffer, w, h, x - 2, y, r, g, b, (alpha as f32 * 0.4) as u8);
-            set_pixel(buffer, w, h, x, y + 2, r, g, b, (alpha as f32 * 0.4) as u8);
-            set_pixel(buffer, w, h, x, y - 2, r, g, b, (alpha as f32 * 0.4) as u8);
+            let a = (alpha as f32 * 0.6) as u8;
+            for &(ox, oy) in &[(2,0),(-2,0),(0,2),(0,-2)] {
+                set_pixel(buffer, w, h, x + ox, y + oy, r, g, b, a);
+            }
+        }
+        if size >= 5 {
+            let a = (alpha as f32 * 0.35) as u8;
+            for &(ox, oy) in &[(3,0),(-3,0),(0,3),(0,-3)] {
+                set_pixel(buffer, w, h, x + ox, y + oy, r, g, b, a);
+            }
+        }
+        if size >= 7 {
+            let a = (alpha as f32 * 0.2) as u8;
+            for &(ox, oy) in &[(4,0),(-4,0),(0,4),(0,-4)] {
+                set_pixel(buffer, w, h, x + ox, y + oy, r, g, b, a);
+            }
+        }
+        if size >= 9 {
+            let a = (alpha as f32 * 0.1) as u8;
+            for &(ox, oy) in &[(5,0),(-5,0),(0,5),(0,-5)] {
+                set_pixel(buffer, w, h, x + ox, y + oy, r, g, b, a);
+            }
         }
     }
 }
@@ -508,18 +572,33 @@ fn draw_heart(buffer: &mut [u8], w: u32, h: u32, cx: i32, cy: i32, size: i32, r:
     }
 }
 
-/// 绘制悬停提示文字（使用 fontdue 渲染文本）
+/// 彩虹文字颜色（不含金黄、橙，与 particles 的 RAINBOW_COLORS 对应）
+const TOOLTIP_COLORS: [(u8, u8, u8); 5] = [
+    (255, 50, 80),   // 玫红
+    (255, 80, 60),   // 珊瑚
+    (255, 120, 60),  // 朱红
+    (255, 100, 120), // 粉红
+    (255, 0, 80),    // 玫瑰
+];
+
+/// 绘制悬停提示文字（使用 fontdue 渲染 + 彩虹色填充）
 pub fn draw_tooltip(buffer: &mut [u8], w: u32, h: u32, text: &str, x: i32, y: i32) {
     let font_data = match load_system_ui_font() {
         Some(d) => d,
-        None => return,
+        None => {
+            tracing::warn!("draw_tooltip: no font data");
+            return;
+        }
     };
     let font = match fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default()) {
         Ok(f) => f,
-        Err(_) => return,
+        Err(e) => {
+            tracing::warn!("draw_tooltip: font parse error: {}", e);
+            return;
+        }
     };
 
-    let font_size = 14.0;
+    let font_size = 20.0;
     let mut total_width = 0i32;
     let mut glyph_metrics = Vec::new();
     let mut glyph_bitmaps = Vec::new();
@@ -533,32 +612,63 @@ pub fn draw_tooltip(buffer: &mut [u8], w: u32, h: u32, text: &str, x: i32, y: i3
         total_width += metrics.width as i32 + metrics.xmin as i32 + 1;
     }
 
-    if glyph_metrics.is_empty() { return; }
+    if glyph_metrics.is_empty() {
+        tracing::warn!("draw_tooltip: no glyphs found for '{}'", text);
+        return;
+    }
 
     let start_x = x - total_width / 2;
-    let line_height = font_size as i32 + 2;
-    let start_y = y - line_height / 2;
+
+    // 计算所有字形的视觉边界，精准垂直居中
+    let mut min_ymin = i32::MAX;
+    let mut max_bottom = i32::MIN;
+    for (metrics, _) in &glyph_metrics {
+        if metrics.ymin < min_ymin { min_ymin = metrics.ymin; }
+        let bottom = metrics.ymin + metrics.height as i32;
+        if bottom > max_bottom { max_bottom = bottom; }
+    }
+    let baseline = y - (min_ymin + max_bottom) / 2;
 
     for (i, (metrics, x_offset)) in glyph_metrics.iter().enumerate() {
         let gw = metrics.width as i32;
         let gh = metrics.height as i32;
         if gw <= 0 || gh <= 0 { continue; }
 
+        // 每个字形使用不同的彩虹色
+        let (cr, cg, cb) = TOOLTIP_COLORS[i % TOOLTIP_COLORS.len()];
+
         for py in 0..gh {
             for px in 0..gw {
                 let coverage = glyph_bitmaps[i][(py * gw + px) as usize];
                 if coverage == 0 { continue; }
                 let bx = start_x + x_offset + px;
-                let by = start_y + py;
+                let by = baseline + metrics.ymin + py;
                 if bx < 0 || bx >= w as i32 || by < 0 || by >= h as i32 { continue; }
                 let idx = ((by as u32 * w + bx as u32) * 4) as usize;
                 let sa = coverage as f32 / 255.0;
                 let da = buffer[idx + 3] as f32 / 255.0;
                 let out_a = sa + da * (1.0 - sa);
                 if out_a <= 0.0 { continue; }
-                buffer[idx] = ((255.0 * sa + buffer[idx] as f32 * da * (1.0 - sa)) / out_a) as u8;
-                buffer[idx + 1] = ((255.0 * sa + buffer[idx + 1] as f32 * da * (1.0 - sa)) / out_a) as u8;
-                buffer[idx + 2] = ((255.0 * sa + buffer[idx + 2] as f32 * da * (1.0 - sa)) / out_a) as u8;
+                // 黑色边框：在8个相邻位置画黑色像素
+                for &(ox, oy) in &[(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)] {
+                    let nb_x = bx + ox;
+                    let nb_y = by + oy;
+                    if nb_x >= 0 && nb_x < w as i32 && nb_y >= 0 && nb_y < h as i32 {
+                        let nidx = ((nb_y as u32 * w + nb_x as u32) * 4) as usize;
+                        let nda = buffer[nidx + 3] as f32 / 255.0;
+                        let nout_a = sa + nda * (1.0 - sa);
+                        if nout_a > 0.0 {
+                            buffer[nidx] = ((0.0 * sa + buffer[nidx] as f32 * nda * (1.0 - sa)) / nout_a) as u8;
+                            buffer[nidx + 1] = ((0.0 * sa + buffer[nidx + 1] as f32 * nda * (1.0 - sa)) / nout_a) as u8;
+                            buffer[nidx + 2] = ((0.0 * sa + buffer[nidx + 2] as f32 * nda * (1.0 - sa)) / nout_a) as u8;
+                            buffer[nidx + 3] = (nout_a * 255.0) as u8;
+                        }
+                    }
+                }
+                // 彩虹色文字
+                buffer[idx] = ((cr as f32 * sa + buffer[idx] as f32 * da * (1.0 - sa)) / out_a) as u8;
+                buffer[idx + 1] = ((cg as f32 * sa + buffer[idx + 1] as f32 * da * (1.0 - sa)) / out_a) as u8;
+                buffer[idx + 2] = ((cb as f32 * sa + buffer[idx + 2] as f32 * da * (1.0 - sa)) / out_a) as u8;
                 buffer[idx + 3] = (out_a * 255.0) as u8;
             }
         }
@@ -630,5 +740,141 @@ pub fn draw_progress_bar(buffer: &mut [u8], w: u32, h: u32,
             buffer[idx + 2] = ((b as f32 * sa as f32 / 255.0 + buffer[idx + 2] as f32 * da * (1.0 - sa as f32 / 255.0)) / out_a) as u8;
             buffer[idx + 3] = (out_a * 255.0) as u8;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_u32_be_normal() {
+        let data = [0x12, 0x34, 0x56, 0x78];
+        assert_eq!(read_u32_be(&data, 0), 0x12345678);
+    }
+
+    #[test]
+    fn test_read_u32_be_overflow() {
+        let data = [0x12, 0x34];
+        assert_eq!(read_u32_be(&data, 0), 0); // 长度不足
+    }
+
+    #[test]
+    fn test_read_u32_be_mid_offset() {
+        let data = [0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
+        assert_eq!(read_u32_be(&data, 2), 0xDEADBEEF);
+    }
+
+    #[test]
+    fn test_extract_from_ttf_passthrough() {
+        // TTF (不是 TTC) 应直接返回原始数据
+        let data: Vec<u8> = b"not a ttc file\x00\x00\x00".to_vec();
+        let result = extract_from_ttc_if_needed(&data);
+        assert!(result.is_some());
+        assert_eq!(&result.unwrap()[..], &data[..]);
+    }
+
+    #[test]
+    fn test_set_pixel_ignores_out_of_bounds() {
+        let mut buf = vec![0u8; 4 * 4]; // 1x1 RGBA
+        // 越界像素不应 panic
+        set_pixel(&mut buf, 1, 1, -1, 0, 255, 0, 0, 255);
+        set_pixel(&mut buf, 1, 1, 5, 5, 255, 0, 0, 255);
+        assert_eq!(buf, vec![0u8; 16]); // 应无变化
+    }
+
+    #[test]
+    fn test_set_pixel_zero_alpha() {
+        let mut buf = vec![0u8; 4 * 4]; // 1x1 RGBA
+        set_pixel(&mut buf, 1, 1, 0, 0, 255, 0, 0, 0);
+        assert_eq!(buf, vec![0u8; 16]); // alpha=0 不动
+    }
+
+    #[test]
+    fn test_set_pixel_blends_correctly() {
+        let mut buf = vec![0u8; 16]; // 1x1 RGBA, 初始透明
+        set_pixel(&mut buf, 1, 1, 0, 0, 128, 64, 32, 128);
+        // alpha blend: sa=0.5, da=0.0, out_a=0.5
+        assert_eq!(buf[3], 128); // alpha 应该正确
+        assert_eq!(buf[0], 128); // R 完全覆盖（无背景）
+    }
+
+    #[test]
+    fn test_draw_breathe_glow_small_buffer() {
+        let w = 32u32;
+        let h = 32u32;
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        draw_breathe_glow(&mut buf, w, h, 0.5);
+        // 验证中心像素有颜色（有光晕）
+        let cx = (w / 2) as usize;
+        let cy = (h / 2) as usize;
+        let idx = (cy * w as usize + cx) * 4;
+        // 中心应被五色光晕着色，至少有一个通道 > 0
+        let has_color = buf[idx] > 0 || buf[idx + 1] > 0 || buf[idx + 2] > 0;
+        assert!(has_color, "center pixel should have glow color");
+        // 透明度应 > 0
+        assert!(buf[idx + 3] > 0, "center pixel alpha should be > 0");
+    }
+
+    #[test]
+    fn test_draw_breathe_glow_edge_transparent() {
+        let w = 64u32;
+        let h = 64u32;
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        draw_breathe_glow(&mut buf, w, h, 0.5);
+        // 角落像素（远离中心）应该透明
+        let corner_idx = (0usize) * 4; // (0,0)
+        let edge_alpha = buf[corner_idx + 3];
+        assert!(edge_alpha < 10, "corner pixel alpha={} should be near zero", edge_alpha);
+    }
+
+    #[test]
+    fn test_draw_heart_equation() {
+        let w = 32;
+        let h = 32;
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        // 在中心画一个小心形
+        draw_heart(&mut buf, w, h, 16, 16, 8, 255, 0, 0, 255);
+        // 验证中心附近至少有一些像素被着色
+        let has_pixels = buf.chunks(4).any(|pixel| pixel[3] > 0);
+        assert!(has_pixels, "draw_heart should fill some pixels");
+    }
+
+    #[test]
+    fn test_draw_icon_bounds() {
+        let icon = RainbowIcon {
+            width: 16,
+            height: 16,
+            pixels: vec![255u8; 16 * 16 * 4],
+        };
+        let w = 32;
+        let h = 32;
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        // 不应 panic
+        draw_icon(&mut buf, w, h, &icon);
+        // 验证有像素被绘制
+        let has_content = buf.chunks(4).any(|p| p[3] > 0);
+        assert!(has_content, "draw_icon should produce visible output");
+    }
+
+    #[test]
+    fn test_progress_bar_zero_percent() {
+        let w = 64;
+        let h = 64;
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        draw_progress_bar(&mut buf, w, h, 0, 0, 50, 8, 0.0, 255, 0, 0);
+        // 0% 不应该画任何东西
+        assert_eq!(buf, vec![0u8; buf.len()]);
+    }
+
+    #[test]
+    fn test_progress_bar_fills() {
+        let w = 64;
+        let h = 64;
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        draw_progress_bar(&mut buf, w, h, 5, 5, 40, 6, 100.0, 255, 0, 0);
+        // 100% 应该在进度条区域有像素
+        let bar_start = (5 * w as i32 + 5) as usize * 4;
+        assert!(buf[bar_start + 3] > 0, "progress bar fill should be visible");
     }
 }
