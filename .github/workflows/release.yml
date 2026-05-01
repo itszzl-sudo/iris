@@ -58,6 +58,7 @@ jobs:
         run: cargo build -p iris-ai-cli --release --target ${{ matrix.target }}
 
       - name: Package binaries
+        id: package
         run: |
           $VERSION = "${{ github.event.release.tag_name }}" -replace '^v', ''
           $DIR = "iris-$VERSION-${{ matrix.target }}"
@@ -75,13 +76,12 @@ jobs:
           # 压缩
           Compress-Archive -Path "$DIR/*" -DestinationPath "$DIR.zip"
 
-          echo "ASSET=$DIR.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          echo "ASSET_NAME=$DIR.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          echo "asset=$DIR.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ASSET }}
+          files: ${{ steps.package.outputs.asset }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

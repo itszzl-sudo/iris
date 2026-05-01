@@ -139,15 +139,21 @@ cargo publish --dry-run  # 测试
 cargo publish            # 实际发布
 ```
 
-### 6. 创建 GitHub Release
+### 6. 创建 GitHub Release（触发 CI 自动构建）
 
 ```bash
-# 在 GitHub 创建 Release
-# - Tag: v0.1.0 (对应 Cargo.toml 版本)
-# - Title: v0.1.0
-# - 内容: 从 CHANGELOG.md 复制对应版本的更新日志
-# - 在 Release 描述末尾添加署名：
+# 推送 tag 到 GitHub
+git push origin v0.1.0
 ```
+
+然后在 GitHub 网页创建 Release：
+- **Tag**: `v0.1.0`（对应 Cargo.toml 版本）
+- **Title**: `v0.1.0`
+- **内容**: 从 CHANGELOG.md 复制对应版本的更新日志
+
+> ⚡ 创建 Release 后，GitHub Actions 会自动执行 `Release` workflow：
+>    1. **build** — 在 `windows-latest` 上编译所有 CLI 二进制文件，打包为 `.zip` 上传到 Release 附件
+>    2. **signpath-attribution** — 自动在 Release 描述末尾追加 SignPath 署名
 
 > Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
 
