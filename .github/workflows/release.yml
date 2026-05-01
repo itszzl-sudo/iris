@@ -101,10 +101,7 @@ jobs:
           CURRENT_BODY=$(gh release view "${{ github.event.release.tag_name }}" \
             --repo $REPO --json body --jq '.body // ""')
 
-          SIGNPATH_HTML='<div style="margin-top:1em; font-size:0.9em; color:#666;">
-  Free code signing provided by <a href="https://signpath.io/" target="_blank">SignPath.io</a>,
-  certificate by <a href="https://signpath.org/" target="_blank">SignPath Foundation</a>
-</div>'
+          SIGNPATH_HTML='<div style="margin-top:1em; font-size:0.9em; color:#666;">  Free code signing provided by <a href="https://signpath.io/" target="_blank">SignPath.io</a>,  certificate by <a href="https://signpath.org/" target="_blank">SignPath Foundation</a></div>'
 
           # 检查是否已有署名（避免重复追加）
           if echo "$CURRENT_BODY" | grep -q "SignPath.io"; then
