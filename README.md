@@ -148,7 +148,7 @@ Iris Engine:          75MB  ██████
 | Feature | Traditional Frontend | Iris Engine | Advantage |
 |---------|---------------------|-------------|-----------|
 | **Build Config** | webpack.config.js / vite.config.ts | **Zero Config** ✅ | No learning curve |
-| **Start Command** | `npm install && npm run build && npm run dev` | **`iris run`** ✅ | One step |
+| **Start Command** | `npm install && npm run dev && npm run build` | **`npx iris-runtime dev`** ✅ | One step |
 | **Hot Reload** | HMR (complex config, sometimes breaks) | **Native File Watch** ✅ | Instant & Reliable |
 | **Debugging** | Chrome DevTools | **Rust tracing + GPU Debug** ✅ | Full-stack observability |
 | **Deployment** | Build artifacts + CDN | **Single Binary** ✅ | Ultra simple |
@@ -182,35 +182,28 @@ Compiling...
 #### Iris Engine
 ```bash
 # One command, runs immediately
-iris run App.vue
+npx iris-runtime dev
 
 # ✅ Zero Config · Zero Build · Zero Wait
 ```
 
-```vue
-<!-- App.vue - Runs directly, no build needed -->
-<template>
-  <div class="app">
-    <h1>Hello Iris!</h1>
-    <button @click="count++">
-      Count: {{ count }}
-    </button>
-  </div>
-</template>
-
-<script setup>
-import { ref } from 'vue'
-const count = ref(0)
-</script>
-
-<style>
-.app {
-  background: linear-gradient(to right, #6B4EE6, #00D4AA);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  animation: fadeIn 0.5s ease-out;
+```json
+{
+  "name": "iris-vue-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Iris-managed Vue 3 demo — compile/build/preview driven by iris-runtime CLI",
+  "dependencies": {
+    "vue": "^3.4.0"
+  },
+  "irisManaged": {
+    "description": "This section is managed by Iris",
+    "autoResolve": true,
+    "note": "dependencies/devDependencies are maintained by you; irisResolved is auto-managed by Iris — on iris-runtime dev, it scans imports, downloads missing npm packages on demand, and records versions here"
+  },
+  "irisResolved": {}
 }
-</style>
+
 ```
 
 ---

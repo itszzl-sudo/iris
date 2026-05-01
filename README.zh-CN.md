@@ -106,7 +106,7 @@ Iris Engine:          75MB  ██████
 | 特性 | 传统前端方案 | Iris Engine | 优势 |
 |------|------------|-------------|------|
 | **构建配置** | webpack.config.js / vite.config.ts | **零配置** ✅ | 无需学习 |
-| **启动命令** | `npm install && npm run build && npm run dev` | **`iris run`** ✅ | 一步到位 |
+| **启动命令** | `npm install && npm run dev && npm run build` | **`npx iris-runtime dev`** ✅ | 一步到位 |
 | **热更新** | HMR (配置复杂，偶尔失效) | **原生文件监听** ✅ | 即时可靠 |
 | **调试** | Chrome DevTools | **Rust tracing + GPU 调试** ✅ | 全栈可观测 |
 | **部署** | 构建产物 + CDN | **单二进制文件** ✅ | 极致简单 |
@@ -140,35 +140,28 @@ Compiling...
 #### Iris Engine
 ```bash
 # 一条命令，立即运行
-iris run App.vue
+npx iris-runtime dev
 
 # ✅ 零配置 · 零构建 · 零等待
 ```
 
-```vue
-<!-- App.vue - 直接运行，无需构建 -->
-<template>
-  <div class="app">
-    <h1>Hello Iris!</h1>
-    <button @click="count++">
-      Count: {{ count }}
-    </button>
-  </div>
-</template>
-
-<script setup>
-import { ref } from 'vue'
-const count = ref(0)
-</script>
-
-<style>
-.app {
-  background: linear-gradient(to right, #6B4EE6, #00D4AA);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-  animation: fadeIn 0.5s ease-out;
+```json
+{
+  "name": "iris-vue-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Iris-managed Vue 3 demo — compile/build/preview driven by iris-runtime CLI",
+  "dependencies": {
+    "vue": "^3.4.0"
+  },
+  "irisManaged": {
+    "description": "This section is managed by Iris",
+    "autoResolve": true,
+    "note": "dependencies/devDependencies are maintained by you; irisResolved is auto-managed by Iris — on iris-runtime dev, it scans imports, downloads missing npm packages on demand, and records versions here"
+  },
+  "irisResolved": {}
 }
-</style>
+
 ```
 
 ### 开发者反馈
