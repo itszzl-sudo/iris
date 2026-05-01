@@ -37,26 +37,26 @@
 cd examples/vue-demo
 
 # 启动开发服务器（原生窗口渲染）
-..\..\target\debug\iris-runtime.exe dev
+..\..\target\debug\iris.exe dev
 
 # 或使用 release 版本
-..\..\target\release\iris-runtime.exe dev
+..\..\target\release\iris.exe dev
 ```
 
 ### 命令行参数
 
 ```bash
 # 指定项目根目录
-iris-runtime dev --root /path/to/project
+iris dev --root /path/to/project
 
 # 禁用热重载（保留用于未来功能）
-iris-runtime dev --no-hot-reload
+iris dev --no-hot-reload
 
 # 自动打开浏览器（保留）
-iris-runtime dev --open
+iris dev --open
 
 # 指定端口（保留用于未来浏览器模式）
-iris-runtime dev --port 8080
+iris dev --port 8080
 ```
 
 ---
@@ -290,7 +290,7 @@ cargo build --package iris-cli
 
 # 运行
 cd examples/vue-demo
-..\..\target\debug\iris-runtime.exe dev
+..\..\target\debug\iris.exe dev
 
 # 预期结果：
 # - 显示配置信息
@@ -308,7 +308,7 @@ copy App.vue Page1.vue
 copy App.vue Page2.vue
 
 # 运行
-..\..\target\debug\iris-runtime.exe dev
+..\..\target\debug\iris.exe dev
 
 # 预期结果：
 # - 找到 3 个 .vue 文件
@@ -320,7 +320,7 @@ copy App.vue Page2.vue
 
 ```bash
 # 运行
-iris-runtime dev
+iris dev
 
 # 操作：
 # - 调整窗口大小

@@ -11,7 +11,8 @@ Iris JetCrab CLI 的内置 npm 包管理器现在能够**自动识别并过滤 I
 | 包名 | 说明 |
 |------|------|
 | `iris` | Iris 框架核心 |
-| `iris-runtime` | Iris 运行时 |
+| `@irisverse/iris` | Iris CLI npm 包 |
+| `iris-runtime` | Iris 运行时（兼容旧名） |
 | `iris-core` | 核心库 |
 | `iris-gpu` | WebGPU 渲染 |
 | `iris-layout` | 布局引擎 |
@@ -117,7 +118,7 @@ Loaded 2 dependencies from package.json (excluding internal packages)
 ```typescript
 // main.ts
 import { createApp } from 'vue'
-import { init } from 'iris-runtime'  // ← 内部包
+import { init } from '@irisverse/iris'  // ← 内部包
 
 createApp(App).mount('#app')
 ```

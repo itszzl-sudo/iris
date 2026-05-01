@@ -1,15 +1,13 @@
-# Iris Runtime
+# @irisverse/iris
 
-Iris Runtime - Vue 3 development server powered by Rust + WebGPU.
+Iris CLI — Vue 3 development server powered by Rust + WebGPU.
 
-This npm package wraps the `iris-cli` Rust binary, providing a seamless npm-compatible CLI experience.
+Part of the [irisverse](https://www.npmjs.com/org/irisverse) ecosystem on npm.
 
 ## Installation
 
 ```bash
-npm install iris-runtime
-# or
-npx iris-runtime dev
+npm install -g @irisverse/iris
 ```
 
 ## Usage
@@ -18,30 +16,30 @@ npx iris-runtime dev
 
 ```bash
 # Start dev server with hot reload
-npx iris-runtime dev
+iris dev
 
 # Custom port
-npx iris-runtime dev -p 8080
+iris dev -p 8080
 
 # Disable hot reload
-npx iris-runtime dev --no-hot
+iris dev --no-hot
 ```
 
 ### Production Build
 
 ```bash
 # Build for production
-npx iris-runtime build
+iris build
 
 # Custom output directory
-npx iris-runtime build -o build
+iris build -o build
 ```
 
 ### Information
 
 ```bash
 # Show runtime information
-npx iris-runtime info
+iris info
 ```
 
 ## Features
@@ -69,29 +67,20 @@ npx iris-runtime info
 | macOS    | x64/ARM64   | ✅     |
 | Linux    | x64         | ✅     |
 
-## Installation
-
-```bash
-npm install iris-runtime
-```
-
-That's it! The pre-built binary is automatically copied during installation.
-No network download, no compilation, no Rust required!
-
 ## Architecture
 
 ```
 npm/Node.js                    Rust Binary
 ┌─────────────┐               ┌──────────────┐
-│ iris-runtime│ ──exec──→     │  iris-cli    │
-│  (Node.js)  │               │  (Rust)      │
-└─────────────┘               └──────────────┘
-                                      │
-                                      ↓
-                              ┌──────────────┐
-                              │  iris-engine │
-                              │  (WebGPU)    │
-                              └──────────────┘
+│ @irisverse/ │ ──exec──→     │  iris        │
+│  iris       │               │  (Rust CLI)  │
+│  (Node.js)  │               └──────────────┘
+└─────────────┘                      │
+                                     ↓
+                             ┌──────────────┐
+                             │  iris-engine │
+                             │  (WebGPU)    │
+                             └──────────────┘
 ```
 
 ## Development
@@ -106,7 +95,7 @@ npm run prepare-binaries
 ```
 
 This will:
-1. Build iris-cli for all supported platforms
+1. Build `iris-cli` for all supported platforms
 2. Copy binaries to `binaries/` directory
 3. Verify all builds completed successfully
 
@@ -118,10 +107,10 @@ This will:
 
 | Platform | Target Triple | Binary Name |
 |----------|--------------|-------------|
-| Windows x64 | `x86_64-pc-windows-msvc` | `iris-runtime-x86_64-pc-windows-msvc.exe` |
-| macOS Intel | `x86_64-apple-darwin` | `iris-runtime-x86_64-apple-darwin` |
-| macOS ARM | `aarch64-apple-darwin` | `iris-runtime-aarch64-apple-darwin` |
-| Linux x64 | `x86_64-unknown-linux-gnu` | `iris-runtime-x86_64-unknown-linux-gnu` |
+| Windows x64 | `x86_64-pc-windows-msvc` | `iris-x86_64-pc-windows-msvc.exe` |
+| macOS Intel | `x86_64-apple-darwin` | `iris-x86_64-apple-darwin` |
+| macOS ARM | `aarch64-apple-darwin` | `iris-aarch64-apple-darwin` |
+| Linux x64 | `x86_64-unknown-linux-gnu` | `iris-x86_64-unknown-linux-gnu` |
 
 ### Manual Build (Single Platform)
 
@@ -149,7 +138,7 @@ npm run prepare-binaries
 ls binaries/
 
 # 3. Publish
-npm publish
+npm publish --access public
 ```
 
 **Important:** The `binaries/` directory is included in the npm package (see `files` in package.json).
@@ -160,4 +149,4 @@ MIT
 
 ## Repository
 
-https://github.com/iris-engine/iris
+https://github.com/itszzl-sudo/iris

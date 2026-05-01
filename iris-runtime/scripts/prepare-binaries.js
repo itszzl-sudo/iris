@@ -63,8 +63,8 @@ function buildTarget(target) {
     });
     
     // Copy binary
-    const binaryName = `iris-runtime-${target.target}${target.ext}`;
-    const sourcePath = path.join(CARGO_WORKSPACE, 'target', target.target, 'release', `iris-cli${target.ext}`);
+    const binaryName = `iris-${target.target}${target.ext}`;
+    const sourcePath = path.join(CARGO_WORKSPACE, 'target', target.target, 'release', `iris${target.ext}`);
     const destPath = path.join(BINARIES_DIR, binaryName);
     
     if (fs.existsSync(sourcePath)) {

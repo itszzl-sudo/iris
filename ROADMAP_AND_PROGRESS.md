@@ -417,7 +417,7 @@
   - [x] 8 个单元测试
 
 ### 7.4 开发者体验 ✅
-- [x] Iris Runtime CLI - `npx iris-runtime build/dev` 命令 ✅
+- [x] Iris Runtime CLI - `iris dev/build` 命令 ✅
   - [x] 智能识别 Vite/Vue3 项目
   - [x] CLI 命令实现（build/dev/info）
   - [x] 配置系统（iris.config.json）

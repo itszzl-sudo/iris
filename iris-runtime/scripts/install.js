@@ -23,11 +23,11 @@ function getBinaryName() {
   const arch = os.arch();
   
   if (platform === 'win32') {
-    return arch === 'x64' ? 'iris-runtime-x86_64-pc-windows-msvc.exe' : 'iris-runtime.exe';
+    return arch === 'x64' ? 'iris-x86_64-pc-windows-msvc.exe' : 'iris.exe';
   } else if (platform === 'darwin') {
-    return arch === 'arm64' ? 'iris-runtime-aarch64-apple-darwin' : 'iris-runtime-x86_64-apple-darwin';
+    return arch === 'arm64' ? 'iris-aarch64-apple-darwin' : 'iris-x86_64-apple-darwin';
   } else if (platform === 'linux') {
-    return arch === 'x64' ? 'iris-runtime-x86_64-unknown-linux-gnu' : 'iris-runtime';
+    return arch === 'x64' ? 'iris-x86_64-unknown-linux-gnu' : 'iris';
   }
   
   throw new Error(`Unsupported platform: ${platform} ${arch}`);
@@ -37,7 +37,7 @@ function getBinaryName() {
  * Get the final binary name (without platform suffix)
  */
 function getFinalBinaryName() {
-  return os.platform() === 'win32' ? 'iris-runtime.exe' : 'iris-runtime';
+  return os.platform() === 'win32' ? 'iris.exe' : 'iris';
 }
 
 /**
@@ -72,7 +72,7 @@ function install() {
       fs.chmodSync(destPath, 0o755);
     }
     
-    console.log(chalk.green(`\n✓ iris-runtime binary installed successfully!`));
+    console.log(chalk.green(`\n✓ iris binary installed successfully!`));
     console.log(chalk.green(`  Platform: ${binaryName}`));
     console.log(chalk.green(`  Location: ${destPath}`));
     

@@ -1,4 +1,4 @@
-//! Iris Runtime CLI
+//! Iris CLI
 //!
 //! 命令行工具用于构建和开发基于 Iris 运行时 的 Vue 3 应用程序
 //!
@@ -6,13 +6,13 @@
 //!
 //! ```bash
 //! # 开发模式（带热重载）
-//! iris-runtime dev
+//! iris dev
 //!
 //! # 生产构建
-//! iris-runtime build
+//! iris build
 //!
 //! # 查看信息
-//! iris-runtime info
+//! iris info
 //! ```
 
 use clap::{Parser, Subcommand};
@@ -25,9 +25,9 @@ mod utils;
 
 use commands::{build::BuildCommand, dev::DevCommand, info::InfoCommand};
 
-/// Iris Runtime CLI - Build and develop Vue 3 applications with Rust+WebGPU runtime
+/// Iris CLI - Build and develop Vue 3 applications with Rust+WebGPU runtime
 #[derive(Parser)]
-#[command(name = "iris-runtime")]
+#[command(name = "iris")]
 #[command(author = "Iris Team")]
 #[command(version = "0.1.0")]
 #[command(about = "Iris Runtime CLI for Vue 3 applications", long_about = None)]

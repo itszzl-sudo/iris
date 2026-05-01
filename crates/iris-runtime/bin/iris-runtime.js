@@ -6,7 +6,7 @@ import chalk from 'chalk';
 const args = process.argv.slice(2);
 
 if (args[0] !== 'dev') {
-  console.log(chalk.yellow('Usage: npx iris-runtime dev'));
+  console.log(chalk.yellow('Usage: iris dev'));
   console.log();
   console.log(chalk.cyan('Options:'));
   console.log('  --port <number>    Server port (default: 3000, 0 for auto)');

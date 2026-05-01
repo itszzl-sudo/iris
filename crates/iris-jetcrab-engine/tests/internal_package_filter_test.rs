@@ -5,6 +5,7 @@ use std::path::PathBuf;
 fn test_internal_package_detection() {
     // 测试内部包识别
     assert!(NpmDownloader::is_internal_package("iris"));
+    assert!(NpmDownloader::is_internal_package("@irisverse/iris"));
     assert!(NpmDownloader::is_internal_package("iris-runtime"));
     assert!(NpmDownloader::is_internal_package("iris-core"));
     assert!(NpmDownloader::is_internal_package("iris-gpu"));

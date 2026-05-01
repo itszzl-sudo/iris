@@ -11,7 +11,7 @@ import chalk from 'chalk';
 
 console.log();
 console.log(chalk.cyan('═══════════════════════════════════════════════════════════'));
-console.log(chalk.cyan('  Iris Runtime - Error Handling Demo'));
+console.log(chalk.cyan('  Iris CLI @irisverse/iris - Error Handling Demo'));
 console.log(chalk.cyan('═══════════════════════════════════════════════════════════'));
 console.log();
 
@@ -23,7 +23,7 @@ console.log();
 console.log(chalk.red('❌ Error: Port 3000 is already in use'));
 console.log();
 console.log(chalk.yellow('Possible causes:'));
-console.log('  • Another instance of iris-runtime is running');
+console.log('  • Another instance of iris dev is running');
 console.log('  • Another application is using port 3000');
 console.log();
 console.log(chalk.cyan('Solutions:'));
@@ -38,11 +38,11 @@ console.log('    ' + chalk.yellow('taskkill /F /PID <PID>'));
 console.log();
 console.log('  ' + chalk.green('Option 2:') + ' Use a different port');
 console.log();
-console.log('    ' + chalk.yellow('npx iris-runtime dev --port 3001'));
+console.log('    ' + chalk.yellow('iris dev --port 3001'));
 console.log();
 console.log('  ' + chalk.green('Option 3:') + ' Auto-select available port');
 console.log();
-console.log('    ' + chalk.yellow('npx iris-runtime dev --port 0'));
+console.log('    ' + chalk.yellow('iris dev --port 0'));
 console.log();
 
 // 演示 2: 端口占用错误（macOS/Linux）
@@ -53,7 +53,7 @@ console.log();
 console.log(chalk.red('❌ Error: Port 3000 is already in use'));
 console.log();
 console.log(chalk.yellow('Possible causes:'));
-console.log('  • Another instance of iris-runtime is running');
+console.log('  • Another instance of iris dev is running');
 console.log('  • Another application is using port 3000');
 console.log();
 console.log(chalk.cyan('Solutions:'));
@@ -68,11 +68,11 @@ console.log('    ' + chalk.yellow('kill -9 <PID>'));
 console.log();
 console.log('  ' + chalk.green('Option 2:') + ' Use a different port');
 console.log();
-console.log('    ' + chalk.yellow('npx iris-runtime dev --port 3001'));
+console.log('    ' + chalk.yellow('iris dev --port 3001'));
 console.log();
 console.log('  ' + chalk.green('Option 3:') + ' Auto-select available port');
 console.log();
-console.log('    ' + chalk.yellow('npx iris-runtime dev --port 0'));
+console.log('    ' + chalk.yellow('iris dev --port 0'));
 console.log();
 
 // 演示 3: 没有图形界面
@@ -82,8 +82,8 @@ console.log(chalk.yellow('─'.repeat(60)));
 console.log();
 console.log(chalk.red('❌ Error: No display available'));
 console.log();
-console.log(chalk.yellow('Iris Runtime requires a graphical environment to run.'));
-console.log(chalk.yellow('Without a GUI, iris-runtime cannot provide value.'));
+console.log(chalk.yellow('Iris requires a graphical environment to run.'));
+console.log(chalk.yellow('Without a GUI, iris cannot provide value.'));
 console.log();
 console.log(chalk.cyan('Possible causes:'));
 console.log('  • Running in SSH session without X11 forwarding');

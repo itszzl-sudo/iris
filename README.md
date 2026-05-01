@@ -49,14 +49,14 @@ Iris Engine provides two complementary runtime modes for different use cases:
 Run Vue SFCs as high-performance native desktop applications with direct WebGPU acceleration.
 
 ```bash
-# Install CLI
-cargo install iris-cli
+# Install Iris CLI via npm
+npm install -g @irisverse/iris
 
 # Run a Vue component directly
-iris-cli run App.vue
+iris run App.vue
 
 # Build native desktop executable
-iris-cli build App.vue
+iris build App.vue
 ```
 
 **Features:**
@@ -71,8 +71,8 @@ iris-cli build App.vue
 A browser-based runtime that compiles and serves Vue SFCs via WASM with a built-in development server.
 
 ```bash
-npm install -D iris-runtime
-npx iris-runtime dev
+npm install -g @irisverse/iris
+iris dev
 ```
 
 **Features:**
@@ -148,7 +148,7 @@ Iris Engine:          75MB  ██████
 | Feature | Traditional Frontend | Iris Engine | Advantage |
 |---------|---------------------|-------------|-----------|
 | **Build Config** | webpack.config.js / vite.config.ts | **Zero Config** ✅ | No learning curve |
-| **Start Command** | `npm install && npm run dev && npm run build` | **`npx iris-runtime dev`** ✅ | One step |
+| **Start Command** | `npm install && npm run dev && npm run build` | **`npm i -g @irisverse/iris && iris dev`** ✅ | One step |
 | **Hot Reload** | HMR (complex config, sometimes breaks) | **Native File Watch** ✅ | Instant & Reliable |
 | **Debugging** | Chrome DevTools | **Rust tracing + GPU Debug** ✅ | Full-stack observability |
 | **Deployment** | Build artifacts + CDN | **Single Binary** ✅ | Ultra simple |
@@ -181,8 +181,9 @@ Compiling...
 
 #### Iris Engine
 ```bash
-# One command, runs immediately
-npx iris-runtime dev
+# Install globally, then run immediately
+npm install -g @irisverse/iris
+iris dev
 
 # ✅ Zero Config · Zero Build · Zero Wait
 ```
@@ -192,14 +193,14 @@ npx iris-runtime dev
   "name": "iris-vue-demo",
   "version": "0.1.0",
   "private": true,
-  "description": "Iris-managed Vue 3 demo — compile/build/preview driven by iris-runtime CLI",
+  "description": "Iris-managed Vue 3 demo — compile/build/preview driven by iris CLI",
   "dependencies": {
     "vue": "^3.4.0"
   },
   "irisManaged": {
     "description": "This section is managed by Iris",
     "autoResolve": true,
-    "note": "dependencies/devDependencies are maintained by you; irisResolved is auto-managed by Iris — on iris-runtime dev, it scans imports, downloads missing npm packages on demand, and records versions here"
+    "note": "dependencies/devDependencies are maintained by you; irisResolved is auto-managed by Iris — on iris dev, it scans imports, downloads missing npm packages on demand, and records versions here"
   },
   "irisResolved": {}
 }
@@ -282,7 +283,7 @@ Iris Engine (Rust Workspace · 18 crates)
 ├── Orchestration Layer
 │   ├── iris-engine    (Runtime orchestrator, animation engine, VNode renderer)
 │   ├── iris-app       (Desktop application framework)
-│   └── iris-cli       (CLI tool)
+│   └── iris-cli       (CLI tool — binary: `iris`)
 │
 ├── JetCrab Runtime (Browser-based)
 │   ├── iris-jetcrab            (Runtime integration, CPM package mgmt)
@@ -295,7 +296,7 @@ Iris Engine (Rust Workspace · 18 crates)
 │   └── iris-ai-cli             (AI code assistant CLI)
 │
 └── npm Distribution
-    └── iris-runtime            (WASM-powered dev server on npm)
+    └── @irisverse/iris           (Iris CLI on npm — `npm install -g @irisverse/iris; iris dev`)
 ```
 
 ### Shared Core Layer
@@ -377,14 +378,14 @@ The preview release will include:
 
 ### Option 1: JetCrab Browser Path (Recommended)
 
-No Rust toolchain required. Use npm to install the WASM-powered development server:
+No Rust toolchain required. Use npm to install the CLI:
 
 ```bash
-# 1. Install in your Vue project
-npm install -D iris-runtime
+# 1. Install Iris CLI globally
+npm install -g @irisverse/iris
 
 # 2. Start development server with hot reload
-npx iris-runtime dev
+iris dev
 
 # 3. Open browser at http://localhost:3000
 ```
@@ -400,10 +401,10 @@ Requires Rust toolchain. Build high-performance native desktop applications:
 cargo install iris-cli
 
 # Run a Vue component directly (zero build)
-iris-cli run App.vue
+iris run App.vue
 
 # Build native desktop executable
-iris-cli build App.vue
+iris build App.vue
 ```
 
 **Features:** Direct WebGPU rendering, full CSS animation system, desktop-grade performance

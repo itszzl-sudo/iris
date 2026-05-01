@@ -626,7 +626,7 @@ try {
 ### 场景 1: 浏览器目录选择
 
 ```
-1. 用户启动 iris-runtime dev（在非 Vue 目录）
+1. 用户启动 iris dev（在非 Vue 目录）
 2. 浏览器打开目录选择页面
 3. 用户点击 "Browse Directory"
 4. 选择目录

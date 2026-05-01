@@ -1,20 +1,22 @@
 {
-  "name": "iris-runtime",
+  "name": "@irisverse/iris",
   "version": "0.1.0",
-  "description": "Iris Runtime - Vue 3 development server powered by Rust + WebGPU",
+  "description": "Iris - Next-Gen Rust + WebGPU Frontend Runtime",
   "main": "index.js",
   "bin": {
-    "iris-runtime": "./bin/iris-runtime.js"
+    "iris": "./bin/iris.js"
   },
   "scripts": {
-    "dev": "node bin/iris-runtime.js dev",
-    "build": "node bin/iris-runtime.js build",
-    "info": "node bin/iris-runtime.js info",
+    "dev": "node bin/iris.js dev",
+    "build": "node bin/iris.js build",
+    "info": "node bin/iris.js info",
     "postinstall": "node scripts/install.js",
     "prepare-binaries": "node scripts/prepare-binaries.js",
     "prepublishOnly": "echo 'Ensure binaries/ directory contains pre-built binaries'"
   },
   "keywords": [
+    "iris",
+    "irisverse",
     "vue",
     "vue3",
     "runtime",
@@ -28,7 +30,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/iris-engine/iris.git"
+    "url": "https://github.com/itszzl-sudo/iris.git"
   },
   "engines": {
     "node": ">=14.0.0"

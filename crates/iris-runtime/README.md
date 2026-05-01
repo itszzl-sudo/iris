@@ -1,17 +1,17 @@
-# Iris Runtime
+# Iris CLI (crate: iris-runtime)
 
-Vue 3 development server powered by WebAssembly.
+Vue 3 SFC compiler and dev server powered by Rust + WebAssembly.
+
+This crate provides the WASM-based compilation engine for the Iris CLI (`@irisverse/iris`).
 
 ## Quick Start
 
-### For Users (Vue Project)
-
 ```bash
-# Install in your Vue project
-npm install -D iris-runtime
+# Install Iris CLI globally
+npm install -g @irisverse/iris
 
 # Start dev server
-npx iris-runtime dev
+iris dev
 ```
 
 ### For Developers (Build WASM)
@@ -45,13 +45,13 @@ npm publish --access public
 
 ```bash
 # Start development server
-npx iris-runtime dev
+iris dev
 
 # Custom port
-npx iris-runtime dev --port 8080
+iris dev --port 8080
 
 # Custom host
-npx iris-runtime dev --host 0.0.0.0
+iris dev --host 0.0.0.0
 ```
 
 ### With npm scripts
@@ -59,7 +59,7 @@ npx iris-runtime dev --host 0.0.0.0
 ```json
 {
   "scripts": {
-    "dev": "iris-runtime dev",
+    "dev": "iris dev",
     "build": "vite build"
   }
 }
@@ -74,11 +74,11 @@ npm run dev
 ## How It Works
 
 ```
-npm install -D iris-runtime
+npm install -g @irisverse/iris
     ↓
-Download WASM module (~5MB)
+Download pre-built binary
     ↓
-npx iris-runtime dev
+iris dev
     ↓
 Start HTTP server + WebSocket (HMR)
     ↓
@@ -92,15 +92,13 @@ Serve to browser with live reload
 ## Architecture
 
 ```
-iris-runtime (npm package)
-├── pkg/
-│   ├── iris_runtime_bg.wasm    # WASM binary (Rust)
-│   ├── iris_runtime.js         # JS bindings
-│   └── iris_runtime.d.ts       # TypeScript types
+@irisverse/iris (npm package)
 ├── bin/
-│   └── iris-runtime.js         # CLI entry point
-├── lib/
-│   └── dev-server.js           # Dev server implementation
+│   └── iris.js                 # CLI entry point
+├── scripts/
+│   ├── install.js              # Post-install binary copy
+│   └── prepare-binaries.js     # Build binaries for publish
+├── binaries/                   # Pre-built native binaries
 └── package.json
 ```
 
@@ -109,7 +107,7 @@ iris-runtime (npm package)
 ### JavaScript API
 
 ```javascript
-import { IrisRuntime } from 'iris-runtime';
+import { IrisRuntime } from '@irisverse/iris';
 
 const runtime = new IrisRuntime();
 
@@ -144,4 +142,4 @@ MIT
 
 ## Repository
 
-https://github.com/iris-engine/iris
+https://github.com/itszzl-sudo/iris

@@ -15,11 +15,12 @@ A demo Vue 3 application running on Iris Runtime with WebGPU rendering.
 ### Using Iris Runtime
 
 ```bash
-# Start development server
-npx iris-runtime dev
+# Start development server (after global install)
+# npm install -g @irisverse/iris
+iris dev
 
 # Build for production
-npx iris-runtime build
+iris build
 ```
 
 ### Using npm scripts
@@ -50,7 +51,7 @@ vue-demo/
 
 - **Frontend**: Vue 3 + TypeScript
 - **Runtime**: Iris Engine (Rust + WebGPU)
-- **Build Tool**: iris-runtime CLI
+- **Build Tool**: Iris CLI (`@irisverse/iris`)
 
 ## Performance
 

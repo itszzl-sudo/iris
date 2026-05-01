@@ -106,7 +106,7 @@ Iris Engine:          75MB  ██████
 | 特性 | 传统前端方案 | Iris Engine | 优势 |
 |------|------------|-------------|------|
 | **构建配置** | webpack.config.js / vite.config.ts | **零配置** ✅ | 无需学习 |
-| **启动命令** | `npm install && npm run dev && npm run build` | **`npx iris-runtime dev`** ✅ | 一步到位 |
+| **启动命令** | `npm install && npm run dev && npm run build` | **`npm i -g @irisverse/iris && iris dev`** ✅ | 一步到位 |
 | **热更新** | HMR (配置复杂，偶尔失效) | **原生文件监听** ✅ | 即时可靠 |
 | **调试** | Chrome DevTools | **Rust tracing + GPU 调试** ✅ | 全栈可观测 |
 | **部署** | 构建产物 + CDN | **单二进制文件** ✅ | 极致简单 |
@@ -139,8 +139,9 @@ Compiling...
 
 #### Iris Engine
 ```bash
-# 一条命令，立即运行
-npx iris-runtime dev
+# 全局安装，然后立即运行
+npm install -g @irisverse/iris
+iris dev
 
 # ✅ 零配置 · 零构建 · 零等待
 ```
@@ -150,14 +151,14 @@ npx iris-runtime dev
   "name": "iris-vue-demo",
   "version": "0.1.0",
   "private": true,
-  "description": "Iris-managed Vue 3 demo — compile/build/preview driven by iris-runtime CLI",
+  "description": "Iris-managed Vue 3 demo — compile/build/preview driven by iris CLI",
   "dependencies": {
     "vue": "^3.4.0"
   },
   "irisManaged": {
     "description": "This section is managed by Iris",
     "autoResolve": true,
-    "note": "dependencies/devDependencies are maintained by you; irisResolved is auto-managed by Iris — on iris-runtime dev, it scans imports, downloads missing npm packages on demand, and records versions here"
+    "note": "dependencies/devDependencies are maintained by you; irisResolved is auto-managed by Iris — on iris dev, it scans imports, downloads missing npm packages on demand, and records versions here"
   },
   "irisResolved": {}
 }
@@ -251,7 +252,7 @@ Iris Engine (Rust 工作空间 · 18 个 crate)
 ├── 编排层 (Orchestration)
 │   ├── iris-engine    (运行时编排、动画引擎、VNode 渲染)
 │   ├── iris-app       (桌面应用框架)
-│   └── iris-cli       (命令行工具)
+│   └── iris-cli       (命令行工具 — 二进制名: `iris`)
 │
 ├── JetCrab 浏览器运行时
 │   ├── iris-jetcrab            (运行时集成、CPM 包管理)
@@ -264,7 +265,7 @@ Iris Engine (Rust 工作空间 · 18 个 crate)
 │   └── iris-ai-cli             (AI 代码助手 CLI)
 │
 └── npm 分发
-    └── iris-runtime            (基于 WASM 的开发服务器)
+    └── @irisverse/iris           (Iris CLI npm 包 — `npm install -g @irisverse/iris; iris dev`)
 ```
 
 ### 共享核心层
@@ -346,14 +347,14 @@ iris-gpu → 批渲染系统 → WebGPU
 
 ### 方式一：JetCrab 浏览器路径（推荐）
 
-无需 Rust 工具链，通过 npm 安装即可使用 WASM 驱动的开发服务器：
+无需 Rust 工具链，通过 npm 全局安装即可使用：
 
 ```bash
-# 1. 在 Vue 项目中安装
-npm install -D iris-runtime
+# 1. 全局安装 Iris CLI
+npm install -g @irisverse/iris
 
 # 2. 启动开发服务器（含热更新）
-npx iris-runtime dev
+iris dev
 
 # 3. 浏览器打开 http://localhost:3000
 ```
@@ -369,10 +370,10 @@ npx iris-runtime dev
 cargo install iris-cli
 
 # 运行 Vue 组件（零构建）
-iris-cli run App.vue
+iris run App.vue
 
 # 构建桌面端可执行文件
-iris-cli build App.vue
+iris build App.vue
 ```
 
 **特点：** 直接 WebGPU 渲染、完整 CSS 动画系统、桌面级性能

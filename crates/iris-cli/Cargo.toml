@@ -11,7 +11,7 @@ keywords = ["cli", "vue", "runtime", "webgpu", "build-tool"]
 categories = ["command-line-utilities", "development-tools", "gui"]
 
 [[bin]]
-name = "iris-runtime"
+name = "iris"
 path = "src/main.rs"
 
 [dependencies]

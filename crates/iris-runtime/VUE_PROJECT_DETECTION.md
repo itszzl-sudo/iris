@@ -6,7 +6,7 @@
 
 ## 🎯 功能概述
 
-当用户执行 `npx iris-runtime dev` 时：
+当用户执行 `iris dev` 时：
 
 1. **自动检测**当前目录是否为 Vue 项目
 2. **如果是**：正常启动开发服务器
@@ -18,7 +18,7 @@
 
 ### Vue 项目特征
 
-iris-runtime 通过以下方式判断是否为 Vue 项目：
+Iris CLI 通过以下方式判断是否为 Vue 项目：
 
 ```javascript
 function isVueProjectRoot(dirPath) {
@@ -61,7 +61,7 @@ function isVueProjectRoot(dirPath) {
 
 ```bash
 $ cd my-vue-app
-$ npx iris-runtime dev
+$ iris dev
 
 ✓ Vue project detected (vite)
 
@@ -79,7 +79,7 @@ $ npx iris-runtime dev
 
 ```bash
 $ cd ~/Documents
-$ npx iris-runtime dev
+$ iris dev
 
 ⚠️  Warning: Current directory is not a Vue project
    Reason: No package.json found
@@ -314,7 +314,7 @@ isVueProjectRoot(root)?
 cd my-vue-app
 
 # 启动
-npx iris-runtime dev
+iris dev
 
 # 输出:
 # ✓ Vue project detected (vite)
@@ -328,7 +328,7 @@ npx iris-runtime dev
 cd ~/Documents
 
 # 启动
-npx iris-runtime dev
+iris dev
 
 # 输出:
 # ⚠️ Warning: Current directory is not a Vue project

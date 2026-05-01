@@ -64,13 +64,13 @@ run.bat info         # 查看项目信息
 
 ```bash
 # 启动开发服务器
-..\..\target\release\iris-runtime.exe dev
+..\..\target\release\iris.exe dev
 
 # 生产构建
-..\..\target\release\iris-runtime.exe build
+..\..\target\release\iris.exe build
 
 # 查看项目信息
-..\..\target\release\iris-runtime.exe info
+..\..\target\release\iris.exe info
 ```
 
 ### 方式 3：使用 npm scripts（需要安装依赖）
@@ -91,7 +91,7 @@ npm run build
 ### ✅ dev 命令测试
 
 ```bash
-$ iris-runtime dev
+$ iris dev
 
 ╔══════════════════════════════════════════════════════════╗
 ║   🌈  Iris Runtime CLI v0.1.0                           ║
@@ -131,7 +131,7 @@ Configuration:
 ### ✅ build 命令测试
 
 ```bash
-$ iris-runtime build
+$ iris build
 
 Building for production...
 
@@ -164,7 +164,7 @@ Build artifacts:
 ### ✅ info 命令测试
 
 ```bash
-$ iris-runtime info
+$ iris info
 
 Project Information:
 
@@ -346,7 +346,7 @@ Iris Runtime 通过以下方式检测 Vue 3 项目：
 cargo build --release -p iris-cli
 
 # 使用完整路径
-..\..\target\release\iris-runtime.exe dev
+..\..\target\release\iris.exe dev
 ```
 
 ### 问题 2：项目类型未识别

@@ -23,6 +23,7 @@ const NPM_REGISTRY: &str = "https://registry.npmjs.org";
 /// 这些包是 Iris 框架的核心组件，由项目自身提供
 const INTERNAL_PACKAGES: &[&str] = &[
     "iris",
+    "@irisverse/iris",
     "iris-runtime",
     "iris-core",
     "iris-gpu",

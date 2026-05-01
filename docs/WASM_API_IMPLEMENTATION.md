@@ -171,14 +171,14 @@ console.log(compiled.script);
 - ✅ 复用 `sfc_compiler` 模块
 - ✅ 复用 `hmr` 模块
 - ✅ 统一的错误处理
-- ✅ 兼容 iris-runtime dev-server
+- ✅ 兼容 iris dev-server
 
 ## 下一步
 
 1. **测试** - 编写 WASM 集成测试
 2. **优化** - 性能基准测试
 3. **文档** - 更新双运行时架构文档
-4. **集成** - 与 iris-runtime dev-server 对接
+4. **集成** - 与 iris dev-server 对接
 
 ## 编译状态
 

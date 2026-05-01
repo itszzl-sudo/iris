@@ -57,10 +57,10 @@ impl IrisRuntime {
 
 ### 4. Node.js 开发服务器
 
-**CLI (bin/iris-runtime.js)**:
+**CLI (bin/iris.js)**:
 ```javascript
-npx iris-runtime dev          // 启动开发服务器
-npx iris-runtime dev --port 8080  // 自定义端口
+iris dev          // 启动开发服务器
+iris dev --port 8080  // 自定义端口
 ```
 
 **服务器 (lib/dev-server.js)**:
@@ -133,13 +133,13 @@ crates/iris-runtime/
 ### 1. 安装
 
 ```bash
-npm install -D iris-runtime
+npm install -g @irisverse/iris
 ```
 
 ### 2. 启动开发服务器
 
 ```bash
-npx iris-runtime dev
+iris dev
 ```
 
 **输出**：
@@ -180,7 +180,7 @@ console.log(result.styles);
 ## 🎨 工作流程
 
 ```
-用户执行: npx iris-runtime dev
+用户执行: iris dev
     ↓
 Node.js CLI 启动
     ↓

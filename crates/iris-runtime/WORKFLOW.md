@@ -1,6 +1,6 @@
-# iris-runtime 完整工作流
+# Iris CLI (@irisverse/iris) 完整工作流
 
-> 从 WASM 编译到用户使用的完整流程
+> Iris CLI 的完整工作流
 
 ---
 
@@ -8,13 +8,13 @@
 
 ### 角色 1: Iris 开发者（您）
 
-**职责**: 开发和维护 iris-runtime npm 包
+**职责**: 开发和维护 @irisverse/iris npm 包
 
 **工作目录**: `crates/iris-runtime/`
 
 ### 角色 2: Vue 开发者（用户）
 
-**职责**: 在自己的 Vue 项目中使用 iris-runtime
+**职责**: 在自己的 Vue 项目中使用 Iris CLI
 
 **工作目录**: 他们的 Vue 项目目录（如 `~/projects/my-vue-app/`）
 
@@ -32,7 +32,7 @@ cd crates/iris-runtime
 vim src/lib.rs          # WASM 接口
 vim src/compiler.rs     # Vue SFC 编译器
 vim src/hmr.rs          # 热更新
-vim bin/iris-runtime.js # CLI 入口
+vim bin/iris.js       # CLI 入口
 vim lib/dev-server.js   # 开发服务器
 ```
 
@@ -70,8 +70,8 @@ npm pack
 
 # 在测试项目中安装
 cd /tmp/test-vue-app
-npm install /path/to/iris-runtime-0.1.0.tgz
-npx iris-runtime dev
+npm install /path/to/@irisverse/iris-0.1.0.tgz
+iris dev
 ```
 
 ### 步骤 4: 发布到 npm
@@ -91,7 +91,7 @@ npm version major  # 0.1.0 → 1.0.0
 npm publish --access public
 ```
 
-**完成！** 现在任何人都可以 `npm install -D iris-runtime`
+**完成！** 现在任何人都可以 `npm install -g @irisverse/iris`
 
 ---
 
@@ -109,22 +109,22 @@ npm create vite@latest my-app -- --template vue
 cd my-app
 ```
 
-### 步骤 2: 安装 iris-runtime
+### 步骤 2: 全局安装 Iris CLI
 
 ```bash
-npm install -D iris-runtime
+npm install -g @irisverse/iris
 ```
 
 **发生了什么？**
 
 ```
 node_modules/
-└── iris-runtime/
+└── @irisverse/iris/
     ├── pkg/
     │   ├── iris_runtime_bg.wasm    ← WASM 运行时（已编译好）
     │   └── iris_runtime.js         ← JS 绑定
     ├── bin/
-    │   └── iris-runtime.js         ← CLI 工具
+    │   └── iris.js                 ← CLI 工具
     └── lib/
         └── dev-server.js           ← 开发服务器
 ```
@@ -132,7 +132,7 @@ node_modules/
 ### 步骤 3: 启动开发服务器
 
 ```bash
-npx iris-runtime dev
+iris dev
 ```
 
 **输出**:
@@ -189,11 +189,11 @@ npm run build
 │  1. 创建 Vue 项目                       │
 │     npm create vue@latest my-app        │
 │                                         │
-│  2. 安装 iris-runtime                   │
-│     npm install -D iris-runtime         │
+│  2. 全局安装 Iris CLI                    │
+│     npm install -g @irisverse/iris   │
 │                                         │
 │  3. 启动开发服务器                      │
-│     npx iris-runtime dev                │
+│     iris dev                │
 │                                         │
 │  4. 开发 & 热更新                       │
 │     编辑 .vue 文件 → 自动刷新           │
@@ -204,14 +204,14 @@ npm run build
 
 ## 🎯 关键理解
 
-### ✅ iris-runtime 做什么
+### ✅ Iris CLI (@irisverse/iris) 做什么
 
 1. **编译 Vue SFC** (WASM)
 2. **提供开发服务器** (Node.js)
 3. **热模块替换** (WebSocket)
 4. **实时预览** (HTTP)
 
-### ❌ iris-runtime 不做什么
+### ❌ Iris CLI 不做什么
 
 1. **不创建项目** → 使用 `create-vue`
 2. **不生产构建** → 使用 `vite build`
@@ -225,7 +225,7 @@ npm run build
 ### 优势 1: 专注单一职责
 
 ```
-iris-runtime 只做好一件事：
+Iris CLI 只做好一件事：
 → 快速的开发体验 + 热更新
 ```
 
@@ -241,7 +241,7 @@ iris-runtime 只做好一件事：
 ### 优势 3: WASM 优势
 
 ```
-iris-runtime 的核心竞争力：
+Iris CLI 的核心竞争力：
 - 基于 WASM 的快速编译
 - 跨平台一致性
 - 零原生依赖
@@ -267,14 +267,14 @@ wasm-pack build --target nodejs --release
 # 测试
 npm pack
 cd /tmp/test-app
-npm install ~/projects/iris/crates/iris-runtime/iris-runtime-0.1.1.tgz
-npx iris-runtime dev
+npm install ~/projects/iris/iris-runtime/irisverse-iris-0.1.1.tgz
+iris dev
 # ✅ 开发服务器正常，热更新工作
 
 # 下午：发布
 cd ~/projects/iris/crates/iris-runtime
 npm version patch
-npm publish
+npm publish --access public
 # ✅ 发布成功！
 ```
 
@@ -285,11 +285,11 @@ npm publish
 npm create vue@latest my-project
 cd my-project
 
-# 安装 iris-runtime
-npm install -D iris-runtime
+# 安装 Iris CLI
+npm install -g @irisverse/iris
 
 # 启动开发
-npx iris-runtime dev
+iris dev
 # ✅ 浏览器自动打开 http://localhost:3000
 
 # 开发功能
@@ -328,8 +328,8 @@ npm publish
 
 ```bash
 # 在 Vue 项目中
-npm install -D iris-runtime
-npx iris-runtime dev
+npm install -g @irisverse/iris
+iris dev
 
 # 开始开发！
 ```

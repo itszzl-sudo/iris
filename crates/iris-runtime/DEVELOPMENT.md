@@ -1,6 +1,6 @@
-# iris-runtime 开发指南
+# Iris CLI (@irisverse/iris) 开发指南
 
-> 本文档说明如何构建、打包和发布 iris-runtime npm 包
+> 本文档说明如何构建、打包和发布 @irisverse/iris npm 包
 
 ---
 
@@ -87,8 +87,8 @@ npm pack
 
 # 在其他项目中测试
 cd /path/to/vue-project
-npm install /path/to/iris-runtime-0.1.0.tgz
-npx iris-runtime dev
+npm install /path/to/@irisverse/iris-0.1.0.tgz
+iris dev
 ```
 
 ### 5. 发布到 npm
@@ -124,7 +124,7 @@ crates/iris-runtime/
 │   ├── compiler.rs          # Vue SFC 编译器
 │   └── hmr.rs               # 热模块替换
 ├── bin/
-│   └── iris-runtime.js      # CLI 入口
+│   └── iris.js               # CLI 入口
 └── lib/
     └── dev-server.js        # 开发服务器实现
 ```
@@ -152,11 +152,11 @@ crates/iris-runtime/
 npm create vue@latest my-app
 cd my-app
 
-# 2. 安装 iris-runtime
-npm install -D iris-runtime
+# 2. 全局安装 Iris CLI
+npm install -g @irisverse/iris
 
 # 3. 启动开发服务器
-npx iris-runtime dev
+iris dev
 
 # 4. 浏览器访问 http://localhost:3000
 ```
@@ -166,8 +166,8 @@ npx iris-runtime dev
 ```json
 {
   "scripts": {
-    "dev": "iris-runtime dev",
-    "dev:port": "iris-runtime dev --port 8080",
+    "dev": "iris dev",
+    "dev:port": "iris dev --port 8080",
     "build": "vite build"
   }
 }
@@ -208,7 +208,7 @@ strip = true         # 移除调试信息
 ### 启用调试日志
 
 ```javascript
-// 在 bin/iris-runtime.js 中
+// 在 bin/iris.js 中
 const runtime = new IrisRuntime();
 runtime.setDebug(true);  // 启用调试模式
 ```

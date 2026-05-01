@@ -1,6 +1,6 @@
 # 端口占用和错误处理
 
-> iris-runtime 提供友好的错误提示和解决方案
+> Iris CLI (@irisverse/iris) 提供友好的错误提示和解决方案
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 自动检测
 
-当启动开发服务器时，iris-runtime 会：
+当启动开发服务器时，iris 会：
 
 1. **检查端口是否被占用**
 2. **如果占用，显示友好的错误信息**
@@ -21,12 +21,12 @@
 ### 场景 1: 端口被占用
 
 ```bash
-$ npx iris-runtime dev
+$ iris dev
 
 ❌ Error: Port 3000 is already in use
 
 Possible causes:
-  • Another instance of iris-runtime is running
+  • Another instance of iris is running
   • Another application is using port 3000
 
 Solutions:
@@ -41,11 +41,11 @@ Solutions:
 
   Option 2: Use a different port
 
-    npx iris-runtime dev --port 3001
+    iris dev --port 3001
 
   Option 3: Auto-select available port
 
-    npx iris-runtime dev --port 0
+    iris dev --port 0
 ```
 
 ---
@@ -53,12 +53,12 @@ Solutions:
 ### 场景 2: 没有图形界面
 
 ```bash
-$ npx iris-runtime dev
+$ iris dev
 
 ❌ Error: No display available
 
-Iris Runtime requires a graphical environment to run.
-Without a GUI, iris-runtime cannot provide value.
+Iris requires a graphical environment to run.
+Without a GUI, iris cannot provide value.
 
 Possible causes:
   • Running in SSH session without X11 forwarding
@@ -86,17 +86,17 @@ Solutions:
 
 ```bash
 # 使用端口 3001
-npx iris-runtime dev --port 3001
+iris dev --port 3001
 
 # 使用端口 8080
-npx iris-runtime dev --port 8080
+iris dev --port 8080
 ```
 
 ### 方案 2: 自动选择端口
 
 ```bash
 # 使用 --port 0 自动选择可用端口
-npx iris-runtime dev --port 0
+iris dev --port 0
 
 # 输出:
 # ⚠️  Port 3000 is in use, using port 3001 instead
@@ -138,10 +138,10 @@ kill -9 12345
 
 ### 1. 竞态条件处理
 
-即使在端口检测和服务器启动之间有进程占用了端口，iris-runtime 也会自动处理：
+即使在端口检测和服务器启动之间有进程占用了端口，iris 也会自动处理：
 
 ```bash
-$ npx iris-runtime dev
+$ iris dev
 
 ⚠️  Port 3000 became unavailable, trying port 3001...
 ➜ Local: http://localhost:3001
@@ -227,10 +227,10 @@ $ npx iris-runtime dev
 
 ```bash
 # 使用默认端口
-npx iris-runtime dev
+iris dev
 
 # 如果端口冲突，使用自动选择
-npx iris-runtime dev --port 0
+iris dev --port 0
 ```
 
 ### CI/CD 环境
@@ -242,7 +242,7 @@ if [ -z "$DISPLAY" ]; then
   exit 1
 fi
 
-npx iris-runtime dev --port 0
+iris dev --port 0
 ```
 
 ### 团队协作
@@ -251,9 +251,9 @@ npx iris-runtime dev --port 0
 # 在 package.json 中配置
 {
   "scripts": {
-    "dev": "iris-runtime dev --port 0",
-    "dev:3000": "iris-runtime dev --port 3000",
-    "dev:8080": "iris-runtime dev --port 8080"
+    "dev": "iris dev --port 0",
+    "dev:3000": "iris dev --port 3000",
+    "dev:8080": "iris dev --port 8080"
   }
 }
 ```
@@ -261,4 +261,4 @@ npx iris-runtime dev --port 0
 ---
 
 **文档维护者**: Iris Development Team  
-**最后更新**: 2026-04-28
+**最后更新**: 2026-04-30

@@ -161,7 +161,7 @@ crates/iris-runtime/lib/templates/
 ### 1. 用户启动开发服务器
 
 ```bash
-npx iris-runtime dev
+iris dev
 ```
 
 ### 2. dev-server.js 提供 index.html

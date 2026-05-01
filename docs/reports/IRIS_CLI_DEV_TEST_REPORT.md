@@ -209,7 +209,7 @@ cargo build --package iris-cli
 
 # 运行
 cd examples/vue-demo
-..\..\target\debug\iris-runtime.exe dev
+..\..\target\debug\iris.exe dev
 ```
 
 ### 调试模式
@@ -217,7 +217,7 @@ cd examples/vue-demo
 ```bash
 # 显示详细日志
 $env:RUST_LOG="debug"
-..\..\target\debug\iris-runtime.exe dev
+..\..\target\debug\iris.exe dev
 ```
 
 ### 性能测试
@@ -225,7 +225,7 @@ $env:RUST_LOG="debug"
 ```bash
 # Release 版本
 cargo build --release --package iris-cli
-..\..\target\release\iris-runtime.exe dev
+..\..\target\release\iris.exe dev
 ```
 
 ---
