@@ -1,0 +1,121 @@
+# Iris Release Workflow
+#
+# 当 GitHub Release 创建/发布时：
+# 1. 构建关键二进制文件
+# 2. 上传到 Release 作为附件
+# 3. 在 Release 描述末尾追加 SignPath 署名
+
+name: Release
+
+on:
+  release:
+    types: [created, published, edited]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── 构建与上传 ───────────────────────────────────────────
+  build:
+    name: Build Release Assets
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build iris-cli (release)
+        run: cargo build -p iris-cli --release --target ${{ matrix.target }}
+
+      - name: Build iris-jetcrab-cli (release)
+        run: cargo build -p iris-jetcrab-cli --release --target ${{ matrix.target }}
+
+      - name: Build iris-jetcrab-daemon (release)
+        run: cargo build -p iris-jetcrab-daemon --release --target ${{ matrix.target }}
+
+      - name: Build iris-ai-cli (release)
+        run: cargo build -p iris-ai-cli --release --target ${{ matrix.target }}
+
+      - name: Package binaries
+        run: |
+          $VERSION = "${{ github.event.release.tag_name }}" -replace '^v', ''
+          $DIR = "iris-$VERSION-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $DIR -Force
+
+          # 收集二进制文件
+          Copy-Item "target/${{ matrix.target }}/release/iris-cli.exe"    "$DIR/" -ErrorAction SilentlyContinue
+          Copy-Item "target/${{ matrix.target }}/release/iris-jetcrab.exe" "$DIR/iris-jetcrab-cli.exe" -ErrorAction SilentlyContinue
+          Copy-Item "target/${{ matrix.target }}/release/iris-jetcrab-daemon.exe" "$DIR/" -ErrorAction SilentlyContinue
+          Copy-Item "target/${{ matrix.target }}/release/iris-ai.exe"    "$DIR/iris-ai-cli.exe" -ErrorAction SilentlyContinue
+
+          # 添加 LICENSE
+          Copy-Item LICENSE "$DIR/"
+
+          # 压缩
+          Compress-Archive -Path "$DIR/*" -DestinationPath "$DIR.zip"
+
+          echo "ASSET=$DIR.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          echo "ASSET_NAME=$DIR.zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Release 描述追加 SignPath 署名 ──────────────────────
+  signpath-attribution:
+    name: Add SignPath Attribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Append SignPath HTML to Release Body
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          REPO: ${{ github.repository }}
+        run: |
+          # 获取当前 Release 描述
+          CURRENT_BODY=$(gh release view "${{ github.event.release.tag_name }}" \
+            --repo $REPO --json body --jq '.body // ""')
+
+          SIGNPATH_HTML='<div style="margin-top:1em; font-size:0.9em; color:#666;">
+  Free code signing provided by <a href="https://signpath.io/" target="_blank">SignPath.io</a>,
+  certificate by <a href="https://signpath.org/" target="_blank">SignPath Foundation</a>
+</div>'
+
+          # 检查是否已有署名（避免重复追加）
+          if echo "$CURRENT_BODY" | grep -q "SignPath.io"; then
+            echo "SignPath attribution already present, skipping."
+            exit 0
+          fi
+
+          # 追加分割线 + HTML 并更新 Release
+          NEW_BODY=$(printf '%s\n\n---\n%s' "$CURRENT_BODY" "$SIGNPATH_HTML")
+          gh release edit "${{ github.event.release.tag_name }}" \
+            --repo $REPO \
+            --notes "$NEW_BODY"
+
+          echo "✅ SignPath attribution appended to release body."
