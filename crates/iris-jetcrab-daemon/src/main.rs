@@ -1046,6 +1046,180 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
     }
 
     /// CLI 项目注册接口：cli dev 启动时调用，避免重复启动
+
+    /// 代码审查接口：扫描 Vue 项目，检查常见问题
+    async fn handle_project_review(
+        Json(req): Json<PathReq>,
+    ) -> Json<serde_json::Value> {
+        let project_root = req.path.replace('\\', "/");
+        let project_path = std::path::Path::new(&project_root);
+
+        if !project_path.exists() {
+            return Json(serde_json::json!({
+                "status": "error",
+                "message": "项目路径不存在"
+            }));
+        }
+        if !project_path.is_dir() {
+            return Json(serde_json::json!({
+                "status": "error",
+                "message": "路径不是目录"
+            }));
+        }
+
+        let mut files_found: Vec<String> = Vec::new();
+        let mut issues: Vec<serde_json::Value> = Vec::new();
+        let mut warnings: Vec<serde_json::Value> = Vec::new();
+        let mut suggestions: Vec<String> = Vec::new();
+
+        // 检查关键文件是否存在
+        let critical_files = [
+            "package.json",
+            "App.vue",
+            "src/App.vue",
+            "main.ts",
+            "src/main.ts",
+            "main.js",
+            "src/main.js",
+            "index.html",
+            "public/index.html",
+        ];
+
+        let mut has_package_json = false;
+        let mut has_entry = false;
+        let mut has_app_vue = false;
+        let mut has_index_html = false;
+
+        for file in &critical_files {
+            let full_path = project_path.join(file);
+            if full_path.exists() {
+                files_found.push(file.to_string());
+                match *file {
+                    "package.json" => has_package_json = true,
+                    "App.vue" | "src/App.vue" => has_app_vue = true,
+                    "main.ts" | "src/main.ts" | "main.js" | "src/main.js" => has_entry = true,
+                    "index.html" | "public/index.html" => has_index_html = true,
+                    _ => {}
+                }
+            }
+        }
+
+        // 分析 package.json
+        if has_package_json {
+            let pkg_path = project_path.join("package.json");
+            if let Ok(content) = std::fs::read_to_string(&pkg_path) {
+                if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&content) {
+                    // 检查 Vue 依赖
+                    let deps = [
+                        pkg.get("dependencies"),
+                        pkg.get("devDependencies"),
+                    ];
+
+                    let mut has_vue = false;
+                    let mut has_vue_compiler = false;
+
+                    for dep_map in &deps {
+                        if let Some(deps_obj) = dep_map {
+                            if let Some(obj) = deps_obj.as_object() {
+                                if obj.contains_key("vue") { has_vue = true; }
+                                if obj.contains_key("vue-template-compiler") || obj.contains_key("@vue/compiler-sfc") {
+                                    has_vue_compiler = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if !has_vue {
+                        warnings.push(serde_json::json!({
+                            "title": "未发现 Vue 依赖",
+                            "description": "package.json 中未包含 vue 依赖。请确认项目是否正确安装了 Vue 3。"
+                        }));
+                    }
+
+                    if has_vue && !has_vue_compiler {
+                        suggestions.push("建议添加 @vue/compiler-sfc 作为开发依赖以获得更好的 SFC 编译支持".to_string());
+                    }
+
+                    // 检查 scripts
+                    if let Some(scripts) = pkg.get("scripts") {
+                        if let Some(obj) = scripts.as_object() {
+                            let has_dev = obj.contains_key("dev") || obj.contains_key("develop");
+                            if !has_dev {
+                                suggestions.push("package.json 中未定义 dev/develop 脚本，无法直接通过 npm run dev 启动".to_string());
+                            }
+                        } else {
+                            suggestions.push("package.json 中缺少 scripts 字段".to_string());
+                        }
+                    } else {
+                        suggestions.push("package.json 中缺少 scripts 字段".to_string());
+                    }
+                } else {
+                    warnings.push(serde_json::json!({
+                        "title": "package.json 解析失败",
+                        "description": "package.json 文件格式不正确，无法解析。"
+                    }));
+                }
+            }
+        } else {
+            issues.push(serde_json::json!({
+                "title": "缺少 package.json",
+                "description": "未找到 package.json 文件。请确认这是一个有效的 Vue/Node.js 项目。"
+            }));
+        }
+
+        if !has_app_vue {
+            warnings.push(serde_json::json!({
+                "title": "未找到 App.vue",
+                "description": "未在根目录或 src/ 下找到 App.vue。Vue 3 项目通常包含 src/App.vue 作为根组件。"
+            }));
+        }
+
+        if !has_entry {
+            issues.push(serde_json::json!({
+                "title": "缺少入口文件",
+                "description": "未找到 main.ts 或 main.js。Vue 项目需要入口文件来启动应用。"
+            }));
+        }
+
+        if !has_index_html {
+            warnings.push(serde_json::json!({
+                "title": "未找到 index.html",
+                "description": "未找到 index.html。Vite/Vue 项目模板通常包含 index.html 作为 HTML 入口。"
+            }));
+        }
+
+        // 检查 src 目录
+        let src_path = project_path.join("src");
+        if src_path.exists() && src_path.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&src_path) {
+                let src_count = entries.filter_map(|e| e.ok()).count();
+                if src_count > 0 && !files_found.iter().any(|f| f.starts_with("src/")) {
+                    suggestions.push("src/ 目录包含文件但未发现标准 Vue 项目结构。请检查是否正确初始化项目。".to_string());
+                }
+            }
+        }
+
+        // 计算健康分
+        let total_checks = 4; // package.json, App.vue, 入口文件, index.html
+        let passed = [
+            has_package_json,
+            has_app_vue,
+            has_entry,
+            has_index_html,
+        ].iter().filter(|&&x| x).count();
+        let health_score = passed as f64 / total_checks as f64;
+
+        Json(serde_json::json!({
+            "status": "ok",
+            "project": project_root,
+            "health_score": health_score,
+            "files": files_found,
+            "issues": issues,
+            "warnings": warnings,
+            "suggestions": suggestions,
+        }))
+    }
+
     async fn handle_register_project(
         AxumState(state): AxumState<Arc<DaemonState>>,
         Json(req): Json<serde_json::Value>,
@@ -1845,6 +2019,7 @@ async fn start_daemon_api(state: Arc<DaemonState>, port: u16) -> anyhow::Result<
         .route("/api/project/stop", post(handle_project_stop))
         .route("/api/projects/status", get(handle_projects_status))
         .route("/api/project/register", post(handle_register_project))
+        .route("/api/project/review", post(handle_project_review))
         .route("/api/fs/list", get(handle_fs_list))
         // AI 配置
         .route("/api/ai/config", get(handle_ai_config).put(handle_update_ai_config))
@@ -2195,6 +2370,8 @@ gap: 6px;
 .btn-danger:hover { background: #c82333; }
 .btn-secondary { background: #6c757d; color: #fff; }
 .btn-warning { background: #ffc107; color: #333; }
+.btn-info { background: #17a2b8; color: #fff; }
+.btn-info:hover { background: #138496; }
 .btn-sm { padding: 5px 12px; font-size: 0.8em; }
 .project-list { list-style: none; }
 .project-item {
@@ -2298,6 +2475,26 @@ font-size:0.9em; transition:background 0.15s;
 .dir-item .dir-icon { color:#667eea; font-size:1.1em; }
 .dir-item .dir-name { flex:1; word-break:break-all; }
 .modal-footer { border-top:1px solid #eee; margin-top:10px; }
+
+/* 审查结果弹窗 */
+.review-summary { display:flex; gap:16px; padding:12px 0; border-bottom:1px solid #eee; margin-bottom:12px; flex-wrap:wrap; }
+.review-stat { text-align:center; min-width:80px; }
+.review-stat .num { font-size:1.8em; font-weight:700; }
+.review-stat .label { font-size:0.8em; color:#888; }
+.review-stat.good .num { color:#28a745; }
+.review-stat.warn .num { color:#ffc107; }
+.review-stat.error .num { color:#dc3545; }
+.review-section { margin-bottom:16px; }
+.review-section h4 { margin:0 0 8px; font-size:0.95em; color:#555; display:flex; align-items:center; gap:6px; }
+.review-files { display:flex; flex-wrap:wrap; gap:6px; }
+.review-file { padding:4px 10px; background:#f0f4ff; border-radius:12px; font-size:0.85em; color:#555; }
+.review-issue { padding:8px 12px; margin-bottom:6px; border-radius:8px; font-size:0.9em; line-height:1.5; }
+.review-issue.error { background:#fff5f5; border-left:3px solid #dc3545; }
+.review-issue.warn { background:#fffbe6; border-left:3px solid #ffc107; }
+.review-issue.info { background:#f0f7ff; border-left:3px solid #17a2b8; }
+.review-issue .issue-title { font-weight:600; margin-bottom:2px; }
+.review-issue .issue-desc { color:#666; font-size:0.9em; }
+.review-suggestion { padding:8px 12px; margin-bottom:6px; border-radius:8px; font-size:0.9em; background:#f0faf0; border-left:3px solid #28a745; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -2553,6 +2750,22 @@ font-size:0.9em; transition:background 0.15s;
 </div>
 </div>
 
+<!-- 代码审查结果弹窗 -->
+<div id="reviewOverlay" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeReview()">
+<div class="modal-content" style="max-width:680px;">
+<div class="modal-header">
+<h3>🔍 代码审查结果</h3>
+<button class="btn btn-sm" onclick="closeReview()" style="background:none;border:none;color:#999;font-size:1.3em;cursor:pointer;">✕</button>
+</div>
+<div id="reviewBody" style="overflow-y:auto; max-height:60vh;">
+<div class="empty-state">正在审查中...</div>
+</div>
+<div class="modal-footer" style="text-align:right;">
+<button class="btn btn-primary btn-sm" onclick="closeReview()">关闭</button>
+</div>
+</div>
+</div>
+
 <!-- 页面底部 -->
 <div style="text-align:center; padding:20px; color:#fff; opacity:0.6; font-size:0.85em;">
 守护进程端口 {ACTUAL_DAEMON_PORT} · Iris JetCrab v0.1.0
@@ -2635,6 +2848,7 @@ return '<li class="project-item">'
 + '<div class="actions">'
 + actionBtn
 + '<button class="btn btn-primary btn-sm" onclick="openWorkspaceBrowser(\'' + p.replace(/'/g, "\\'") + '\')">📂 打开</button>'
++ '<button class="btn btn-info btn-sm" onclick="startCodeReview(\'' + p.replace(/'/g, "\\'") + '\')">🔍 审查</button>'
 + '<button class="btn btn-secondary btn-sm" onclick="removeProject(\'' + p.replace(/'/g, "\\'") + '\')">✕ 删除</button>'
 + '</div></li>';
 }).join('') + '</ul>';
@@ -2678,6 +2892,85 @@ if (data && data.status === 'ok') {
 showToast('已停止: ' + path, 'info');
 refreshProjects();
 }
+}
+
+// ── 代码审查函数 ──────────────────────────────
+
+async function startCodeReview(path) {
+document.getElementById('reviewOverlay').style.display = 'flex';
+document.getElementById('reviewBody').innerHTML = '<div class="empty-state">⏳ 正在审查代码...</div>';
+const data = await api('/api/project/review', { method: 'POST', body: JSON.stringify({ path }) });
+if (!data) {
+document.getElementById('reviewBody').innerHTML = '<div class="empty-state" style="color:#dc3545;">❌ 审查请求失败</div>';
+return;
+}
+if (data.status === 'error') {
+document.getElementById('reviewBody').innerHTML = '<div class="empty-state" style="color:#dc3545;">❌ ' + (data.message || '审查失败') + '</div>';
+return;
+}
+showReviewResults(data);
+}
+
+function showReviewResults(data) {
+const totalIssues = (data.issues ? data.issues.length : 0) + (data.warnings ? data.warnings.length : 0);
+const warnings = data.warnings || [];
+const suggestions = data.suggestions || [];
+const files = data.files || [];
+const issues = data.issues || [];
+let html = '';
+
+// Summary
+html += '<div class="review-summary">';
+html += '<div class="review-stat ' + (issues.length === 0 ? 'good' : 'error') + '"><div class="num">' + issues.length + '</div><div class="label">错误</div></div>';
+html += '<div class="review-stat ' + (warnings.length === 0 ? 'good' : 'warn') + '"><div class="num">' + warnings.length + '</div><div class="label">警告</div></div>';
+html += '<div class="review-stat ' + (suggestions.length === 0 ? 'good' : 'warn') + '"><div class="num">' + suggestions.length + '</div><div class="label">建议</div></div>';
+html += '<div class="review-stat good"><div class="num">' + files.length + '</div><div class="label">文件</div></div>';
+if (data.health_score !== undefined) {
+const score = Math.round(data.health_score * 100);
+const healthClass = score >= 80 ? 'good' : (score >= 50 ? 'warn' : 'error');
+html += '<div class="review-stat ' + healthClass + '"><div class="num">' + score + '</div><div class="label">健康分</div></div>';
+}
+html += '</div>';
+
+// Issues
+if (issues.length > 0) {
+html += '<div class="review-section"><h4>❌ 错误 (' + issues.length + ')</h4>';
+issues.forEach(function(issue) {
+html += '<div class="review-issue error"><div class="issue-title">' + issue.title + '</div><div class="issue-desc">' + issue.description + '</div></div>';
+});
+html += '</div>';
+}
+
+// Warnings
+if (warnings.length > 0) {
+html += '<div class="review-section"><h4>⚠️ 警告 (' + warnings.length + ')</h4>';
+warnings.forEach(function(w) {
+html += '<div class="review-issue warn"><div class="issue-title">' + w.title + '</div><div class="issue-desc">' + w.description + '</div></div>';
+});
+html += '</div>';
+}
+
+// Suggestions
+if (suggestions.length > 0) {
+html += '<div class="review-section"><h4>💡 建议 (' + suggestions.length + ')</h4>';
+suggestions.forEach(function(s) {
+html += '<div class="review-suggestion">' + s + '</div>';
+});
+html += '</div>';
+}
+
+// Files found
+html += '<div class="review-section"><h4>📄 检测到以下文件</h4><div class="review-files">';
+files.forEach(function(f) {
+html += '<span class="review-file">' + f + '</span>';
+});
+html += '</div></div>';
+
+document.getElementById('reviewBody').innerHTML = html;
+}
+
+function closeReview() {
+document.getElementById('reviewOverlay').style.display = 'none';
 }
 
 async function saveConfig() {
