@@ -3,19 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Iris 托管 Vue 3 项目示例 — 编译/构建/预览均由 iris-runtime CLI 驱动",
-  "scripts": {
-    "dev": "iris-runtime dev",
-    "build": "iris-runtime build",
-    "preview": "iris-runtime preview"
-  },
+  "description": "Iris-managed Vue 3 demo — compile/build/preview driven by iris-runtime CLI",
   "dependencies": {
     "vue": "^3.4.0"
   },
   "irisManaged": {
-    "description": "此字段由 Iris 全权管理",
+    "description": "This section is managed by Iris",
     "autoResolve": true,
-    "note": "dependencies/devDependencies 由你手动维护；irisResolved 由 iris 自动管理 — 运行 iris-runtime dev 时自动扫描 import，按需下载缺失的 npm 包并记录版本至此"
+    "note": "dependencies/devDependencies are maintained by you; irisResolved is auto-managed by Iris — on iris-runtime dev, it scans imports, downloads missing npm packages on demand, and records versions here"
   },
   "irisResolved": {}
 }
