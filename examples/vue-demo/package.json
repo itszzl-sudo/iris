@@ -12,5 +12,10 @@
   "dependencies": {
     "vue": "^3.4.0"
   },
-  "devDependencies": {}
+  "irisManaged": {
+    "description": "此字段由 Iris 全权管理",
+    "autoResolve": true,
+    "note": "dependencies/devDependencies 由你手动维护；irisResolved 由 iris 自动管理 — 运行 iris-runtime dev 时自动扫描 import，按需下载缺失的 npm 包并记录版本至此"
+  },
+  "irisResolved": {}
 }
